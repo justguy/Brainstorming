@@ -1,0 +1,11 @@
+.DS_Store
+.claude/
+node_modules/
+dist/
+dist-web/
+
+.llm-tracker/.history/
+.llm-tracker/.runtime/
+.llm-tracker/.snapshots/
+.llm-tracker/patches/
+.llm-tracker/trackers/*.errors.json

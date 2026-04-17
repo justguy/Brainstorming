@@ -1,0 +1,82 @@
+/**
+ * suggestions.ts — CRUD for scout-generated suggestions (ghost ideas).
+ *
+ * Suggestions are NOT ideas. They are proposals produced by the outsideKnowledgeScout
+ * role that the user hasn't admitted yet. Admitted suggestions produce a real Idea;
+ * dismissed ones stay in the store so the scout can avoid re-proposing them.
+ */
+
+import { getDb } from './db';
+import type { ScoutSuggestion, ScoutSuggestionStatus } from '../types';
+
+export async function listSuggestions(): Promise<ScoutSuggestion[]> {
+  const db = await getDb();
+  const all = await db.getAllFromIndex('suggestions', 'byUpdatedAt');
+  return all.reverse();
+}
+
+export async function listSuggestionsByStatus(status: ScoutSuggestionStatus): Promise<ScoutSuggestion[]> {
+  const db = await getDb();
+  const all = await db.getAllFromIndex('suggestions', 'byStatus', status);
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function getSuggestion(id: string): Promise<ScoutSuggestion | undefined> {
+  const db = await getDb();
+  return db.get('suggestions', id);
+}
+
+export interface CreateSuggestionInput {
+  rawText: string;
+  rationale: string;
+  source: string;
+  relatedIdeaIds?: string[];
+  panel?: ScoutSuggestion['panel'];
+}
+
+export async function createSuggestion(input: CreateSuggestionInput): Promise<ScoutSuggestion> {
+  const now = Date.now();
+  const suggestion: ScoutSuggestion = {
+    id: crypto.randomUUID(),
+    rawText: input.rawText,
+    rationale: input.rationale,
+    source: input.source,
+    status: 'pending',
+    relatedIdeaIds: input.relatedIdeaIds,
+    panel: input.panel,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const db = await getDb();
+  await db.put('suggestions', suggestion);
+  return suggestion;
+}
+
+export async function updateSuggestion(id: string, patch: Partial<ScoutSuggestion>): Promise<ScoutSuggestion> {
+  const db = await getDb();
+  const current = await db.get('suggestions', id);
+  if (!current) throw new Error(`Suggestion not found: ${id}`);
+  const updated: ScoutSuggestion = { ...current, ...patch, id, updatedAt: Date.now() };
+  await db.put('suggestions', updated);
+  return updated;
+}
+
+export async function deleteSuggestion(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('suggestions', id);
+}
+
+/** Mark a suggestion admitted and link it to the new real Idea id. */
+export async function admitSuggestion(id: string, admittedIdeaId: string): Promise<ScoutSuggestion> {
+  return updateSuggestion(id, { status: 'admitted', admittedIdeaId });
+}
+
+/** Mark a suggestion dismissed. It stays in the store so the scout can avoid re-proposing it. */
+export async function dismissSuggestion(id: string): Promise<ScoutSuggestion> {
+  return updateSuggestion(id, { status: 'dismissed' });
+}
+
+/** Store elaboration text on a suggestion (from a scout re-call). */
+export async function setSuggestionElaboration(id: string, elaboration: string): Promise<ScoutSuggestion> {
+  return updateSuggestion(id, { elaboration });
+}

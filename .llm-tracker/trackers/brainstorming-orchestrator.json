@@ -1,0 +1,829 @@
+{
+  "meta": {
+    "name": "Brainstorming Orchestrator",
+    "slug": "brainstorming-orchestrator",
+    "swimlanes": [
+      {
+        "id": "facilitator",
+        "label": "Facilitator Mode",
+        "description": "Phases 1-4 from PHASED_IMPL: visible connections, critique, timing, signal control.",
+        "collapsed": true
+      },
+      {
+        "id": "observability",
+        "label": "Observability",
+        "description": "Phase 5 payload-control and debugging surfaces."
+      },
+      {
+        "id": "automation",
+        "label": "Autonomous Facilitator",
+        "description": "Phase 6 local-only automation after Facilitator Mode is stable."
+      },
+      {
+        "id": "polish",
+        "label": "Demo Polish",
+        "description": "Phase 7 finish work for the visible demo moments."
+      },
+      {
+        "id": "collaboration",
+        "label": "Collaborative Sync",
+        "description": "BroadcastChannel, Yjs, WebRTC, and peer-aware synchronization backlog."
+      },
+      {
+        "id": "integrations",
+        "label": "Integrations",
+        "description": "Local-doc search, declarative WebMCP, and external system writeback backlog."
+      }
+    ],
+    "priorities": [
+      {
+        "id": "p0",
+        "label": "P0 / Now"
+      },
+      {
+        "id": "p1",
+        "label": "P1 / Next"
+      },
+      {
+        "id": "p2",
+        "label": "P2 / Soon"
+      },
+      {
+        "id": "p3",
+        "label": "P3 / Later"
+      }
+    ],
+    "scratchpad": "Facilitator Mode is shipped. The tracker now includes the next collaborative-sync sequence and stretch backlog from ROADMAP.md, organized by swimlane and priority.",
+    "rev": 7,
+    "updatedAt": "2026-04-17T17:58:37.237Z"
+  },
+  "tasks": [
+    {
+      "id": "bo-001",
+      "title": "Phase 1: Canvas connection overlay foundation",
+      "goal": "Render existing Connection records directly on the canvas as a bounded SVG overlay so relationships are visible without opening the drawer.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p0"
+      },
+      "dependencies": [],
+      "references": [
+        "PHASED_IMPL.md:45-82",
+        "src/canvas/Canvas.tsx:62-282",
+        "apps/web/App.tsx:716-775"
+      ],
+      "effort": "m",
+      "comment": "Claiming Phase 1 foundation work.",
+      "definition_of_done": [
+        "Canvas renders up to 8-10 high-signal connections with style by kind.",
+        "Connected line endpoints update while an attached idea is being dragged.",
+        "Clicking a connection line highlights both endpoint ideas without breaking drag, group, or merge flows."
+      ],
+      "constraints": [
+        "Reuse existing Connection records; do not introduce a new persisted connection model.",
+        "Keep the overlay non-intrusive and preserve current canvas interactions."
+      ],
+      "expected_changes": [
+        "src/canvas/Canvas.tsx",
+        "apps/web/App.tsx",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/types.ts"
+      ],
+      "context": {
+        "tags": [
+          "phase-1",
+          "connections",
+          "canvas"
+        ],
+        "notes": "Canvas now renders a bounded SVG connection overlay with drag-aware endpoints and click-to-highlight behavior."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "id": "bo-002",
+      "title": "Phase 1: Add draw_connection WebMCP tool",
+      "goal": "Expose a WebMCP tool that creates a visible connection between two ideas in one call and routes through the same app state used by the canvas overlay.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p0"
+      },
+      "dependencies": [
+        "bo-001"
+      ],
+      "references": [
+        "PHASED_IMPL.md:57-77",
+        "apps/web/webmcp-tools.ts:643-672",
+        "apps/web/App.tsx:544-563"
+      ],
+      "effort": "s",
+      "comment": "Keep this tool aligned with the existing dispatch-and-wait tool path; agents should be able to narrate and render the link in one action.",
+      "definition_of_done": [
+        "A global draw_connection tool is registered and documented alongside find_connections.",
+        "Calling the tool results in a visible connection on the canvas.",
+        "Tool output clearly reports what was connected and how it was classified."
+      ],
+      "constraints": [
+        "Do not add hidden coupling between the tool and future critique/timing systems.",
+        "Preserve the existing StrictMode-safe registration pattern."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/App.tsx",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/types.ts"
+      ],
+      "context": {
+        "tags": [
+          "phase-1",
+          "webmcp",
+          "connections"
+        ],
+        "notes": "draw_connection is registered as a global WebMCP tool and threads through app-owned board connection state."
+      }
+    },
+    {
+      "id": "bo-003",
+      "title": "Phase 2: Persisted critique system",
+      "goal": "Add the critique storage, WebMCP tools, and anchored critique-card UI so the app can challenge ideas sharply without interrupting flow.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p1"
+      },
+      "dependencies": [
+        "bo-002"
+      ],
+      "references": [
+        "PHASED_IMPL.md:85-127",
+        "ROADMAP.md:113-138"
+      ],
+      "effort": "l",
+      "comment": "There is already a devilsAdvocate role in the phase pipeline, but this phase requires a separate persisted critique system with its own store, tools, and card UI.",
+      "definition_of_done": [
+        "Critiques persist in a dedicated store and survive reloads.",
+        "critique_idea, list_critiques, and dismiss_critique are exposed through WebMCP.",
+        "Critique cards anchor near the target idea and never block interaction."
+      ],
+      "constraints": [
+        "Critiques must appear only after idle and must not spam the board.",
+        "Critique phrasing should be sharp and specific rather than generic."
+      ],
+      "expected_changes": [
+        "src/storage/db.ts",
+        "src/storage",
+        "src/orchestrator/roles",
+        "apps/web/App.tsx",
+        "apps/web/webmcp-tools.ts",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "src/storage",
+        "src/orchestrator",
+        "apps/web",
+        "src/types.ts"
+      ],
+      "context": {
+        "tags": [
+          "phase-2",
+          "critique",
+          "persistence"
+        ],
+        "notes": "Persisted critiques now have a dedicated IDB store, anchored canvas cards, and critique/list/dismiss WebMCP tools."
+      }
+    },
+    {
+      "id": "bo-004",
+      "title": "Phase 3: Soft mode inference timing layer",
+      "goal": "Infer whether the board is exploring, structuring, stressing, or converging, then time AI actions subtly without adding explicit mode toggles.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p1"
+      },
+      "dependencies": [
+        "bo-003"
+      ],
+      "references": [
+        "PHASED_IMPL.md:130-183"
+      ],
+      "effort": "m",
+      "comment": "This phase should control timing, not decision authority. The UI cue must be subtle and fade if ignored.",
+      "definition_of_done": [
+        "A lightweight inferredMode classifier exists with a reason and confidence.",
+        "Mode output drives the appropriate non-blocking suggestion or tool trigger path.",
+        "No mode toggle is added to the UI."
+      ],
+      "constraints": [
+        "Never interrupt typing or dragging.",
+        "Only act after idle and never force a mode switch."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "src",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "phase-3",
+          "timing",
+          "classifier"
+        ],
+        "notes": "Starting the timing layer after syncing completed facilitator slices."
+      },
+      "assignee": "codex"
+    },
+    {
+      "id": "bo-005",
+      "title": "Phase 4: Signal control and noise reduction",
+      "goal": "Bound critiques, suggestions, and connections so the system stays trustworthy as more autonomous behavior lands.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p2"
+      },
+      "dependencies": [
+        "bo-004"
+      ],
+      "references": [
+        "PHASED_IMPL.md:186-212"
+      ],
+      "effort": "m",
+      "comment": "Do not scale broken signal. Thresholding and cooldowns should come after the underlying connection and critique signals are correct.",
+      "definition_of_done": [
+        "Connection confidence threshold is enforced.",
+        "Per-idea critique cooldown prevents spam.",
+        "Suggestion deduplication and visible-count bounds keep the canvas clean."
+      ],
+      "constraints": [
+        "Maximum 2 critiques per idea, 6 visible suggestions, and 10 connections total.",
+        "Keep all control logic aligned with the existing live board state."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "apps/web/webmcp-tools.ts",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "phase-4",
+          "signal-control"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "id": "bo-006",
+      "title": "Phase 5: Turn-log pagination",
+      "goal": "Split large turn-log payloads out of get_idea so debugging and agent inspection scale without oversized responses.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "observability",
+        "priorityId": "p2"
+      },
+      "dependencies": [
+        "bo-005"
+      ],
+      "references": [
+        "PHASED_IMPL.md:215-236",
+        "ROADMAP.md:140-149"
+      ],
+      "effort": "m",
+      "comment": "This is the observability sidecar the roadmap calls out for future connectionFinder and devilsAdvocate turn-log growth.",
+      "definition_of_done": [
+        "get_turn_log returns paginated entries with nextCursor.",
+        "get_idea returns turn-log summary metadata instead of the full array.",
+        "Agent-side inspection can retrieve history incrementally."
+      ],
+      "constraints": [
+        "Do not lose existing turn-log data.",
+        "Keep the new tool shape consistent with current WebMCP tool conventions."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "context": {
+        "tags": [
+          "phase-5",
+          "observability",
+          "turn-log"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "id": "bo-007",
+      "title": "Phase 6: Local autonomous facilitator",
+      "goal": "Add bounded observer-driven automation so the system can add value without explicit user commands and without overwhelming the user.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "automation",
+        "priorityId": "p3"
+      },
+      "dependencies": [
+        "bo-006"
+      ],
+      "references": [
+        "PHASED_IMPL.md:239-264"
+      ],
+      "effort": "l",
+      "comment": "This remains local-only and should not start until the earlier facilitator phases are stable.",
+      "definition_of_done": [
+        "State-change observers trigger bounded tool actions under explicit safeguards.",
+        "A global pause toggle exists.",
+        "AI-originated actions are tagged so the user can distinguish them from direct edits."
+      ],
+      "constraints": [
+        "No sync or Yjs work starts here.",
+        "Human interruptibility must remain immediate."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "apps/web/webmcp-tools.ts",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "phase-6",
+          "automation"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "id": "bo-008",
+      "title": "Phase 7: Demo polish",
+      "goal": "Refine animation timing, transitions, and layout so the facilitator behaviors read as intentional and impressive during the demo.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p3"
+      },
+      "dependencies": [
+        "bo-007"
+      ],
+      "references": [
+        "PHASED_IMPL.md:267-288"
+      ],
+      "effort": "m",
+      "comment": "This closes the sequence only after the earlier functional phases are working and stable.",
+      "definition_of_done": [
+        "Connection, critique, and suggestion moments animate smoothly.",
+        "UI transitions avoid abrupt jumps.",
+        "The board reads as polished on desktop and mobile."
+      ],
+      "constraints": [
+        "Do not hide unresolved functional issues with polish work.",
+        "Preserve the existing visual language rather than replacing it."
+      ],
+      "expected_changes": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "phase-7",
+          "polish",
+          "demo"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [],
+      "id": "bo-009",
+      "title": "3.1 Two-tab BroadcastChannel + Yjs sync spike",
+      "goal": "Prove zero-server two-tab sync by wrapping the ideas store in a Y.Map with BroadcastChannel transport and y-indexeddb persistence.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "collaboration",
+        "priorityId": "p0"
+      },
+      "references": [
+        "ROADMAP.md:94-108"
+      ],
+      "effort": "m",
+      "comment": "This is the first sync proof and the gate for broader CRDT or multi-peer work.",
+      "definition_of_done": [
+        "Adding an idea in tab A appears in tab B in under 100ms on the same machine.",
+        "The ideas store is backed by a Y.Map with BroadcastChannel transport.",
+        "Reload preserves shared state through y-indexeddb while docs, suggestions, and groups stay IDB-only."
+      ],
+      "constraints": [
+        "Do not start full-store Yjs migration in this slice.",
+        "Keep the spike isolated to the ideas store and validate concurrent panel-drag merge behavior."
+      ],
+      "expected_changes": [
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "sync",
+          "yjs",
+          "broadcastchannel"
+        ],
+        "notes": "Roadmap section 3.1 is the next sync slice after facilitator mode."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-009"
+      ],
+      "id": "bo-010",
+      "title": "3.2 Full CRDT port for board stores",
+      "goal": "Replace direct IDB writes across board stores with Y.Doc-backed mutations and ship a one-shot migration path from existing local data.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "collaboration",
+        "priorityId": "p1"
+      },
+      "references": [
+        "ROADMAP.md:109-114"
+      ],
+      "effort": "l",
+      "comment": "Yjs is a storage rewrite, not a feature flag, so the port layer must hide the backend from UI and tool code.",
+      "definition_of_done": [
+        "Storage helpers route through Y.Doc-backed mutations across the board stores.",
+        "First boot after upgrade migrates existing IDB data into the Y.Doc once.",
+        "UI and WebMCP tools operate unchanged through the storage port layer."
+      ],
+      "constraints": [
+        "Do not keep a parallel IDB plus Yjs write path.",
+        "Migration must preserve existing board data and avoid two sources of truth."
+      ],
+      "expected_changes": [
+        "src/storage",
+        "apps/web",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "src/storage",
+        "apps/web",
+        "src/types.ts",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "sync",
+          "crdt",
+          "migration"
+        ],
+        "notes": "This follows the two-tab spike and should stay behind a clean storage port."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-010"
+      ],
+      "id": "bo-011",
+      "title": "3.3 WebRTC cross-machine sync with SDP-only broker",
+      "goal": "Extend collaborative sync across machines by swapping BroadcastChannel transport for y-webrtc and adding the minimal SDP-broker room flow.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "collaboration",
+        "priorityId": "p1"
+      },
+      "references": [
+        "ROADMAP.md:115-119"
+      ],
+      "effort": "l",
+      "comment": "The broker may pass SDP offers only; it must never carry Y.Doc payload.",
+      "definition_of_done": [
+        "Peers can join a room across machines using a short room code or invite URL.",
+        "Remote sync uses y-webrtc instead of BroadcastChannel.",
+        "The signaling path carries SDP offers only and keeps idea payloads peer-to-peer."
+      ],
+      "constraints": [
+        "Do not ship manual token-paste signaling.",
+        "Keep the broker minimal and avoid central storage of board contents."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "public"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "public"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "sync",
+          "webrtc",
+          "signaling"
+        ],
+        "notes": "The roadmap explicitly rejects manual token-paste signaling even as a stopgap."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-011"
+      ],
+      "id": "bo-012",
+      "title": "3.4 CRDT-driven autonomous facilitator triggers",
+      "goal": "Move facilitator triggers onto Y.Doc update events with idle gating, AI-host election, and AI-origin dedup so exactly one peer automates the board.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "automation",
+        "priorityId": "p2"
+      },
+      "references": [
+        "ROADMAP.md:120-127"
+      ],
+      "effort": "l",
+      "comment": "This is the multi-peer follow-on to the current local-only facilitator and must stay human-interruptible.",
+      "definition_of_done": [
+        "The observer subscribes to Y.Doc update events rather than local-only board state.",
+        "Exactly one peer claims AI-host responsibility via awareness-based election.",
+        "AI-originated transactions are tagged and deduped across peers."
+      ],
+      "constraints": [
+        "Preserve global pause and bounded automation behavior.",
+        "Avoid duplicate ghost panels or repeated role runs during split-brain or host handoff."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "apps/web/webmcp-tools.ts",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "automation",
+          "awareness",
+          "election"
+        ],
+        "notes": "Peer-aware automation starts only after sync is real."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-013",
+      "title": "Stretch: search_local_docs local RAG tool",
+      "goal": "Let the user grant a local docs folder and search PRDs/specs with File System Access-backed local retrieval surfaced as supporting-doc candidates or scout context.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "integrations",
+        "priorityId": "p2"
+      },
+      "references": [
+        "ROADMAP.md:129-131",
+        "ROADMAP.md:161-161"
+      ],
+      "effort": "m",
+      "comment": "This is attractive, but the permission UX is the real blocker rather than retrieval code.",
+      "definition_of_done": [
+        "A user can grant a folder and issue local doc searches from the app.",
+        "Matches surface as supporting-doc candidates or scout context rather than opaque raw snippets.",
+        "The app has a deliberate re-authorize flow for per-session permission loss."
+      ],
+      "constraints": [
+        "Do not hide the File System Access permission boundary.",
+        "Do not assume persistent folder grants across reloads."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "local-rag",
+          "docs",
+          "permissions"
+        ],
+        "notes": "The roadmap leans toward deferring this until the permission story is acceptable."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-014",
+      "title": "Stretch: cross_pollinate role and tool",
+      "goal": "Introduce a dedicated cross_pollinate role that finds two distinct ideas and proposes a third merged concept with clearer intent than scout_ideas.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p2"
+      },
+      "references": [
+        "ROADMAP.md:129-132"
+      ],
+      "effort": "m",
+      "comment": "This is partially covered by scout_ideas today, but splitting the role would sharpen synthesis-specific prompting and UI.",
+      "definition_of_done": [
+        "A dedicated cross_pollinate role exists with structured output.",
+        "A WebMCP tool exposes the role on the standalone board surface.",
+        "The resulting suggestion clearly attributes the two source ideas it combines."
+      ],
+      "constraints": [
+        "Do not duplicate scout_ideas behavior without a sharper synthesis contract.",
+        "Keep the output anchored to existing ideas rather than free-floating unrelated suggestions."
+      ],
+      "expected_changes": [
+        "src/orchestrator/roles",
+        "apps/web/App.tsx",
+        "apps/web/webmcp-tools.ts",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "src/orchestrator",
+        "apps/web",
+        "src/types.ts"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "facilitator",
+          "synthesis",
+          "role"
+        ],
+        "notes": "This is a dedicated synthesis verb beyond the current scout behavior."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-015",
+      "title": "Stretch: declarative WebMCP + toolautosubmit",
+      "goal": "Add agent-aware declarative form fields that emit tool calls on change when Chrome preview support is good enough.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "integrations",
+        "priorityId": "p3"
+      },
+      "references": [
+        "ROADMAP.md:129-133"
+      ],
+      "effort": "m",
+      "comment": "This remains blocked on Chrome preview validation, so it should stay behind the sync backlog.",
+      "definition_of_done": [
+        "Declarative form fields can emit tool calls on change for supported surfaces.",
+        "The implementation is validated against the Chrome preview requirements called out in the WebMCP docs.",
+        "Unsupported environments degrade cleanly without breaking existing manual tools."
+      ],
+      "constraints": [
+        "Do not ship this before preview validation is real.",
+        "Keep HTTP and manual tool invocation paths working without declarative support."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "WEBMCP_CAPABILITIES.md"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "WEBMCP_CAPABILITIES.md"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "webmcp",
+          "declarative",
+          "chrome-preview"
+        ],
+        "notes": "Roadmap explicitly marks this as blocked on Chrome 146 preview validation."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-012"
+      ],
+      "id": "bo-016",
+      "title": "Stretch: multi-user facilitator UX",
+      "goal": "Once sync is real, add speaker tracking, consensus summaries, and end-of-session action-item capture that make facilitator behavior legible in collaborative sessions.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "automation",
+        "priorityId": "p3"
+      },
+      "references": [
+        "ROADMAP.md:129-134"
+      ],
+      "effort": "l",
+      "comment": "This belongs after sync and peer-aware automation are stable enough to trust in shared sessions.",
+      "definition_of_done": [
+        "Collaborative sessions surface facilitator-owned consensus summaries and action items.",
+        "The UX is designed for multi-user sessions rather than single-user board nudges.",
+        "The feature reads as an extension of the shared facilitator rather than a separate tool silo."
+      ],
+      "constraints": [
+        "Do not start before sync and peer-aware facilitator plumbing are stable.",
+        "Keep the facilitator non-intrusive even in active discussions."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "automation",
+          "multi-user",
+          "ux"
+        ],
+        "notes": "This is explicitly downstream of the collaborative sync track."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-017",
+      "title": "Stretch: W1 external system integration tools",
+      "goal": "Use the W1 active-tab tool path to let phase transitions write to Linear, Jira, or PRD tools with explicit second-step consent.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "integrations",
+        "priorityId": "p3"
+      },
+      "references": [
+        "ROADMAP.md:129-135"
+      ],
+      "effort": "m",
+      "comment": "This should extend the existing W1 consume path rather than invent a separate integration channel.",
+      "definition_of_done": [
+        "The app can chain active-tab tool writes into supported external systems.",
+        "Phase-transition writeback requires an explicit second consent step.",
+        "The integration reuses existing W1 patterns instead of introducing a parallel bridge."
+      ],
+      "constraints": [
+        "Do not bypass explicit consent for external writes.",
+        "Preserve the existing active-tab consumption architecture."
+      ],
+      "expected_changes": [
+        "src",
+        "public",
+        "WEBMCP_INTEGRATION_NOTES.md"
+      ],
+      "allowed_paths": [
+        "src",
+        "public",
+        "WEBMCP_INTEGRATION_NOTES.md"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "integrations",
+          "w1",
+          "consent"
+        ],
+        "notes": "This is the explicit W1 writeback stretch item from the roadmap."
+      }
+    }
+  ]
+}
