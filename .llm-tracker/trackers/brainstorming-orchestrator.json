@@ -21,8 +21,8 @@
       },
       {
         "id": "polish",
-        "label": "Demo Polish",
-        "description": "Phase 7 finish work for the visible demo moments."
+        "label": "UX Polish Driver",
+        "description": "Current sprint: visual hierarchy, motion, timing, signal control, micro-interactions, critique tone, and final demo consistency."
       },
       {
         "id": "collaboration",
@@ -53,9 +53,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "Facilitator Mode is shipped. The tracker now includes the next collaborative-sync sequence and stretch backlog from ROADMAP.md, organized by swimlane and priority.",
-    "rev": 7,
-    "updatedAt": "2026-04-17T17:58:37.237Z"
+    "scratchpad": "Facilitator Mode and the UI/UX Polish Driver are shipped. Collaborative sync is now the current executable workstream from ROADMAP.md §4; stretch backlog remains queued behind that storage/sync track.",
+    "rev": 9,
+    "updatedAt": "2026-04-17T23:31:56.572Z"
   },
   "tasks": [
     {
@@ -165,7 +165,7 @@
       ],
       "references": [
         "PHASED_IMPL.md:85-127",
-        "ROADMAP.md:113-138"
+        "ROADMAP.md:75-83"
       ],
       "effort": "l",
       "comment": "There is already a devilsAdvocate role in the phase pipeline, but this phase requires a separate persisted critique system with its own store, tools, and card UI.",
@@ -303,7 +303,7 @@
       ],
       "references": [
         "PHASED_IMPL.md:215-236",
-        "ROADMAP.md:140-149"
+        "ROADMAP.md:85-90"
       ],
       "effort": "m",
       "comment": "This is the observability sidecar the roadmap calls out for future connectionFinder and devilsAdvocate turn-log growth.",
@@ -426,7 +426,7 @@
     {
       "dependencies": [],
       "id": "bo-009",
-      "title": "3.1 Two-tab BroadcastChannel + Yjs sync spike",
+      "title": "4.1 Two-tab BroadcastChannel + Yjs sync spike",
       "goal": "Prove zero-server two-tab sync by wrapping the ideas store in a Y.Map with BroadcastChannel transport and y-indexeddb persistence.",
       "status": "not_started",
       "placement": {
@@ -434,10 +434,10 @@
         "priorityId": "p0"
       },
       "references": [
-        "ROADMAP.md:94-108"
+        "ROADMAP.md:268-275"
       ],
       "effort": "m",
-      "comment": "This is the first sync proof and the gate for broader CRDT or multi-peer work.",
+      "comment": "This is the current sync proof now that the local-first facilitator and polish layers are shipped.",
       "definition_of_done": [
         "Adding an idea in tab A appears in tab B in under 100ms on the same machine.",
         "The ideas store is backed by a Y.Map with BroadcastChannel transport.",
@@ -464,7 +464,7 @@
           "yjs",
           "broadcastchannel"
         ],
-        "notes": "Roadmap section 3.1 is the next sync slice after facilitator mode."
+        "notes": "Roadmap section 4.1 is now the next executable slice after the shipped UI/UX polish driver."
       }
     },
     {
@@ -472,15 +472,15 @@
         "bo-009"
       ],
       "id": "bo-010",
-      "title": "3.2 Full CRDT port for board stores",
+      "title": "4.2 Full CRDT port for board stores",
       "goal": "Replace direct IDB writes across board stores with Y.Doc-backed mutations and ship a one-shot migration path from existing local data.",
       "status": "not_started",
       "placement": {
         "swimlaneId": "collaboration",
-        "priorityId": "p1"
+        "priorityId": "p2"
       },
       "references": [
-        "ROADMAP.md:109-114"
+        "ROADMAP.md:277-281"
       ],
       "effort": "l",
       "comment": "Yjs is a storage rewrite, not a feature flag, so the port layer must hide the backend from UI and tool code.",
@@ -519,15 +519,15 @@
         "bo-010"
       ],
       "id": "bo-011",
-      "title": "3.3 WebRTC cross-machine sync with SDP-only broker",
+      "title": "4.3 WebRTC cross-machine sync with SDP-only broker",
       "goal": "Extend collaborative sync across machines by swapping BroadcastChannel transport for y-webrtc and adding the minimal SDP-broker room flow.",
       "status": "not_started",
       "placement": {
         "swimlaneId": "collaboration",
-        "priorityId": "p1"
+        "priorityId": "p2"
       },
       "references": [
-        "ROADMAP.md:115-119"
+        "ROADMAP.md:283-286"
       ],
       "effort": "l",
       "comment": "The broker may pass SDP offers only; it must never carry Y.Doc payload.",
@@ -565,15 +565,15 @@
         "bo-011"
       ],
       "id": "bo-012",
-      "title": "3.4 CRDT-driven autonomous facilitator triggers",
+      "title": "4.4 CRDT-driven autonomous facilitator triggers",
       "goal": "Move facilitator triggers onto Y.Doc update events with idle gating, AI-host election, and AI-origin dedup so exactly one peer automates the board.",
       "status": "not_started",
       "placement": {
         "swimlaneId": "automation",
-        "priorityId": "p2"
+        "priorityId": "p3"
       },
       "references": [
-        "ROADMAP.md:120-127"
+        "ROADMAP.md:288-293"
       ],
       "effort": "l",
       "comment": "This is the multi-peer follow-on to the current local-only facilitator and must stay human-interruptible.",
@@ -616,8 +616,8 @@
         "priorityId": "p2"
       },
       "references": [
-        "ROADMAP.md:129-131",
-        "ROADMAP.md:161-161"
+        "ROADMAP.md:299-299",
+        "ROADMAP.md:329-329"
       ],
       "effort": "m",
       "comment": "This is attractive, but the permission UX is the real blocker rather than retrieval code.",
@@ -659,7 +659,7 @@
         "priorityId": "p2"
       },
       "references": [
-        "ROADMAP.md:129-132"
+        "ROADMAP.md:300-300"
       ],
       "effort": "m",
       "comment": "This is partially covered by scout_ideas today, but splitting the role would sharpen synthesis-specific prompting and UI.",
@@ -704,7 +704,7 @@
         "priorityId": "p3"
       },
       "references": [
-        "ROADMAP.md:129-133"
+        "ROADMAP.md:301-301"
       ],
       "effort": "m",
       "comment": "This remains blocked on Chrome preview validation, so it should stay behind the sync backlog.",
@@ -750,7 +750,7 @@
         "priorityId": "p3"
       },
       "references": [
-        "ROADMAP.md:129-134"
+        "ROADMAP.md:302-302"
       ],
       "effort": "l",
       "comment": "This belongs after sync and peer-aware automation are stable enough to trust in shared sessions.",
@@ -792,7 +792,7 @@
         "priorityId": "p3"
       },
       "references": [
-        "ROADMAP.md:129-135"
+        "ROADMAP.md:303-303"
       ],
       "effort": "m",
       "comment": "This should extend the existing W1 consume path rather than invent a separate integration channel.",
@@ -824,6 +824,334 @@
         ],
         "notes": "This is the explicit W1 writeback stretch item from the roadmap."
       }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-018",
+      "title": "3.1 Visual hierarchy pass",
+      "goal": "Make the current canvas instantly legible by establishing one active focus, stronger structure weighting, critique dominance, and slight de-emphasis of irrelevant ideas.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p0"
+      },
+      "references": [
+        "ROADMAP.md:100-122"
+      ],
+      "effort": "m",
+      "comment": "Start with hierarchy before animation so the board has a stable visual grammar.",
+      "definition_of_done": [
+        "Exactly one idea can read as active at a time through subtle elevation and accent treatment.",
+        "Strongest connections render with the clearest weight while secondary structure fades to roughly 60-70% opacity.",
+        "Critique cards visually outrank structure without covering or blocking their target ideas."
+      ],
+      "constraints": [
+        "Do not add new UI surfaces or persistent clutter.",
+        "Maintain readability on dense boards and keep non-active ideas above readability thresholds."
+      ],
+      "expected_changes": [
+        "src/canvas",
+        "apps/web/App.tsx",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "ux-polish",
+          "visual-hierarchy"
+        ],
+        "notes": "The board should tell the user what matters before any new motion layer is added."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-018"
+      ],
+      "id": "bo-019",
+      "title": "3.2 Motion design and reveal animation",
+      "goal": "Make connections, critiques, suggestions, and highlight feedback animate with directional, idle-gated motion that feels intentional rather than abrupt.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p0"
+      },
+      "references": [
+        "ROADMAP.md:124-150"
+      ],
+      "effort": "m",
+      "comment": "Directional motion should explain what just happened without becoming theatrical.",
+      "definition_of_done": [
+        "Connections draw from source to target over roughly 300-500ms with stroke-dash animation.",
+        "Critiques enter with a 10-20px offset and 200-300ms fade-slide after idle.",
+        "Suggestions and connection-click highlights follow the same motion language and timing band."
+      ],
+      "constraints": [
+        "Never animate during drag or typing.",
+        "Support reduced-motion fallbacks without losing state clarity."
+      ],
+      "expected_changes": [
+        "src/canvas",
+        "apps/web/App.tsx",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "ux-polish",
+          "motion"
+        ],
+        "notes": "Motion needs to read as explanation, not decoration."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-019"
+      ],
+      "id": "bo-020",
+      "title": "3.3 Sequential idle-gated facilitator timing",
+      "goal": "Resequence facilitator output so the board reveals one structural insight, then one critique, then later a suggestion only after a stable idle window.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p1"
+      },
+      "references": [
+        "ROADMAP.md:152-172"
+      ],
+      "effort": "m",
+      "comment": "The magic layer is sequencing, cancellation, and patience rather than more output.",
+      "definition_of_done": [
+        "Idle detection waits roughly 1.2-2.0 seconds after the last interaction before showing anything.",
+        "Queued AI actions reveal one at a time with 600-1000ms spacing in the order connection, critique, suggestion.",
+        "Any user interaction cancels pending AI reveals and resets timing cleanly."
+      ],
+      "constraints": [
+        "Do not allow simultaneous insight reveals.",
+        "Do not interrupt typing, drag, dismiss, or edit flows."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "src",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "ux-polish",
+          "timing",
+          "idle"
+        ],
+        "notes": "This is the patience layer that prevents the facilitator from feeling noisy or random."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-020"
+      ],
+      "id": "bo-021",
+      "title": "3.4 Signal control and overflow refinement",
+      "goal": "Keep the facilitator trustworthy by enforcing hard visible limits, hiding weak signals, and collapsing overflow without adding new panels.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p1"
+      },
+      "references": [
+        "ROADMAP.md:174-195"
+      ],
+      "effort": "m",
+      "comment": "Do not scale broken signal; show fewer, stronger insights and degrade overflow gracefully.",
+      "definition_of_done": [
+        "Visible output stays within the roadmap bounds for connections, critiques per idea, and suggestions.",
+        "Weak connections are filtered out entirely while secondary but valid signals de-emphasize smoothly.",
+        "Suggestion overflow collapses into an existing-surface '+N more' affordance rather than a new panel."
+      ],
+      "constraints": [
+        "Apply limits without making data disappear abruptly.",
+        "Use confidence and rank ordering rather than FIFO truncation."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "src/canvas",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/canvas",
+        "src/styles.css",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "ux-polish",
+          "signal-control"
+        ],
+        "notes": "The board should stay clean even when the facilitator has more candidate output."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-021"
+      ],
+      "id": "bo-022",
+      "title": "3.5 Micro-interactions and board responsiveness",
+      "goal": "Add subtle drag, hover, edit, and grouping reactions that make the current board feel aware and alive without increasing noise.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p2"
+      },
+      "references": [
+        "ROADMAP.md:197-219"
+      ],
+      "effort": "m",
+      "comment": "These reactions should reward attention and preserve calm, not create constant motion.",
+      "definition_of_done": [
+        "Nearby connections react smoothly during drag with light elastic tension instead of rigid snapping.",
+        "Critiques soften during edits and regain full presence after idle returns.",
+        "Hovering an idea highlights related connections and critiques as one coherent set."
+      ],
+      "constraints": [
+        "Avoid jitter under high-frequency drag updates.",
+        "Do not let hover or edit feedback fight the idle-gated reveal queue."
+      ],
+      "expected_changes": [
+        "src/canvas",
+        "apps/web/App.tsx",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "ux-polish",
+          "micro-interactions"
+        ],
+        "notes": "Responsiveness matters, but the board still has to feel calm and deliberate."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-022"
+      ],
+      "id": "bo-023",
+      "title": "3.6 Critique tone and language tightening",
+      "goal": "Reshape critique output so every card sounds like a sharp collaborator using brief, direct challenge language instead of generic summaries.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p2"
+      },
+      "references": [
+        "ROADMAP.md:221-239"
+      ],
+      "effort": "s",
+      "comment": "The critique voice should increase trust by being concise, pointed, and obviously actionable.",
+      "definition_of_done": [
+        "Critiques bias toward direct formulations such as 'This fails if...' and 'You're assuming...'.",
+        "Each critique fits within 2-3 short lines without long passive summary paragraphs.",
+        "Persisted and regenerated critiques both respect the same terse copy standard."
+      ],
+      "constraints": [
+        "Do not let prompt shaping regress critique specificity.",
+        "Do not exceed the existing card footprint."
+      ],
+      "expected_changes": [
+        "src/orchestrator",
+        "apps/web/App.tsx",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "src/orchestrator",
+        "apps/web",
+        "src/types.ts",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "ux-polish",
+          "tone",
+          "critique"
+        ],
+        "notes": "Sharper language is part of perceived intelligence, not just copy polish."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-023"
+      ],
+      "id": "bo-024",
+      "title": "3.7 Final consistency and demo-quality polish",
+      "goal": "Unify spacing, easing, durations, and color discipline across the existing facilitator surfaces so the whole experience reads as one intentional system.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p2"
+      },
+      "references": [
+        "ROADMAP.md:241-260"
+      ],
+      "effort": "m",
+      "comment": "This closes the polish driver only after hierarchy, motion, timing, and tone are already aligned.",
+      "definition_of_done": [
+        "Connection, critique, and suggestion surfaces share the same 200-500ms timing band and ease-out motion language.",
+        "Spacing and alignment feel consistent across desktop and narrow viewport layouts.",
+        "Color discipline stays strict: critique in red/orange, structure in blue/grey, suggestions in teal."
+      ],
+      "constraints": [
+        "Do not paper over unresolved interaction bugs with visual polish.",
+        "Keep the current product shape rather than redesigning it."
+      ],
+      "expected_changes": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "roadmap",
+          "ux-polish",
+          "demo",
+          "consistency"
+        ],
+        "notes": "The close-out pass should make the demo feel smooth, deliberate, and premium."
+      },
+      "assignee": "codex"
     }
   ]
 }

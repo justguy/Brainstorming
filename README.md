@@ -8,7 +8,8 @@ Brainstorming Orchestrator is a local-first idea workspace with two shipped surf
 ## Status
 
 - `PHASED_IMPL.md`: complete.
-- `ROADMAP.md` current sprint (`Facilitator Mode v1`): complete.
+- `ROADMAP.md` shipped local-first work: complete through the UI/UX polish driver.
+- `ROADMAP.md` current sprint: collaborative sync.
 - Remaining roadmap work is still future work: collaborative sync, Yjs, WebRTC multi-peer, and other stretch items in `ROADMAP.md`.
 
 ## What Is Shipped
@@ -33,6 +34,7 @@ Brainstorming Orchestrator is a local-first idea workspace with two shipped surf
 - Signal controls: bounded suggestions, bounded critiques, bounded connections.
 - Paginated turn-log access via `get_turn_log`.
 - Local autonomous facilitator with pause toggle and AI-origin action tagging.
+- Refined interaction polish: clearer active-focus hierarchy, idle-gated sequential AI reveals, stronger critique/suggestion motion, hover-aware related emphasis, and sharper critique copy.
 
 ## Not Shipped Yet
 

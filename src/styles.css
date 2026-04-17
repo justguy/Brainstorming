@@ -5,3 +5,79 @@
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+
+.bo-motion-ease {
+  transition-duration: 240ms;
+  transition-timing-function: ease-out;
+}
+
+.bo-connection-draw {
+  stroke-dasharray: var(--connection-length, 1);
+  stroke-dashoffset: var(--connection-length, 1);
+  animation: bo-connection-draw var(--connection-duration, 420ms) ease-out forwards;
+}
+
+.bo-critique-enter {
+  animation: bo-critique-enter var(--critique-duration, 260ms) ease-out both;
+  animation-delay: var(--critique-delay, 0ms);
+}
+
+.bo-suggestion-enter {
+  animation: bo-suggestion-enter var(--suggestion-duration, 240ms) ease-out both;
+  animation-delay: var(--suggestion-delay, 0ms);
+}
+
+.bo-highlight-flash {
+  animation: bo-highlight-flash 300ms ease-out both;
+}
+
+@keyframes bo-connection-draw {
+  from {
+    stroke-dashoffset: var(--connection-length, 1);
+    opacity: 0.18;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: var(--connection-opacity, 1);
+  }
+}
+
+@keyframes bo-critique-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--critique-shift-x, 14px), var(--critique-shift-y, 0), 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes bo-suggestion-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes bo-highlight-flash {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(129, 140, 248, 0.32),
+      0 18px 36px -26px rgba(15, 23, 42, 0.45);
+  }
+  45% {
+    box-shadow:
+      0 0 0 8px rgba(129, 140, 248, 0.16),
+      0 24px 44px -28px rgba(79, 70, 229, 0.32);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(129, 140, 248, 0),
+      0 18px 36px -26px rgba(15, 23, 42, 0.32);
+  }
+}

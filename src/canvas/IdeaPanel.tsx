@@ -15,6 +15,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import type { Idea } from '../types';
 import Badge from '../ui/Badge';
+import type { IdeaTone } from './canvasFocus';
 
 export interface IdeaPanelProps {
   idea: Idea;
@@ -25,11 +26,13 @@ export interface IdeaPanelProps {
   mergePartnerId?: string | null;   // if this panel is hovering over another, signal visual state
   mergeProgress?: number;    // 0..1 — how far through the 2s hold
   beingMergedInto?: boolean; // we are the drop target, not the dragger
+  tone?: IdeaTone;
   highlight?: boolean;       // briefly flash the panel (e.g., from Connections click)
   docCount?: number;         // number of supporting docs attached (shown as a pill)
   onDragStart?: (ideaId: string) => void;
   onDrag?: (ideaId: string, x: number, y: number) => void;
   onDragEnd?: (ideaId: string, x: number, y: number) => void;
+  onHoverChange?: (ideaId: string | null) => void;
   onOpen?: (ideaId: string) => void;
   onOpenDocs?: (ideaId: string) => void;
   onDiscard?: (ideaId: string) => void;
@@ -42,11 +45,13 @@ export default function IdeaPanel({
   groupColor,
   mergeProgress = 0,
   beingMergedInto = false,
+  tone = 'idle',
   highlight = false,
   docCount = 0,
   onDragStart,
   onDrag,
   onDragEnd,
+  onHoverChange,
   onOpen,
   onOpenDocs,
   onDiscard,
@@ -109,13 +114,17 @@ export default function IdeaPanel({
   useEffect(() => {
     if (!dragging) return;
     const handler = () => {
+      const finalX = liveX ?? panel.x;
+      const finalY = liveY ?? panel.y;
       startRef.current = null;
       draggingRef.current = false;
       setDragging(false);
+      onHoverChange?.(null);
+      onDragEnd?.(idea.id, finalX, finalY);
     };
     window.addEventListener('pointercancel', handler);
     return () => window.removeEventListener('pointercancel', handler);
-  }, [dragging]);
+  }, [dragging, idea.id, liveX, liveY, onDragEnd, onHoverChange, panel.x, panel.y]);
 
   // Close the context menu on any outside click / escape.
   useEffect(() => {
@@ -134,10 +143,20 @@ export default function IdeaPanel({
   const ringClass = beingMergedInto
     ? 'ring-4 ring-amber-400'
     : highlight
-    ? 'ring-4 ring-violet-400 animate-pulse'
+    ? 'ring-2 ring-sky-300 bo-highlight-flash'
     : groupColor
     ? `ring-2`
     : '';
+  const scale = dragging ? 1.02 : tone === 'active' ? 1.02 : tone === 'related' ? 1.005 : 1;
+  const panelOpacity = tone === 'muted' ? 0.9 : tone === 'related' ? 0.98 : 1;
+  const panelFilter = tone === 'muted' ? 'saturate(0.78)' : tone === 'active' ? 'saturate(1.04)' : undefined;
+  const surfaceClass = tone === 'active'
+    ? 'border-sky-300 shadow-xl'
+    : tone === 'related'
+    ? 'border-slate-200 shadow-md'
+    : tone === 'muted'
+    ? 'border-gray-200 shadow-sm'
+    : 'border-gray-200 shadow-md hover:shadow-lg';
 
   return (
     <div
@@ -146,6 +165,8 @@ export default function IdeaPanel({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerEnter={() => onHoverChange?.(idea.id)}
+      onPointerLeave={() => onHoverChange?.(null)}
       onContextMenu={e => {
         if (!onDiscard) return;
         e.preventDefault();
@@ -158,17 +179,22 @@ export default function IdeaPanel({
           onOpen?.(idea.id);
         }
       }}
+      onFocus={() => onHoverChange?.(idea.id)}
+      onBlur={() => onHoverChange?.(null)}
       style={{
         position: 'absolute',
         left: x,
         top: y,
         width: panel.width,
         height: panel.height,
-        zIndex: dragging ? 50 : beingMergedInto ? 40 : 1,
+        zIndex: dragging ? 50 : beingMergedInto ? 40 : tone === 'active' ? 20 : tone === 'related' ? 10 : 1,
         touchAction: 'none',
-        ...(groupColor ? { boxShadow: `0 0 0 2px ${groupColor}, 0 6px 20px -8px rgba(0,0,0,0.25)` } : {}),
+        opacity: panelOpacity,
+        filter: panelFilter,
+        transform: `scale(${scale})`,
+        ...(groupColor ? { borderColor: groupColor, borderWidth: 2 } : {}),
       }}
-      className={`select-none cursor-grab ${dragging ? 'cursor-grabbing shadow-2xl scale-[1.02]' : 'shadow-md hover:shadow-lg'} bg-white rounded-lg border border-gray-200 transition-shadow ${ringClass}`}
+      className={`select-none cursor-grab ${dragging ? 'cursor-grabbing shadow-2xl' : ''} bg-white rounded-lg border transition-[opacity,transform,box-shadow,border-color] duration-200 ${surfaceClass} ${ringClass}`}
       aria-label={`Idea: ${title}`}
     >
       {/* Docs pill — stops pointer events so it doesn't start a drag */}

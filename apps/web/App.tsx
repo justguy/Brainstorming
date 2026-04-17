@@ -124,6 +124,33 @@ function useHashRoute(): [string, (hash: string) => void] {
   return [hash, navigate];
 }
 
+const AUTO_IDLE_MS = 1_500;
+const AUTO_SEQUENCE_GAP_MS = 850;
+const AUTO_CRITIQUE_COOLDOWN_MS = 45_000;
+const COLLAPSED_SUGGESTION_COUNT = 3;
+const HIGHLIGHT_FLASH_MS = 320;
+const REVEAL_WINDOW_MS = 1_800;
+
+type RevealOrigin = 'manual' | 'ai';
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return target.matches('input, textarea, select, [role="textbox"]');
+}
+
+function connectionStrengthWeight(strength: Connection['strength']): number {
+  switch (strength) {
+    case 'strong':
+      return 2;
+    case 'medium':
+      return 1;
+    case 'weak':
+    default:
+      return 0;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
@@ -161,6 +188,13 @@ export default function App(): React.ReactElement {
   }));
   const [clockMs, setClockMs] = useState(() => Date.now());
   const [facilitatorPaused, setFacilitatorPaused] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [textEntryActive, setTextEntryActive] = useState(false);
+  const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
+  const [animatedConnectionIds, setAnimatedConnectionIds] = useState<string[]>([]);
+  const [animatedCritiqueIds, setAnimatedCritiqueIds] = useState<string[]>([]);
+  const [animatedSuggestionIds, setAnimatedSuggestionIds] = useState<string[]>([]);
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
   const [aiActions, setAiActions] = useState<Array<{
     origin: 'ai';
     kind: 'connections' | 'scout' | 'critique';
@@ -171,8 +205,12 @@ export default function App(): React.ReactElement {
   const autoCooldownRef = useRef({
     lastConnectionsAt: 0,
     lastScoutAt: 0,
+    lastAiActionAt: 0,
     critiqueByIdea: {} as Record<string, number>,
   });
+  const connectionRevealTimerRef = useRef<number | null>(null);
+  const critiqueRevealTimerRef = useRef<number | null>(null);
+  const suggestionRevealTimerRef = useRef<number | null>(null);
 
   // Canvas shows only active ideas. Archived (post-merge originals) and
   // discarded (user dismissed) both stay in IDB but are hidden from the board.
@@ -259,8 +297,50 @@ export default function App(): React.ReactElement {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const syncTextEntryState = (target: EventTarget | null) => {
+      setTextEntryActive(isTextEntryTarget(target ?? document.activeElement));
+    };
+    const handlePointerDown = () => touchInteraction();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      touchInteraction();
+      syncTextEntryState(event.target);
+    };
+    const handleInput = (event: Event) => {
+      if (isTextEntryTarget(event.target)) {
+        touchInteraction();
+        syncTextEntryState(event.target);
+      }
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      touchInteraction();
+      syncTextEntryState(event.target);
+    };
+    const handleFocusOut = () => {
+      window.setTimeout(() => syncTextEntryState(document.activeElement), 0);
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('input', handleInput, true);
+    window.addEventListener('focusin', handleFocusIn, true);
+    window.addEventListener('focusout', handleFocusOut, true);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('input', handleInput, true);
+      window.removeEventListener('focusin', handleFocusIn, true);
+      window.removeEventListener('focusout', handleFocusOut, true);
+    };
+  }, []);
+
   function markActivity(kind: 'edit' | 'group' | 'doc'): void {
     setActivity(prev => recordActivity(prev, kind));
+  }
+
+  function touchInteraction(now = Date.now()): void {
+    setActivity(prev => ({ ...prev, lastInteractionAt: now }));
   }
 
   function recordAiAction(kind: 'connections' | 'scout' | 'critique', ideaId?: string): void {
@@ -270,7 +350,42 @@ export default function App(): React.ReactElement {
       createdAt: Date.now(),
       ideaId,
     };
+    autoCooldownRef.current.lastAiActionAt = action.createdAt;
     setAiActions(prev => [action, ...prev].slice(0, 5));
+  }
+
+  function clearRevealTimer(ref: React.MutableRefObject<number | null>): void {
+    if (ref.current !== null) {
+      window.clearTimeout(ref.current);
+      ref.current = null;
+    }
+  }
+
+  function revealConnections(connectionIds: string[]): void {
+    clearRevealTimer(connectionRevealTimerRef);
+    setAnimatedConnectionIds(connectionIds);
+    connectionRevealTimerRef.current = window.setTimeout(() => {
+      setAnimatedConnectionIds([]);
+      connectionRevealTimerRef.current = null;
+    }, REVEAL_WINDOW_MS);
+  }
+
+  function revealCritique(critiqueId: string): void {
+    clearRevealTimer(critiqueRevealTimerRef);
+    setAnimatedCritiqueIds([critiqueId]);
+    critiqueRevealTimerRef.current = window.setTimeout(() => {
+      setAnimatedCritiqueIds([]);
+      critiqueRevealTimerRef.current = null;
+    }, REVEAL_WINDOW_MS);
+  }
+
+  function revealSuggestions(suggestionIds: string[]): void {
+    clearRevealTimer(suggestionRevealTimerRef);
+    setAnimatedSuggestionIds(suggestionIds);
+    suggestionRevealTimerRef.current = window.setTimeout(() => {
+      setAnimatedSuggestionIds([]);
+      suggestionRevealTimerRef.current = null;
+    }, REVEAL_WINDOW_MS);
   }
 
   // Keep doc counts in sync with the visible idea set.
@@ -278,6 +393,12 @@ export default function App(): React.ReactElement {
     const ids = ideas.filter(i => i.status !== 'archived').map(i => i.id);
     if (ids.length > 0) loadDocCounts(ids);
   }, [ideas]);
+
+  useEffect(() => {
+    if (suggestions.length <= COLLAPSED_SUGGESTION_COUNT && suggestionsExpanded) {
+      setSuggestionsExpanded(false);
+    }
+  }, [suggestions.length, suggestionsExpanded]);
 
   // ---------------------------------------------------------------------------
   // Canvas operations
@@ -891,7 +1012,10 @@ export default function App(): React.ReactElement {
   // Connections (ad-hoc LLM call; ephemeral state — not persisted)
   // ---------------------------------------------------------------------------
 
-  async function runConnectionFinder(): Promise<Connection[]> {
+  async function runConnectionFinder(options: {
+    origin?: RevealOrigin;
+    limitGenerated?: number;
+  } = {}): Promise<Connection[]> {
     setFindingConnections(true);
     try {
       const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
@@ -914,9 +1038,19 @@ export default function App(): React.ReactElement {
         return [];
       }
       const materialised = materializeConnections(ideas, supportingDocs, result, now);
-      setConnections(prev => replaceGeneratedConnections(prev, materialised));
+      const nextGenerated = [...materialised]
+        .sort((left, right) => {
+          const strengthDelta = connectionStrengthWeight(right.strength) - connectionStrengthWeight(left.strength);
+          if (strengthDelta !== 0) return strengthDelta;
+          return left.createdAt - right.createdAt;
+        })
+        .slice(0, options.limitGenerated ?? materialised.length);
+      setConnections(prev => replaceGeneratedConnections(prev, nextGenerated));
       setLastConnectionsRunAt(now);
-      return materialised;
+      if (options.origin === 'ai' && nextGenerated.length > 0) {
+        revealConnections(nextGenerated.map(connection => connection.id));
+      }
+      return nextGenerated;
     } catch (err) {
       console.error('[App] connection finder failed:', err);
       return [];
@@ -934,10 +1068,22 @@ export default function App(): React.ReactElement {
     flashTimerRef.current = window.setTimeout(() => {
       setHighlightIds([]);
       flashTimerRef.current = null;
-    }, 1800);
+    }, HIGHLIGHT_FLASH_MS);
   }
 
-  async function runCritiqueIdea(ideaId: string): Promise<IdeaCritique | null> {
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+      clearRevealTimer(connectionRevealTimerRef);
+      clearRevealTimer(critiqueRevealTimerRef);
+      clearRevealTimer(suggestionRevealTimerRef);
+    };
+  }, []);
+
+  async function runCritiqueIdea(
+    ideaId: string,
+    options: { origin?: RevealOrigin } = {},
+  ): Promise<IdeaCritique | null> {
     setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: true }));
     try {
       const idea = ideas.find(entry => entry.id === ideaId);
@@ -983,6 +1129,7 @@ export default function App(): React.ReactElement {
       });
       await loadCritiques();
       handleHighlight([ideaId]);
+      if (options.origin === 'ai') revealCritique(critique.id);
       return critique;
     } finally {
       setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: false }));
@@ -1013,7 +1160,10 @@ export default function App(): React.ReactElement {
     };
   }
 
-  async function runScout(): Promise<ScoutSuggestion[]> {
+  async function runScout(options: {
+    origin?: RevealOrigin;
+    limitNew?: number;
+  } = {}): Promise<ScoutSuggestion[]> {
     setScouting(true);
     try {
       const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
@@ -1046,7 +1196,7 @@ export default function App(): React.ReactElement {
         alreadyProposedRawTexts,
         dismissedRawTexts,
         suggestions: result.suggestions,
-      });
+      }).slice(0, options.limitNew ?? MAX_VISIBLE_SUGGESTIONS);
       if (visibleSuggestions.length === 0) return [];
 
       const allIds = new Set(ideas.map(i => i.id));
@@ -1063,6 +1213,10 @@ export default function App(): React.ReactElement {
         created.push(createdSuggestion);
       }
       await loadSuggestions();
+      if (created.length > 0) setSuggestionsExpanded(false);
+      if (options.origin === 'ai' && created.length > 0) {
+        revealSuggestions(created.map(suggestion => suggestion.id));
+      }
       return created;
     } catch (err) {
       console.error('[App] scout failed:', err);
@@ -1142,13 +1296,14 @@ export default function App(): React.ReactElement {
     connectionCount: connections.length,
     activeCritiqueCount: activeCritiques.length,
   });
+  const interactionSuppressed = dragActive || textEntryActive;
   const softModeBusy = scouting || findingConnections || Object.values(critiqueBusyByIdea).some(Boolean);
   const showSoftModeHint = shouldShowSoftModeHint({
     assessment: softModeAssessment,
     idleMs,
     lastDismissedAt: activity.lastDismissedAt,
     now: clockMs,
-  }) && !softModeBusy;
+  }) && !softModeBusy && !interactionSuppressed;
 
   async function handleSoftModeAction(): Promise<void> {
     setActivity(prev => dismissSoftModeHint(recordActivity(prev, 'edit')));
@@ -1184,13 +1339,14 @@ export default function App(): React.ReactElement {
   }
 
   useEffect(() => {
-    if (facilitatorPaused || softModeBusy || idleMs < 4_500) return;
+    if (facilitatorPaused || softModeBusy || interactionSuppressed || idleMs < AUTO_IDLE_MS) return;
 
     let cancelled = false;
 
     async function runObserver(): Promise<void> {
       const now = Date.now();
       const auto = autoCooldownRef.current;
+      if (now - auto.lastAiActionAt < AUTO_SEQUENCE_GAP_MS) return;
 
       if (
         visibleIdeas.length >= 3 &&
@@ -1198,9 +1354,27 @@ export default function App(): React.ReactElement {
         now - auto.lastConnectionsAt >= 30_000
       ) {
         auto.lastConnectionsAt = now;
-        const found = await runConnectionFinder();
+        const found = await runConnectionFinder({ origin: 'ai', limitGenerated: 1 });
         if (!cancelled && found.length > 0) recordAiAction('connections');
         return;
+      }
+
+      const critiqueTarget = selectedIdea ?? visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) > 0) ?? visibleIdeas[0];
+      if (critiqueTarget) {
+        const activeForIdea = activeCritiques.filter(critique => critique.ideaId === critiqueTarget.id);
+        const lastCritiqueAt = auto.critiqueByIdea[critiqueTarget.id] ?? 0;
+        const critiqueAllowed =
+          activeForIdea.length < 2 &&
+          now - lastCritiqueAt >= AUTO_CRITIQUE_COOLDOWN_MS;
+
+        if (critiqueAllowed) {
+          const critique = await runCritiqueIdea(critiqueTarget.id, { origin: 'ai' }).catch(() => null);
+          if (critique) {
+            auto.critiqueByIdea[critiqueTarget.id] = now;
+            if (!cancelled) recordAiAction('critique', critiqueTarget.id);
+            return;
+          }
+        }
       }
 
       const doclessIdea = visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) === 0);
@@ -1210,23 +1384,9 @@ export default function App(): React.ReactElement {
         now - auto.lastScoutAt >= 45_000
       ) {
         auto.lastScoutAt = now;
-        const created = await runScout();
+        const created = await runScout({ origin: 'ai', limitNew: 1 });
         if (!cancelled && created.length > 0) recordAiAction('scout', doclessIdea.id);
-        return;
       }
-
-      const critiqueTarget = selectedIdea ?? visibleIdeas[0];
-      if (!critiqueTarget) return;
-
-      const activeForIdea = activeCritiques.filter(critique => critique.ideaId === critiqueTarget.id);
-      if (activeForIdea.length >= 2) return;
-
-      const lastCritiqueAt = auto.critiqueByIdea[critiqueTarget.id] ?? 0;
-      if (now - lastCritiqueAt < 60_000) return;
-
-      auto.critiqueByIdea[critiqueTarget.id] = now;
-      const critique = await runCritiqueIdea(critiqueTarget.id).catch(() => null);
-      if (!cancelled && critique) recordAiAction('critique', critiqueTarget.id);
     }
 
     void runObserver();
@@ -1237,6 +1397,7 @@ export default function App(): React.ReactElement {
   }, [
     facilitatorPaused,
     softModeBusy,
+    interactionSuppressed,
     idleMs,
     visibleIdeas,
     connections.length,
@@ -1245,6 +1406,14 @@ export default function App(): React.ReactElement {
     selectedIdea,
     activeCritiques,
   ]);
+
+  const visibleCanvasSuggestions = suggestionsExpanded
+    ? suggestions
+    : suggestions.slice(0, Math.min(COLLAPSED_SUGGESTION_COUNT, suggestions.length));
+  const suggestionOverflowCount = Math.max(0, suggestions.length - visibleCanvasSuggestions.length);
+  const critiqueFocusIdeaId = hoverIdeaId ?? selectedId ?? null;
+  const editingIdeaId = textEntryActive ? selectedId : null;
+  const suppressRevealAnimations = dragActive || textEntryActive;
 
   // ---------------------------------------------------------------------------
   // Hash routing
@@ -1342,6 +1511,9 @@ export default function App(): React.ReactElement {
             ideas={visibleIdeas}
             groups={groups}
             connections={connections}
+            animatedConnectionIds={animatedConnectionIds}
+            animatedSuggestionIds={animatedSuggestionIds}
+            suppressAnimations={suppressRevealAnimations}
             overlayContent={
               <CritiqueCardsLayer
                 ideas={visibleIdeas}
@@ -1351,14 +1523,23 @@ export default function App(): React.ReactElement {
                     .filter(([, busy]) => busy)
                     .map(([ideaId]) => ideaId)
                 }
+                activeIdeaId={critiqueFocusIdeaId}
+                hoveredIdeaId={hoverIdeaId}
+                editingIdeaId={editingIdeaId}
+                animatedCritiqueIds={animatedCritiqueIds}
+                suppressAnimations={suppressRevealAnimations}
                 onDismiss={handleDismissCritique}
               />
             }
             docCounts={docCounts}
             highlightIds={highlightIds}
             onConnectionClick={handleHighlight}
-            suggestions={suggestions}
+            suggestions={visibleCanvasSuggestions}
+            suggestionOverflowCount={suggestionOverflowCount}
+            suggestionsExpanded={suggestionsExpanded}
             suggestionBusy={suggestionBusy}
+            onFocusIdeaChange={setHoverIdeaId}
+            onDragStateChange={setDragActive}
             onMove={handleMove}
             onOpen={id => setSelectedId(id)}
             onOpenDocs={id => setDocsIdeaId(id)}
@@ -1369,6 +1550,8 @@ export default function App(): React.ReactElement {
             onAdmitSuggestion={handleAdmitSuggestion}
             onElaborateSuggestion={handleElaborateSuggestion}
             onDismissSuggestion={handleDismissSuggestion}
+            onExpandSuggestions={() => setSuggestionsExpanded(true)}
+            onCollapseSuggestions={() => setSuggestionsExpanded(false)}
           />
         </main>
 
@@ -1391,7 +1574,7 @@ export default function App(): React.ReactElement {
         {/* Scout trigger (below Connections) */}
         <button
           type="button"
-          onClick={runScout}
+          onClick={() => { void runScout(); }}
           disabled={scouting}
           className="absolute top-16 right-5 z-20 flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-full shadow hover:shadow-md focus:outline-none focus:ring-4 focus:ring-teal-200 text-sm disabled:opacity-60"
           aria-label={scouting ? 'Scout running' : 'Ask the scout to suggest ideas'}

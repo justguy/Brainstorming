@@ -1,9 +1,9 @@
 # Brainstorming Orchestrator — Roadmap
 
 **Status:** living doc — update whenever a feature ships, a plan shifts, or a concern resolves.
-**Last updated:** 2026-04-17 (Current Sprint = Facilitator Mode; Sync blocked on §2; signaling baseline = SDP broker)
+**Last updated:** 2026-04-17 (Facilitator Mode + UI/UX Polish shipped; Current Sprint = Collaborative Sync; signaling baseline = SDP broker)
 
-This doc is the forward-looking plan. It consolidates facilitator-mode additions (devil's advocate, drawn connections, local-doc search, cross-pollination) and the collaborative-sync track (BroadcastChannel → Yjs CRDT → WebRTC, with an autonomous AI facilitator). For *what exists today at tool granularity* see `WEBMCP_CAPABILITIES.md`; for *why* integration patterns look the way they do see `WEBMCP_INTEGRATION_NOTES.md`.
+This doc is the forward-looking plan. It consolidates the shipped facilitator baseline, the immediate UI/UX polish pass, and the collaborative-sync track (BroadcastChannel → Yjs CRDT → WebRTC, with an autonomous AI facilitator). For *what exists today at tool granularity* see `WEBMCP_CAPABILITIES.md`; for *why* integration patterns look the way they do see `WEBMCP_INTEGRATION_NOTES.md`.
 
 ### Track posture
 - **W3 (standalone web app) — primary engine.** All new feature work lands here. Port 6611 bypasses extension-origin unknowns.
@@ -55,11 +55,11 @@ This doc is the forward-looking plan. It consolidates facilitator-mode additions
 
 ---
 
-## 2. Current Sprint — Facilitator Mode v1
+## 2. Shipped — Facilitator Mode v1
 
-**Status:** in flight. Lands on the W3 standalone web app; no sync dependency. §3 (Collaborative Sync) is **blocked** until everything below ships and stabilizes.
+**Status:** shipped on the W3 standalone web app. This is now the stable baseline for the next pass: visible connections, anchored critiques, bounded signal control, paginated turn logs, and local-only facilitator automation.
 
-Three pieces ship together: the visual `draw_connection` overlay, the adversarial `critique_idea` role, and a paginated `get_turn_log` sidecar so the extra turn-log churn from the two new roles doesn't overflow agent responses.
+This section records what already landed so the next sprint can focus on perceived intelligence rather than missing functionality.
 
 ### 2.1 `draw_connection` — canvas overlay
 **Goal:** render lines between related idea panels so the user can *see* the cross-board synthesis that `find_connections` currently surfaces only as text rows.
@@ -91,13 +91,181 @@ Fulfils the "stress-test" verb from the earlier design discussion and the "AI as
 
 ---
 
-## 3. Next — Collaborative Sync
+## 3. Shipped — UI/UX Polish Driver
 
-**Blocked on:** §2 Current Sprint shipping and stabilizing. No Yjs work starts until Facilitator Mode is green on W3.
+**Status:** shipped on the W3 standalone web app. No new surfaces were added; the work stayed inside the existing canvas, critiques, ghost suggestions, and local facilitator timing.
+
+This is a refinement sprint on top of the existing canvas, critiques, suggestions, and local facilitator. All changes stay inside current surfaces and must improve clarity, timing, motion, or perceived intelligence.
+
+### 3.1 Visual hierarchy
+**Goal:** make important insights stand out immediately without making the board busier.
+
+- **Specific UI changes**
+  - Active idea gets a slight elevation bump: shadow increase or `scale(1.02)` plus a subtle border/glow accent.
+  - Only one idea can be visually active at a time.
+  - Strongest connection uses the thickest stroke and highest opacity; secondary connections drop to roughly 60-70% opacity.
+  - Critiques visually outrank structure: stronger red/orange treatment, clearer border, and anchored placement that does not cover the target idea.
+  - Non-relevant ideas fade slightly to around 90% opacity while preserving readable text contrast.
+- **Motion specs**
+  - Keep hierarchy transitions in the existing 200-500ms band with `ease-out`.
+  - Do not pulse or loop; hierarchy should settle quickly and stay quiet.
+- **Trigger conditions**
+  - Apply active emphasis on selection, connection click highlight, critique focus, or AI-authored reveal when the board is idle.
+  - Suppress hierarchy animation during drag and typing.
+- **Edge cases**
+  - Dense boards where critique cards can crowd the target.
+  - Overlapping connection clusters where stroke weight alone is insufficient.
+  - Rapid focus changes that could leave two ideas looking active.
+- **Test scenarios**
+  - Click a strong connection and confirm the target pair becomes the obvious focus.
+  - Reveal a critique near a crowded idea and confirm the critique reads first without covering the idea.
+  - Drag one idea through a dense region and confirm the rest of the board stays readable and stable.
+
+### 3.2 Motion design
+**Goal:** make AI actions feel intentional instead of abrupt.
+
+- **Specific UI changes**
+  - Connection lines should draw from source to target rather than appearing instantly.
+  - Critique cards should enter from a small offset so they feel placed, not popped in.
+  - Ghost suggestions should appear with a fade-plus-scale reveal and stagger if more than one is shown.
+  - Clicking a connection should briefly flash both endpoint ideas.
+- **Motion specs**
+  - Connections: stroke-dash draw animation over 300-500ms.
+  - Critiques: fade 0 → 1 with 10-20px slide over 200-300ms.
+  - Critique reveal delay after idle: roughly 1.2-1.8s.
+  - Suggestions: `scale(0.95 → 1)` plus fade, staggered if multiple.
+  - Highlight flash: about 300ms.
+  - Use `ease-out` consistently.
+- **Trigger conditions**
+  - Only run these reveals after idle.
+  - Never animate while dragging or typing.
+  - If the user re-engages, cancel queued reveals and reset timing.
+- **Edge cases**
+  - Multiple queued AI actions trying to animate together.
+  - Drag start during a queued reveal.
+  - Reduced-motion environments that still need readable state changes.
+- **Test scenarios**
+  - Idle after creating related ideas and confirm one connection draws directionally.
+  - Idle again and confirm the critique enters later instead of landing at the same time.
+  - Type into an idea while a reveal is pending and confirm the animation is cancelled.
+
+### 3.3 Timing and sequencing
+**Goal:** make the facilitator feel patient and deliberate instead of noisy.
+
+- **Specific UI changes**
+  - Rework idle gating so AI actions trigger 1.2-2.0 seconds after the last interaction.
+  - Enforce sequential reveals: one connection first, then one critique, then later a suggestion.
+  - Prioritize structural insight before challenge, and challenge before expansion.
+- **Motion specs**
+  - Delay between sequential AI actions: roughly 600-1000ms.
+  - Keep timing consistent enough that users learn the rhythm.
+- **Trigger conditions**
+  - Any pointer movement, drag, typing, dismiss, or board edit resets the queue.
+  - AI actions only fire when the board is idle and the previous reveal has settled.
+- **Edge cases**
+  - Repeated micro-interactions that keep the board near-idle but never stable.
+  - Back-to-back AI candidates of the same type competing for the next slot.
+  - A queued critique targeting an idea that changed or moved before reveal.
+- **Test scenarios**
+  - Add several ideas quickly and confirm the board waits before surfacing one connection.
+  - Interact mid-queue and confirm the pending critique or suggestion never appears.
+  - Let the queue fully run and confirm the order is connection, then critique, then suggestion.
+
+### 3.4 Signal control
+**Goal:** keep the board clean and trustworthy even when the facilitator has more to say.
+
+- **Specific UI changes**
+  - Enforce hard visible limits: about 8-10 connections, 2 critiques per idea, and 5-6 suggestions on-screen.
+  - Only high-confidence connections render; weak ones stay hidden.
+  - Extra suggestions collapse behind a compact `+N more` affordance on existing suggestion surfaces instead of adding a new panel.
+  - Lower-importance signals fade rather than competing equally with the strongest insight.
+- **Motion specs**
+  - Hidden or de-emphasized states should transition smoothly in 200-300ms.
+  - Do not animate removals in a way that looks like data loss.
+- **Trigger conditions**
+  - Apply limits at render time and when new AI output arrives.
+  - Prefer dropping or collapsing the lowest-signal items first.
+- **Edge cases**
+  - Many medium-confidence links that could crowd out one clearly strong link.
+  - Critique accumulation on a single controversial idea.
+  - Suggestion overflow while the user is already inspecting one ghost panel.
+- **Test scenarios**
+  - Generate more than 10 candidate connections and confirm only the strongest remain visible.
+  - Generate 3 critiques for one idea and confirm only 2 stay visible.
+  - Generate 8 suggestions and confirm overflow collapses into a compact count.
+
+### 3.5 Micro-interactions
+**Goal:** make the board feel responsive and aware while preserving calm.
+
+- **Specific UI changes**
+  - Nearby connections should adjust subtly in real time during drag, with light elastic tension rather than rigid snapping.
+  - During idea edits, nearby critiques fade slightly as if being reconsidered, then regain opacity after idle.
+  - Connection rendering should tighten visually within groups so clusters feel cohesive.
+  - Hovering an idea should highlight connected lines and related critiques together.
+- **Motion specs**
+  - Keep drag-adjacent reactions subtle and sub-300ms where eased interpolation is needed.
+  - Fade critique reconsideration in and back out within the common 200-300ms range.
+- **Trigger conditions**
+  - Drag proximity drives connection tension.
+  - Text-edit state temporarily de-emphasizes critiques.
+  - Hover focus highlights related structure and critiques together.
+- **Edge cases**
+  - High-frequency drag updates that could create jitter.
+  - Hover flicker when moving across dense overlapping hit targets.
+  - Edits that end just as a queued AI action is ready.
+- **Test scenarios**
+  - Drag an idea near related nodes and confirm nearby lines react smoothly without lag.
+  - Start editing an idea with an attached critique and confirm the critique softens until idle returns.
+  - Hover an idea with multiple connections and critiques and confirm the related set is obvious.
+
+### 3.6 Tone and language
+**Goal:** make critiques read like a sharp collaborator, not a report generator.
+
+- **Specific UI changes**
+  - Update critique copy templates and output shaping toward direct language such as `This fails if...`, `You're assuming...`, `This breaks when...`, and `This conflicts with...`.
+  - Cap critique length at 2-3 short lines with high information density.
+  - Avoid passive summaries and long paragraphs.
+- **Motion specs**
+  - No special motion beyond the shared critique entrance rules.
+- **Trigger conditions**
+  - Apply this shaping to every critique render path, including regenerated or persisted critiques.
+- **Edge cases**
+  - Models returning generic summaries instead of actionable challenge.
+  - Long supporting context causing critique verbosity creep.
+  - Multi-point critiques that exceed the short-card format.
+- **Test scenarios**
+  - Generate critiques across weak, medium, and strong ideas and confirm each card stays brief and pointed.
+  - Reload persisted critiques and confirm they still respect the concise format.
+  - Run a critique on a doc-heavy idea and confirm the copy remains dense rather than bloated.
+
+### 3.7 Final polish
+**Goal:** make the demo read as smooth, deliberate, and premium without changing the product shape.
+
+- **Specific UI changes**
+  - Normalize spacing and alignment between cards, overlays, and ghost suggestions.
+  - Keep critique color discipline strict: red/orange for critique, blue/grey for structure, teal for suggestions.
+  - Remove abrupt appearance/disappearance across existing facilitator surfaces.
+- **Motion specs**
+  - Unify animation durations inside the 200-500ms band.
+  - Standardize on `ease-out` unless a specific interaction already proves otherwise.
+- **Trigger conditions**
+  - Apply consistency rules across all existing reveal and hover states.
+- **Edge cases**
+  - Mixed legacy timings that make one surface feel faster or louder than another.
+  - Mobile or smaller viewport layouts where spacing drift becomes more visible.
+  - Simultaneous AI and user-originated state changes.
+- **Test scenarios**
+  - Run a full facilitator walkthrough on desktop and verify transitions feel like one system.
+  - Repeat on a narrow viewport and confirm spacing and hierarchy still hold.
+  - Compare connection, critique, and suggestion reveals and confirm they share the same motion language.
+
+## 4. Current Sprint — Collaborative Sync
+
+**Status:** next executable workstream. The local-first facilitator and UX polish layers are green on W3, so the remaining major product track is the storage/sync rewrite.
 
 Sequenced carefully. **Yjs is a storage rewrite, not a feature flag** — the UI and tools should not know whether they're writing to IDB directly or through a Y.Doc port.
 
-### 3.1 Two-tab spike — BroadcastChannel + Yjs on one store
+### 4.1 Two-tab spike — BroadcastChannel + Yjs on one store
 Smallest possible proof. Goal: adding an idea in tab A appears in tab B in <100ms, zero-server.
 
 - Wrap just the `ideas` store in a `Y.Map<Idea>` backed by a `BroadcastChannel('brainstorm-sync:<roomId>')` provider.
@@ -106,18 +274,18 @@ Smallest possible proof. Goal: adding an idea in tab A appears in tab B in <100m
 
 **Validates:** port design, merge behavior on concurrent panel drags, IDB + Yjs dual-persistence.
 
-### 3.2 Full CRDT port
+### 4.2 Full CRDT port
 Once the spike is green, port remaining stores.
 - Every `putX` / `getX` helper in `src/storage/*.ts` becomes a Y.Map mutation.
 - Thin one-shot migration: on first boot after upgrade, read old IDB data into the Y.Doc, mark migrated.
 - UI / WebMCP tools stay unchanged if the port layer stays clean.
 
-### 3.3 WebRTC cross-machine
+### 4.3 WebRTC cross-machine
 Swap BroadcastChannel for `y-webrtc` when peers span machines.
 - **Signaling — minimal SDP broker (baseline).** ~50-LOC Cloudflare Worker that *only* passes SDP offers between peers by room code. Never touches Y-doc payload. Keeps "data is P2P" literally true while making join a one-click flow. Manual token-paste signaling was considered and **explicitly dropped** — we are not shipping a "copy this token to Slack" UX, even as a stopgap.
 - Peer discovery via short room code (`/room/<code>`); URL is the invite.
 
-### 3.4 Autonomous facilitator triggers
+### 4.4 Autonomous facilitator triggers
 With CRDTs in place, swap the *triggers* on existing roles:
 - Observer subscribes to `Y.Doc` update events.
 - Idle-gated rules: `IF 3 new ideas AND no activity 10s → run connectionFinder`. `IF a new idea is added AND has no supporting docs → run scout_ideas on it`. `IF an idea sits at phase 4+ AND no critique exists → run critique_idea`.
@@ -126,21 +294,21 @@ With CRDTs in place, swap the *triggers* on existing roles:
 
 ---
 
-## 4. Long-term / stretch
+## 5. Long-term / stretch
 
 - **`search_local_docs`** — File System Access API. User grants read on a folder of PRDs/specs once per session. WebMCP tool does local RAG and surfaces hits as supporting-doc candidates or inline scout notes. **Blocker:** per-session permission means reloads re-prompt; needs a deliberate "re-authorize" UX.
 - **`cross_pollinate`** — dedicated role prompt: "find two ideas from distinct authors / groups and propose a third that merges their core concepts." Partially covered by `scout_ideas`; splitting it out makes the intent explicit and lets prompts tune differently.
 - **Declarative WebMCP + `toolautosubmit`** — agent-aware form fields that emit tool calls on change. Blocked on Chrome 146 preview validation (see `WEBMCP_CAPABILITIES.md` §3a I1-I4).
-- **Facilitator UX on multi-user** — speaker tracking, consensus summary, auto-action-items from the final minutes. All require §3 sync to be real.
+- **Facilitator UX on multi-user** — speaker tracking, consensus summary, auto-action-items from the final minutes. All require §4 sync to be real.
 - **Linear / Jira / PRD integration via W1.** `invokeActiveTabTool` chaining so phase transitions can write back to external systems with a second, explicit consent.
 
 ---
 
-## 5. Technical decisions — recorded
+## 6. Technical decisions — recorded
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | Ship facilitator-v1 (`draw_connection`, `critique_idea`) *before* starting the Yjs port. | Local-only features, no sync dependency; users get value immediately; validates the canvas-overlay architecture for when sync lands. |
+| D1 | Ship facilitator-v1, then run a dedicated UX-polish pass, *before* starting the Yjs port. | Local-only value lands first; the intelligence-perception layer gets tuned before distributed complexity; sync should not be the first time the experience feels coherent. |
 | D2 | Full Yjs cutover per store (no parallel IDB + Yjs writes). | Parallel writes drift. A per-store cutover with a one-shot migration is cleaner than reconciling two sources of truth. |
 | D3 | **Baseline signaling is the SDP-only broker. Manual paste is off the table entirely** (not a v0, not a stopgap). | "Data stays P2P" is preserved (broker never sees Y-doc contents) and setup is a clickable invite URL. ~50 LOC of Worker code vs. a permanent "paste a token to Slack" UX scar. |
 | D4 | Autonomous AI facilitator, not user-triggered. | User preference. Mitigation: global pause toggle + per-idea cooldowns + AI-host election so only one peer runs the observer. |
@@ -149,7 +317,7 @@ With CRDTs in place, swap the *triggers* on existing roles:
 
 ---
 
-## 6. Open questions & concerns
+## 7. Open questions & concerns
 
 | # | Question | Why it matters | Current lean |
 |---|---|---|---|
@@ -162,21 +330,24 @@ With CRDTs in place, swap the *triggers* on existing roles:
 | Q7 | Manual signaling vs. signaling broker, if we want to stay truly serverless. | Puritan P2P is principled; users will hate paste-a-token. | Broker-but-SDP-only. "Data is P2P" stays literally true. |
 | Q8 | Do we let the AI register itself as a peer, or is it always a local observer on one peer? | Two designs: *AI-as-peer* (agent runs in its own tab/worker and appears in `list_peers`) vs *AI-as-local-role* (one elected peer runs the observer for everyone). | AI-as-local-role with election; avoids a second running instance. |
 | Q9 | What happens to in-flight `dispatchAndWait` promises when a peer disconnects mid-call? | Today they time out at 10-20s; in a multi-peer world this becomes user-visible. | Surface a "peer dropped" toast; treat the tool call as failed locally. |
+| Q10 | How much motion is enough to feel intelligent before it starts feeling theatrical? | Too little looks abrupt; too much looks like gimmickry and slows expert use. | Keep reveals short, directional, and idle-gated; optimize for legibility over spectacle. |
+| Q11 | How aggressively should weak signals be suppressed versus merely faded? | Hiding too much can make the AI seem silent; showing too much erodes trust. | Hide weak connections entirely, fade secondary structure, and cap visible counts hard. |
 
 ---
 
-## 7. Non-goals (explicit)
+## 8. Non-goals (explicit)
 
-- **No central server for idea data.** Persistence is local; sync is P2P. The signaling broker in §3.3 only passes SDP, never Y-doc contents.
+- **No central server for idea data.** Persistence is local; sync is P2P. The signaling broker in §4.3 only passes SDP, never Y-doc contents.
+- **No new surfaces for the UX polish sprint.** Timing, motion, and hierarchy improvements must land inside the current canvas, cards, overlays, and ghost suggestions.
 - **No hiding BYOK keys on the web surface.** `localStorage` is the documented tradeoff (see `WEBMCP_INTEGRATION_NOTES.md` §W3). If you want a hardened key boundary, use the extension.
 - **No cross-session AI memory.** Each idea is its own context; we do not build a "knows your team over time" model.
 - **No mid-idea provider switching in `turnLog`.** Provider is tracked at idea level; per-turn provenance is out of scope for V1.x.
 
 ---
 
-## 8. How to update this doc
+## 9. How to update this doc
 
-- Feature ships → move the relevant sub-section from §2 / §3 / §4 into §1, add a date, update `WEBMCP_CAPABILITIES.md` §1 in the same PR.
-- New concern → add row in §6 with a current lean. Delete the row (don't strike through) when it's resolved and capture the resolution in §5.
-- Architectural decision → add row in §5 and cross-link from `WEBMCP_CAPABILITIES.md` / `WEBMCP_INTEGRATION_NOTES.md` if it changes patterns there.
+- Feature ships → move the relevant sub-section from §3 / §4 / §5 into §1 or §2, add a date, update `WEBMCP_CAPABILITIES.md` §1 in the same PR.
+- New concern → add row in §7 with a current lean. Delete the row (don't strike through) when it's resolved and capture the resolution in §6.
+- Architectural decision → add row in §6 and cross-link from `WEBMCP_CAPABILITIES.md` / `WEBMCP_INTEGRATION_NOTES.md` if it changes patterns there.
 - Bump "Last updated" at the top whenever this doc is edited.
