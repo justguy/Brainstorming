@@ -28,6 +28,8 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import type { Idea, IdeaCritique, IdeaGroup, Connection, SupportingDoc, ScoutSuggestion } from '../../src/types';
+import { DEFAULT_BOARD_ID } from '../../src/board/types';
+import { loadDefaultBoardDocument } from '../../src/storage/boardDocument';
 import { listIdeas, createIdea, updateIdea, discardIdea, restoreIdea } from '../../src/storage/ideas';
 import { updateBriefState } from '../../src/storage/ideas';
 import {
@@ -92,6 +94,7 @@ import {
   replaceGeneratedConnections,
   upsertConnection,
 } from './connectionState';
+import { listConnections, replaceConnections } from '../../src/storage/connections';
 import { SoftModeHint } from './SoftModeHint';
 import {
   dismissSoftModeHint,
@@ -158,6 +161,7 @@ function connectionStrengthWeight(strength: Connection['strength']): number {
 
 export default function App(): React.ReactElement {
   const [hash, navigate] = useHashRoute();
+  const [boardId, setBoardId] = useState(DEFAULT_BOARD_ID);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [groups, setGroups] = useState<IdeaGroup[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -171,6 +175,7 @@ export default function App(): React.ReactElement {
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectionsHydrated, setConnectionsHydrated] = useState(false);
   const [findingConnections, setFindingConnections] = useState(false);
   const [lastConnectionsRunAt, setLastConnectionsRunAt] = useState<number | null>(null);
   const [highlightIds, setHighlightIds] = useState<string[]>([]);
@@ -226,27 +231,44 @@ export default function App(): React.ReactElement {
   // Data loading
   // ---------------------------------------------------------------------------
 
-  async function loadIdeas() {
+  function applyBoardSnapshot(snapshot: Awaited<ReturnType<typeof loadDefaultBoardDocument>>): void {
+    setBoardId(snapshot.board.id);
+    setIdeas(snapshot.ideas);
+    setGroups(snapshot.groups);
+    setConnections(snapshot.connections);
+    setCritiques(snapshot.critiques);
+    setSuggestions(snapshot.suggestions.filter(suggestion => suggestion.status === 'pending').slice(0, MAX_VISIBLE_SUGGESTIONS));
+    setDocCounts(() => {
+      const counts: Record<string, number> = {};
+      for (const doc of snapshot.docs) {
+        counts[doc.ideaId] = (counts[doc.ideaId] ?? 0) + 1;
+      }
+      return counts;
+    });
+  }
+
+  async function loadBoard() {
     try {
-      const all = await listIdeas();
-      setIdeas(all);
+      applyBoardSnapshot(await loadDefaultBoardDocument());
     } catch {
       // non-fatal
+    } finally {
+      setConnectionsHydrated(true);
     }
   }
 
+  async function loadIdeas() {
+    await loadBoard();
+  }
+
   async function loadGroups() {
-    try {
-      setGroups(await listGroups());
-    } catch {
-      // non-fatal
-    }
+    await loadBoard();
   }
 
   async function loadDocCounts(ideaIds: string[]): Promise<void> {
     try {
       const entries = await Promise.all(
-        ideaIds.map(async id => [id, await countDocsForIdea(id)] as const),
+        ideaIds.map(async id => [id, await countDocsForIdea(id, boardId)] as const),
       );
       setDocCounts(prev => {
         const next = { ...prev };
@@ -256,6 +278,10 @@ export default function App(): React.ReactElement {
     } catch {
       // non-fatal
     }
+  }
+
+  async function loadConnections() {
+    await loadBoard();
   }
 
   async function checkApiKey() {
@@ -268,29 +294,24 @@ export default function App(): React.ReactElement {
   }
 
   async function loadSuggestions() {
-    try {
-      const pending = await listSuggestionsByStatus('pending');
-      setSuggestions(pending.slice(0, MAX_VISIBLE_SUGGESTIONS));
-    } catch {
-      // non-fatal
-    }
+    await loadBoard();
   }
 
   async function loadCritiques() {
-    try {
-      setCritiques(await listCritiques());
-    } catch {
-      // non-fatal
-    }
+    await loadBoard();
   }
 
   useEffect(() => {
-    loadIdeas();
-    loadGroups();
-    loadCritiques();
-    loadSuggestions();
+    loadBoard();
     checkApiKey();
   }, []);
+
+  useEffect(() => {
+    if (!connectionsHydrated) return;
+    replaceConnections(connections, boardId).catch(() => {
+      // non-fatal
+    });
+  }, [boardId, connections, connectionsHydrated]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockMs(Date.now()), 1000);
@@ -451,7 +472,7 @@ export default function App(): React.ReactElement {
         groupId = a.panel.groupId;
         await addIdeaToGroup(groupId, ideaIdB);
       } else {
-        const g = await createGroup([ideaIdA, ideaIdB]);
+        const g = await createGroup([ideaIdA, ideaIdB], undefined, undefined, boardId);
         groupId = g.id;
       }
 
@@ -524,6 +545,7 @@ export default function App(): React.ReactElement {
       // Create the new merged idea at the target's position
       const targetPanel = b.panel ?? { x: 60, y: 60, width: 260, height: 180 };
       const merged = await createIdea({
+        boardId,
         rawText: result.mergedRawText,
         tags: result.mergedTags,
         panel: { ...targetPanel, groupId: undefined },
@@ -547,8 +569,7 @@ export default function App(): React.ReactElement {
       if (a.panel?.groupId) await removeIdeaFromGroup(a.panel.groupId, a.id);
       if (b.panel?.groupId) await removeIdeaFromGroup(b.panel.groupId, b.id);
 
-      await loadIdeas();
-      await loadGroups();
+      await loadBoard();
       setSelectedId(mergedWithProvenance.id);
       markActivity('edit');
     } catch (err) {
@@ -972,7 +993,7 @@ export default function App(): React.ReactElement {
       window.removeEventListener('brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener);
       window.removeEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
     };
-  }, [ideas, selectedId]);
+  }, [ideas, selectedId, connections, suggestions]);
 
   // ---------------------------------------------------------------------------
   // Capture
@@ -987,7 +1008,7 @@ export default function App(): React.ReactElement {
         .split(',')
         .map(t => t.trim())
         .filter(Boolean);
-      const idea = await createIdea({ rawText: text, tags });
+      const idea = await createIdea({ boardId, rawText: text, tags });
       await loadIdeas();
       setSelectedId(idea.id);
       setNewIdeaText('');
@@ -1030,7 +1051,7 @@ export default function App(): React.ReactElement {
   }
 
   // ---------------------------------------------------------------------------
-  // Connections (ad-hoc LLM call; ephemeral state — not persisted)
+  // Connections (ad-hoc LLM call; persisted board state)
   // ---------------------------------------------------------------------------
 
   async function runConnectionFinder(options: {
@@ -1042,7 +1063,7 @@ export default function App(): React.ReactElement {
       const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
       const discarded = ideas.filter(i => i.status === 'discarded');
       const docsPerIdea = await Promise.all(
-        boardIdeas.map(i => listDocsForIdea(i.id).catch(() => [] as SupportingDoc[])),
+        boardIdeas.map(i => listDocsForIdea(i.id, boardId).catch(() => [] as SupportingDoc[])),
       );
       const supportingDocs = docsPerIdea.flat().filter(d => d.status === 'ready');
 
@@ -1110,7 +1131,7 @@ export default function App(): React.ReactElement {
       const idea = ideas.find(entry => entry.id === ideaId);
       if (!idea) throw new Error(`Idea not found: ${ideaId}`);
 
-      const activeCritiques = await listCritiquesForIdea(ideaId, 'active');
+      const activeCritiques = await listCritiquesForIdea(ideaId, 'active', boardId);
       if (activeCritiques.length >= 2) {
         throw new Error('This idea already has the maximum number of active critiques.');
       }
@@ -1119,9 +1140,9 @@ export default function App(): React.ReactElement {
         throw new Error('This idea is on critique cooldown. Wait a moment before asking for another critique.');
       }
 
-      const supportingDocs = (await listDocsForIdea(ideaId)).filter(doc => doc.status === 'ready');
+      const supportingDocs = (await listDocsForIdea(ideaId, boardId)).filter(doc => doc.status === 'ready');
       const boardIdeas = ideas.filter(entry => entry.status !== 'archived' && entry.status !== 'discarded');
-      const priorCritiques = await listCritiquesForIdea(ideaId);
+      const priorCritiques = await listCritiquesForIdea(ideaId, undefined, boardId);
       const task = buildStandaloneCritiqueTask({
         idea,
         boardIdeas,
@@ -1144,6 +1165,7 @@ export default function App(): React.ReactElement {
       }
 
       const critique = await createCritique({
+        boardId,
         ideaId,
         critique: nextChallenge.critique,
         evidenceAsk: nextChallenge.evidenceAsk,
@@ -1190,11 +1212,11 @@ export default function App(): React.ReactElement {
       const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
       const discarded = ideas.filter(i => i.status === 'discarded');
       const docsPerIdea = await Promise.all(
-        boardIdeas.map(i => listDocsForIdea(i.id).catch(() => [] as SupportingDoc[])),
+        boardIdeas.map(i => listDocsForIdea(i.id, boardId).catch(() => [] as SupportingDoc[])),
       );
       const supportingDocs = docsPerIdea.flat().filter(d => d.status === 'ready');
 
-      const existing = await listSuggestions();
+      const existing = await listSuggestions(boardId);
       const alreadyProposedRawTexts = existing
         .filter(s => s.status === 'pending' || s.status === 'admitted')
         .map(s => s.rawText);
@@ -1225,6 +1247,7 @@ export default function App(): React.ReactElement {
       for (let i = 0; i < visibleSuggestions.length; i++) {
         const s = visibleSuggestions[i];
         const createdSuggestion = await createSuggestion({
+          boardId,
           rawText: s.rawText,
           rationale: s.rationale,
           source: s.source,
@@ -1256,12 +1279,13 @@ export default function App(): React.ReactElement {
       if (s.elaboration) bodyParts.push('', '## Scout elaboration', s.elaboration);
       if (s.rationale) bodyParts.push('', `_Scout rationale:_ ${s.rationale}`);
       const idea = await createIdea({
+        boardId,
         rawText: bodyParts.join('\n'),
         tags: ['from-scout', s.source.split(':')[0]?.trim() || 'scout'],
         panel: s.panel ? { ...s.panel } : undefined,
       });
       await admitSuggestionStore(id, idea.id);
-      await Promise.all([loadIdeas(), loadSuggestions()]);
+      await loadBoard();
       markActivity('edit');
     } catch (err) {
       console.error('[App] admit suggestion failed:', err);

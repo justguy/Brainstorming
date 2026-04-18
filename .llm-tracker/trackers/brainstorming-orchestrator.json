@@ -7,7 +7,7 @@
         "id": "facilitator",
         "label": "Facilitator Mode",
         "description": "Phases 1-4 from PHASED_IMPL: visible connections, critique, timing, signal control.",
-        "collapsed": false
+        "collapsed": true
       },
       {
         "id": "observability",
@@ -17,7 +17,8 @@
       {
         "id": "automation",
         "label": "Autonomous Facilitator",
-        "description": "Phase 6 local-only automation after Facilitator Mode is stable."
+        "description": "Phase 6 local-only automation after Facilitator Mode is stable.",
+        "collapsed": true
       },
       {
         "id": "polish",
@@ -27,12 +28,26 @@
       {
         "id": "collaboration",
         "label": "Collaborative Sync",
-        "description": "BroadcastChannel, Yjs, WebRTC, and peer-aware synchronization backlog."
+        "description": "BroadcastChannel, Yjs, WebRTC, and peer-aware synchronization backlog.",
+        "collapsed": true
       },
       {
         "id": "integrations",
         "label": "Integrations",
-        "description": "Local-doc search, declarative WebMCP, and external system writeback backlog."
+        "description": "Local-doc search, declarative WebMCP, and external system writeback backlog.",
+        "collapsed": true
+      },
+      {
+        "id": "architecture",
+        "label": "Architecture",
+        "description": "Board-first domain, patch-journal state, beat runtime, and WebMCP boundary work required to align the app with the integration guide.",
+        "collapsed": true
+      },
+      {
+        "id": "design-impl",
+        "label": "Design Implementation",
+        "description": "Inline companion, beat review UX, undo/history, layout cutover, and guide-fidelity interaction work.",
+        "collapsed": true
       }
     ],
     "priorities": [
@@ -53,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "Facilitator Mode and the UI/UX Polish Driver are shipped. Collaborative sync is now the current executable workstream from ROADMAP.md §4; stretch backlog remains queued behind that storage/sync track.",
-    "rev": 10,
-    "updatedAt": "2026-04-17T23:40:29.732Z"
+    "scratchpad": "bo-025 remains in progress, but the first board-first foundation slice is verified: board/turn/tweak stores, board-scoped repositories, migration bridge, single board-document hydration, and successful typecheck/build/build:web. Next work is reducing the remaining phase/workspace compatibility surface.",
+    "rev": 20,
+    "updatedAt": "2026-04-18T02:39:21.767Z"
   },
   "tasks": [
     {
@@ -431,7 +446,7 @@
       "status": "not_started",
       "placement": {
         "swimlaneId": "collaboration",
-        "priorityId": "p0"
+        "priorityId": "p2"
       },
       "references": [
         "ROADMAP.md:268-275"
@@ -1152,6 +1167,659 @@
         "notes": "The close-out pass should make the demo feel smooth, deliberate, and premium."
       },
       "assignee": "codex"
+    },
+    {
+      "dependencies": [],
+      "id": "bo-025",
+      "title": "Design Core: board document and board-scoped repositories",
+      "goal": "Replace the web app's phase-first hot path with a canonical board document and board-scoped stores for boards, ideas, connections, critiques, turns, and tweaks, with a migration bridge from existing local data.",
+      "status": "in_progress",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:580-603",
+        "src/types.ts:193-212",
+        "src/storage/db.ts:4-55"
+      ],
+      "effort": "l",
+      "comment": "Starting board-first domain and board-scoped repository cutover from the Integration Guide target state.",
+      "definition_of_done": [
+        "A canonical Board document or aggregate exists and the web app reads board-scoped state from it.",
+        "IndexedDB stores cover boards, ideas, connections, critiques, turns, and tweaks through one hydration path.",
+        "Legacy phase fields are isolated behind an adapter so the board path stops depending on Idea.phase in the hot path."
+      ],
+      "constraints": [
+        "Do not keep two durable sources of truth for the same board entities.",
+        "Migration must preserve existing local board data and current web app startup behavior."
+      ],
+      "expected_changes": [
+        "src/types.ts",
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "src/types.ts",
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "board-model",
+          "migration"
+        ],
+        "notes": "First board-first foundation slice landed and passed typecheck plus both builds. Remaining work is phase/workspace compatibility reduction and broader controller cutover, so the task stays in_progress.",
+        "files_touched": [
+          "src/types.ts",
+          "src/board/types.ts",
+          "src/storage/db.ts",
+          "src/storage/boards.ts",
+          "src/storage/tweaks.ts",
+          "src/storage/turns.ts",
+          "src/storage/migrationBridge.ts",
+          "src/storage/boardDocument.ts",
+          "src/storage/ideas.ts",
+          "src/storage/groups.ts",
+          "src/storage/critiques.ts",
+          "src/storage/suggestions.ts",
+          "src/storage/docs.ts",
+          "src/storage/connections.ts",
+          "apps/web/App.tsx"
+        ],
+        "verification": [
+          "npm run typecheck",
+          "npm run build:web",
+          "npm run build"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-025"
+      ],
+      "id": "bo-026",
+      "title": "Design Core: patch journal and reversible BoardController",
+      "goal": "Route all committed board mutations through a central BoardController that emits forward and inverse JSON patches, persists ChangeSets, and becomes the only mutation path for user and AI actions.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:580-603",
+        "apps/web/App.tsx:160-313"
+      ],
+      "effort": "l",
+      "comment": "Undo/redo and readable change history require one mutation engine rather than scattered React state writes.",
+      "definition_of_done": [
+        "All committed board mutations route through a single applyChange or equivalent mutation API.",
+        "ChangeSets persist forward and inverse JSON patches with actor, summary, and affected entity metadata.",
+        "Undo and redo replay the journal rather than rebuilding state ad hoc from UI handlers."
+      ],
+      "constraints": [
+        "Human and AI changes must share the same journal semantics.",
+        "Ephemeral beat drafts must stay separate from committed board state until the user keeps them or automation is explicitly allowed."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/storage",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "patches",
+          "history"
+        ],
+        "notes": "This is the mechanism behind undo/redo, change history, and reversible AI structural edits."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-026"
+      ],
+      "id": "bo-027",
+      "title": "Design Core: beat runtime and proposal contract",
+      "goal": "Replace the current web-app phase loop with a board-level callBeat runtime for scout, connect, critique, cluster, and summarise, using strict JSON beat outputs and candidate proposals instead of direct structural writes.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:456-479",
+        "Design/Integration Guide.html:553-577",
+        "apps/web/App.tsx:1382-1467",
+        "src/orchestrator/subPhases.ts:45-57"
+      ],
+      "effort": "l",
+      "comment": "The design target is beat-scoped and board-first; the current 8-phase model is the wrong contract for W3.",
+      "definition_of_done": [
+        "The web path exposes exactly five beats: scout, connect, critique, cluster, and summarise.",
+        "Each beat returns strict JSON with candidates, sources, confidence metadata, and patch payloads or equivalent change intents.",
+        "Automatic and manual beat triggers are encoded with visible state for small versus big beats."
+      ],
+      "constraints": [
+        "Do not let freeform AI responses mutate board structure directly.",
+        "Retain narrow role prompts and machine-parseable outputs for every beat."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/orchestrator",
+        "src",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "beats",
+          "llm-contracts"
+        ],
+        "notes": "This is the contract shift from phase progression to board beats."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-027"
+      ],
+      "id": "bo-028",
+      "title": "Design Core: board-first WebMCP surface",
+      "goal": "Retarget the existing WebMCP boundary around board verbs and beat runs instead of legacy phase and workspace concepts, while keeping the direct web app WebMCP integration.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p1"
+      },
+      "references": [
+        "apps/web/App.tsx:224-224",
+        "apps/web/webmcp-tools.ts:1491-1741",
+        "Design/Integration Guide.html:456-479"
+      ],
+      "effort": "m",
+      "comment": "The current app already has the right outer interface; the contract behind it needs to become board-native.",
+      "definition_of_done": [
+        "Board tools cover the board document, beat invocation, candidate admission or dismissal, and connection or critique operations through the board controller.",
+        "dispatch-and-wait or equivalent request handling stays intact for the standalone web app.",
+        "Tool handlers operate on current board and beat-run state rather than phase-local state."
+      ],
+      "constraints": [
+        "Keep the direct WebMCP surface; do not add a second UI abstraction layer such as a2ui.",
+        "Do not duplicate orchestration logic across App state and tool handlers."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/App.tsx",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "webmcp",
+          "tooling"
+        ],
+        "notes": "This preserves WebMCP while aligning it to the guide's board and beat model."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-026",
+        "bo-027"
+      ],
+      "id": "bo-029",
+      "title": "Design Core: extract board shell from apps/web/App.tsx",
+      "goal": "Break the monolithic App.tsx into board controller, storage sync, beat orchestration, and inspector modules so board-first behavior is testable and the workspace drawer stops owning the hot path.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p1"
+      },
+      "references": [
+        "apps/web/App.tsx:1-1703",
+        "src/workspace/Workspace.tsx:152-285",
+        "Design/Integration Guide.html:307-315"
+      ],
+      "effort": "l",
+      "comment": "The current app shell is too coupled to carry the design cutover cleanly.",
+      "definition_of_done": [
+        "App.tsx no longer owns history mutation logic, storage choreography, facilitator timing, and layout concerns in one file.",
+        "Board controller and board UI hooks have explicit boundaries and callers.",
+        "Workspace surfaces remain available as secondary inspector or export views rather than primary orchestration surfaces."
+      ],
+      "constraints": [
+        "Preserve current app boot, tool registration, and board interaction behavior while extracting modules.",
+        "Do not strand dead code paths behind the old workspace-first model."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "src/workspace",
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/workspace",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "refactor",
+          "app-shell"
+        ],
+        "notes": "This is the extraction step that makes the board-first cutover practical."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-026"
+      ],
+      "id": "bo-030",
+      "title": "Design Core: durable turns, tweaks, tombstones, and reversible deletes",
+      "goal": "Complete the persistence layer for beat runs, turn history, tweak state, and tombstones so dismissed AI outputs remain reversible and history-backed instead of being hard-deleted or left in transient component state.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:580-603",
+        "src/storage/settings.ts:16-68"
+      ],
+      "effort": "m",
+      "comment": "The design requires reversible AI artifacts and board-scoped persistence, not transient or extension-era storage semantics.",
+      "definition_of_done": [
+        "Turns, beat runs, tweak state, and tombstones persist in board-scoped storage.",
+        "Dismissed or deleted AI artifacts are represented as reversible tombstones rather than silent hard deletes.",
+        "Web settings or tweak persistence no longer depend on chrome.storage.local for the web path without a compatible abstraction."
+      ],
+      "constraints": [
+        "Do not lose existing local settings or board data during the storage move.",
+        "History data must stay compatible with undo and redo semantics from the patch journal."
+      ],
+      "expected_changes": [
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "persistence",
+          "tombstones"
+        ],
+        "notes": "Completes the durable model needed for change history and reversible AI operations."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-027"
+      ],
+      "id": "bo-031",
+      "title": "Design UI: always-on Dev companion and idle-triggered beats",
+      "goal": "Make the Dev companion visibly present while the user edits the board, with automatic idle-triggered runs, explicit watching or drafting states, and visible beat activity when something big is happening or the user asks for it.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:553-577",
+        "apps/web/App.tsx:1474-1528"
+      ],
+      "effort": "m",
+      "comment": "The guide wants an inline companion that is present during work, not a detached chat rail.",
+      "definition_of_done": [
+        "The board shows companion presence and state while the user is editing or when beats are running.",
+        "Automatic beat triggering is idle-gated and tied to meaningful board changes.",
+        "Big beats can reveal active beat progress and interim idea or source discovery state without forcing it on every small edit."
+      ],
+      "constraints": [
+        "Do not interrupt active editing or hijack focus while the user is typing or dragging.",
+        "Preserve human interruptibility and global pause behavior."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "companion",
+          "automation"
+        ],
+        "notes": "Implements the always-there companion behavior the user described."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-026",
+        "bo-027",
+        "bo-031"
+      ],
+      "id": "bo-032",
+      "title": "Design UI: beat review flow with keep or scratch candidates",
+      "goal": "Surface big-beat outputs as reviewable candidate ideas, sources, connections, critiques, and structural edits that the user can keep or scratch individually or as a group before they become committed board changes.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:553-577",
+        "Design/Integration Guide.html:621-639"
+      ],
+      "effort": "l",
+      "comment": "This is the core human-in-the-loop layer for AI structural changes.",
+      "definition_of_done": [
+        "Beat review UI shows candidate items with provenance, summaries, and the affected ideas or structures.",
+        "Keep commits the candidate into the board journal; scratch creates a tombstone and preserves the decision in history.",
+        "Users can accept a subset of a beat without discarding the rest of the run."
+      ],
+      "constraints": [
+        "Do not auto-commit structural AI edits without an explicit keep path or a narrowly defined low-risk automation rule.",
+        "Dismissed items must remain recoverable through history rather than disappearing silently."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "review-flow",
+          "human-loop"
+        ],
+        "notes": "Matches the requested keep or scratch flow for beats and candidate ideas."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-030",
+        "bo-032"
+      ],
+      "id": "bo-033",
+      "title": "Design UI: undo or redo controls and change history timeline",
+      "goal": "Add visible undo and redo controls plus a readable change history that groups user and AI changes by actor, beat, and patch set so the board can move backward and forward safely.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:580-603"
+      ],
+      "effort": "m",
+      "comment": "The patch journal only matters if the user can actually navigate it from the board UI.",
+      "definition_of_done": [
+        "Undo and redo controls are visible and operate across user and AI-authored changes.",
+        "A history surface shows actor, beat, summary, timestamp, and affected board entities for each ChangeSet.",
+        "Moving backward and forward preserves board consistency and does not drop persisted state."
+      ],
+      "constraints": [
+        "Do not fall back to snapshot-only history that loses semantic change information.",
+        "Guard against replaying inverse patches against the wrong board revision."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "history",
+          "undo-redo"
+        ],
+        "notes": "Implements the user-visible history and navigation controls requested for patch-backed state."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-029",
+        "bo-032"
+      ],
+      "id": "bo-034",
+      "title": "Design UI: board-first layout cutover and inline AI surfaces",
+      "goal": "Make the canvas the primary product surface, move workspace detail into a secondary inspector role, and replace the remaining workspace-first interaction path with inline board-native AI affordances.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/Integration Guide.html:307-315",
+        "Design/Integration Guide.html:621-639",
+        "apps/web/App.tsx:1673-1703"
+      ],
+      "effort": "l",
+      "comment": "The current right-side workspace slideover still carries too much of the product interaction model.",
+      "definition_of_done": [
+        "Primary brainstorm flow happens on the board with inline AI artifacts and review surfaces.",
+        "Workspace or drawer surfaces are secondary inspectors, not the place where the main loop lives.",
+        "No sidebar-chat style surface becomes the primary AI interaction model."
+      ],
+      "constraints": [
+        "Preserve desktop and mobile usability while moving controls onto the board.",
+        "Do not regress current board interactions such as drag, grouping, or selection."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/workspace",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/workspace",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "layout",
+          "inline-ai"
+        ],
+        "notes": "Delivers the board-first cutover called for by the guide."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-034"
+      ],
+      "id": "bo-035",
+      "title": "Design UI: cluster and summarise beats",
+      "goal": "Implement the missing cluster and summarise beats with inline group proposals, board-level thematic labeling, and summaries that stay connected to board entities and beat history.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/Integration Guide.html:456-479",
+        "apps/web/App.tsx:1382-1467"
+      ],
+      "effort": "m",
+      "comment": "The guide defines five beats; the current app still behaves like connect, critique, scout plus helper logic.",
+      "definition_of_done": [
+        "Cluster beat can propose grouping or regrouping operations with user review.",
+        "Summarise beat produces board-level digests tied back to ideas, sources, or groups.",
+        "Both beats show up in beat history and use the same proposal and keep or scratch contract as the rest of the system."
+      ],
+      "constraints": [
+        "Do not ship cluster or summary behavior as ad hoc side effects outside the beat runtime.",
+        "Summaries must reference real board entities rather than floating free text alone."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/orchestrator"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/orchestrator"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "cluster",
+          "summarise"
+        ],
+        "notes": "Closes the missing beat gap between the current app and the target interaction model."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-030",
+        "bo-034"
+      ],
+      "id": "bo-036",
+      "title": "Design UI: source-linked metadata edits and structural idea operations",
+      "goal": "Let kept beat candidates append metadata to existing ideas, attach sources, create entirely new ideas, rewrite idea structure, or modify existing relationships while preserving provenance and reversibility.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:553-603"
+      ],
+      "effort": "m",
+      "comment": "Accepted beat output must be able to enrich existing ideas, not only create detached suggestion cards.",
+      "definition_of_done": [
+        "Accepted candidates can create new ideas, enrich existing idea metadata, attach sources, or modify structure through the board controller.",
+        "Every structural edit retains provenance and remains reversible through the patch journal.",
+        "The board can represent changed idea structure without losing the prior state or source linkage."
+      ],
+      "constraints": [
+        "Do not treat source attachment or structure edits as opaque text blobs.",
+        "All structural AI edits must be attributable and reversible."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "sources",
+          "structural-edits"
+        ],
+        "notes": "Implements the user's requirement that kept beats can enrich, create, or restructure board ideas."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-033",
+        "bo-035",
+        "bo-036"
+      ],
+      "id": "bo-037",
+      "title": "Design UI: final integration-guide fidelity and accessibility pass",
+      "goal": "Align the shipped experience with the guide's intended visual language, reveal choreography, accessibility, theme behavior, and empty or loading states once the board-first interaction model is in place.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p2"
+      },
+      "references": [
+        "Design/Integration Guide.html:305-315",
+        "Design/Integration Guide.html:616-639"
+      ],
+      "effort": "m",
+      "comment": "This is the final fit-and-finish pass after the architecture and interaction model are in place.",
+      "definition_of_done": [
+        "Theme and motion behavior align with the guide across sketch and whiteboard modes.",
+        "Keyboard, focus, and screen-reader behaviors cover the new inline AI and history surfaces.",
+        "Empty, loading, thinking, kept, and scratched states feel intentional rather than bolted on."
+      ],
+      "constraints": [
+        "Do not trade away board responsiveness for decorative polish.",
+        "Avoid generic assistant UI patterns that conflict with the design guide's visual direction."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "public"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "public"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "accessibility",
+          "polish"
+        ],
+        "notes": "Final guide-alignment pass after the board-first interaction model lands."
+      }
     }
   ]
 }

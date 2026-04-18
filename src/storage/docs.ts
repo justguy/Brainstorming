@@ -7,14 +7,28 @@
  * orchestrator injects into future phase prompts.
  */
 
+import { DEFAULT_BOARD_ID } from '../board/types';
+import type { BoardId, SupportingDoc, SupportingDocStatus } from '../types';
 import { getDb } from './db';
-import type { SupportingDoc, SupportingDocStatus } from '../types';
+import { ensureBoardStorageBridge } from './migrationBridge';
 
-export async function listDocsForIdea(ideaId: string): Promise<SupportingDoc[]> {
+export async function listDocs(boardId: BoardId = DEFAULT_BOARD_ID): Promise<SupportingDoc[]> {
+  await ensureBoardStorageBridge(boardId);
+  const db = await getDb();
+  const all = await db.getAllFromIndex('docs', 'byBoardId', boardId);
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function listDocsForIdea(
+  ideaId: string,
+  boardId: BoardId = DEFAULT_BOARD_ID,
+): Promise<SupportingDoc[]> {
+  await ensureBoardStorageBridge(boardId);
   const db = await getDb();
   const all = await db.getAllFromIndex('docs', 'byIdeaId', ideaId);
-  // Sort newest-first so the most recently added doc appears on top.
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+  return all
+    .filter(doc => (doc.boardId ?? DEFAULT_BOARD_ID) === boardId)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getDoc(id: string): Promise<SupportingDoc | undefined> {
@@ -23,15 +37,19 @@ export async function getDoc(id: string): Promise<SupportingDoc | undefined> {
 }
 
 export interface CreateDocInput {
+  boardId?: BoardId;
   ideaId: string;
   title: string;
   rawText: string;
 }
 
 export async function createDoc(input: CreateDocInput): Promise<SupportingDoc> {
+  const boardId = input.boardId ?? DEFAULT_BOARD_ID;
+  await ensureBoardStorageBridge(boardId);
   const now = Date.now();
   const doc: SupportingDoc = {
     id: crypto.randomUUID(),
+    boardId,
     ideaId: input.ideaId,
     title: input.title.trim() || deriveTitle(input.rawText),
     rawText: input.rawText,
@@ -59,9 +77,14 @@ export async function deleteDoc(id: string): Promise<void> {
   await db.delete('docs', id);
 }
 
-export async function countDocsForIdea(ideaId: string): Promise<number> {
+export async function countDocsForIdea(
+  ideaId: string,
+  boardId: BoardId = DEFAULT_BOARD_ID,
+): Promise<number> {
+  await ensureBoardStorageBridge(boardId);
   const db = await getDb();
-  return db.countFromIndex('docs', 'byIdeaId', ideaId);
+  const all = await db.getAllFromIndex('docs', 'byIdeaId', ideaId);
+  return all.filter(doc => (doc.boardId ?? DEFAULT_BOARD_ID) === boardId).length;
 }
 
 export async function markDocReady(

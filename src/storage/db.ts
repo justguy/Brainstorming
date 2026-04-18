@@ -1,11 +1,20 @@
 import { openDB as idbOpenDB, type IDBPDatabase, type DBSchema } from 'idb';
-import type { Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion } from '../types';
+import type { Connection, Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion } from '../types';
+import type { BoardRecord, BoardTweaksRecord, IdeaTurnRecord } from '../board/types';
 
 export interface Schema extends DBSchema {
+  boards: {
+    key: string;
+    value: BoardRecord;
+    indexes: {
+      byUpdatedAt: number;
+    };
+  };
   ideas: {
     key: string;
     value: Idea;
     indexes: {
+      byBoardId: string;
       byStatus: string;
       byUpdatedAt: number;
     };
@@ -14,6 +23,7 @@ export interface Schema extends DBSchema {
     key: string;
     value: IdeaGroup;
     indexes: {
+      byBoardId: string;
       byUpdatedAt: number;
     };
   };
@@ -21,6 +31,7 @@ export interface Schema extends DBSchema {
     key: string;
     value: SupportingDoc;
     indexes: {
+      byBoardId: string;
       byIdeaId: string;
       byUpdatedAt: number;
     };
@@ -29,6 +40,7 @@ export interface Schema extends DBSchema {
     key: string;
     value: ScoutSuggestion;
     indexes: {
+      byBoardId: string;
       byStatus: string;
       byUpdatedAt: number;
     };
@@ -37,22 +49,48 @@ export interface Schema extends DBSchema {
     key: string;
     value: IdeaCritique;
     indexes: {
+      byBoardId: string;
       byIdeaId: string;
       byStatus: string;
+      byUpdatedAt: number;
+    };
+  };
+  connections: {
+    key: string;
+    value: Connection;
+    indexes: {
+      byBoardId: string;
+      byCreatedAt: number;
+    };
+  };
+  turns: {
+    key: string;
+    value: IdeaTurnRecord;
+    indexes: {
+      byBoardId: string;
+      byIdeaId: string;
+      byCreatedAt: number;
+    };
+  };
+  tweaks: {
+    key: string;
+    value: BoardTweaksRecord;
+    indexes: {
+      byBoardId: string;
       byUpdatedAt: number;
     };
   };
 }
 
 const DB_NAME = 'brainstorming-orchestrator';
-const DB_VERSION = 5;
+const DB_VERSION = 7;
 
 let _dbPromise: Promise<IDBPDatabase<Schema>> | null = null;
 
 export function getDb(): Promise<IDBPDatabase<Schema>> {
   if (!_dbPromise) {
     _dbPromise = idbOpenDB<Schema>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
+      upgrade(db, oldVersion, _newVersion, transaction) {
         if (oldVersion < 1) {
           const store = db.createObjectStore('ideas', { keyPath: 'id' });
           store.createIndex('byStatus', 'status');
@@ -84,6 +122,59 @@ export function getDb(): Promise<IDBPDatabase<Schema>> {
             store.createIndex('byIdeaId', 'ideaId');
             store.createIndex('byStatus', 'status');
             store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+        }
+        if (oldVersion < 6) {
+          if (!db.objectStoreNames.contains('connections')) {
+            const store = db.createObjectStore('connections', { keyPath: 'id' });
+            store.createIndex('byCreatedAt', 'createdAt');
+          }
+        }
+        if (oldVersion < 7) {
+          if (!db.objectStoreNames.contains('boards')) {
+            const store = db.createObjectStore('boards', { keyPath: 'id' });
+            store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+          if (!db.objectStoreNames.contains('turns')) {
+            const store = db.createObjectStore('turns', { keyPath: 'id' });
+            store.createIndex('byBoardId', 'boardId');
+            store.createIndex('byIdeaId', 'ideaId');
+            store.createIndex('byCreatedAt', 'createdAt');
+          }
+          if (!db.objectStoreNames.contains('tweaks')) {
+            const store = db.createObjectStore('tweaks', { keyPath: 'id' });
+            store.createIndex('byBoardId', 'boardId');
+            store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+
+          const ideas = transaction.objectStore('ideas');
+          if (!ideas.indexNames.contains('byBoardId')) {
+            ideas.createIndex('byBoardId', 'boardId');
+          }
+
+          const groups = transaction.objectStore('groups');
+          if (!groups.indexNames.contains('byBoardId')) {
+            groups.createIndex('byBoardId', 'boardId');
+          }
+
+          const docs = transaction.objectStore('docs');
+          if (!docs.indexNames.contains('byBoardId')) {
+            docs.createIndex('byBoardId', 'boardId');
+          }
+
+          const suggestions = transaction.objectStore('suggestions');
+          if (!suggestions.indexNames.contains('byBoardId')) {
+            suggestions.createIndex('byBoardId', 'boardId');
+          }
+
+          const critiques = transaction.objectStore('critiques');
+          if (!critiques.indexNames.contains('byBoardId')) {
+            critiques.createIndex('byBoardId', 'boardId');
+          }
+
+          const connections = transaction.objectStore('connections');
+          if (!connections.indexNames.contains('byBoardId')) {
+            connections.createIndex('byBoardId', 'boardId');
           }
         }
       },

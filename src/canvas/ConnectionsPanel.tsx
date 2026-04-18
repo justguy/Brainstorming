@@ -3,8 +3,8 @@
  *
  * Lists connections produced by the connectionFinder LLM role. Each connection
  * shows its kind, strength, and rationale, plus a click target that flashes
- * the involved panels on the canvas. State is ephemeral — connections are NOT
- * persisted; the user re-runs on demand.
+ * the involved panels on the canvas. The latest board connection set is
+ * persisted so the canvas survives refresh, and re-running refreshes it.
  */
 
 import React, { useState } from 'react';

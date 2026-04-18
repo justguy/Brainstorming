@@ -5,6 +5,7 @@ export type IdeaStatus = 'captured' | 'in_progress' | 'blocked' | 'ready_for_han
 // Phase may be an integer (main phase 0-8) or a decimal (micro step, e.g. 0.5, 2.5, 4.5).
 // The canonical sub-phase registry lives in src/orchestrator/subPhases.ts.
 export type Phase = number;
+export type BoardId = string;
 export type Density = 'simple' | 'standard' | 'expert';
 export type ProviderId = 'gemini' | 'openai' | 'anthropic';
 
@@ -115,6 +116,7 @@ export interface Panel {
 // A group of related ideas formed by proximity on the canvas.
 export interface IdeaGroup {
   id: string;
+  boardId?: BoardId;
   theme?: string;           // short LLM-generated theme ("Things that touch auth")
   sharedQuestion?: string;  // a question that holds the group together
   ideaIds: string[];
@@ -130,6 +132,7 @@ export type ScoutSuggestionStatus = 'pending' | 'admitted' | 'dismissed';
 
 export interface ScoutSuggestion {
   id: string;
+  boardId?: BoardId;
   rawText: string;                      // the suggestion body, in idea-panel shape
   rationale: string;                    // why the scout thinks this is worth considering
   source: string;                       // e.g. "analogy: healthcare triage", "contrarian take", "adjacent field: ops"
@@ -150,6 +153,7 @@ export type ConnectionStrength = 'weak' | 'medium' | 'strong';
 
 export interface Connection {
   id: string;
+  boardId?: BoardId;
   kind: ConnectionKind;
   ideaIds: string[];            // usually 2, may be more for shared_theme
   supportingDocIds?: string[];  // ids of docs the LLM cited as evidence
@@ -162,6 +166,7 @@ export type CritiqueStatus = 'active' | 'dismissed';
 
 export interface IdeaCritique {
   id: string;
+  boardId?: BoardId;
   ideaId: string;
   critique: string;
   evidenceAsk: string;
@@ -179,6 +184,7 @@ export type SupportingDocStatus = 'processing' | 'ready' | 'failed';
 
 export interface SupportingDoc {
   id: string;
+  boardId?: BoardId;
   ideaId: string;
   title: string;          // user-provided or auto-generated from the first line
   rawText: string;        // the pasted content (trimmed, capped client-side)
@@ -192,6 +198,7 @@ export interface SupportingDoc {
 
 export interface Idea {
   id: string;
+  boardId?: BoardId;
   rawText: string;
   tags: string[];
   createdAt: number;

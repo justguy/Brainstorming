@@ -6,19 +6,28 @@
  * dismissed ones stay in the store so the scout can avoid re-proposing them.
  */
 
+import { DEFAULT_BOARD_ID } from '../board/types';
+import type { BoardId, ScoutSuggestion, ScoutSuggestionStatus } from '../types';
 import { getDb } from './db';
-import type { ScoutSuggestion, ScoutSuggestionStatus } from '../types';
+import { ensureBoardStorageBridge } from './migrationBridge';
 
-export async function listSuggestions(): Promise<ScoutSuggestion[]> {
+export async function listSuggestions(boardId: BoardId = DEFAULT_BOARD_ID): Promise<ScoutSuggestion[]> {
+  await ensureBoardStorageBridge(boardId);
   const db = await getDb();
-  const all = await db.getAllFromIndex('suggestions', 'byUpdatedAt');
-  return all.reverse();
+  const all = await db.getAllFromIndex('suggestions', 'byBoardId', boardId);
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function listSuggestionsByStatus(status: ScoutSuggestionStatus): Promise<ScoutSuggestion[]> {
+export async function listSuggestionsByStatus(
+  status: ScoutSuggestionStatus,
+  boardId: BoardId = DEFAULT_BOARD_ID,
+): Promise<ScoutSuggestion[]> {
+  await ensureBoardStorageBridge(boardId);
   const db = await getDb();
   const all = await db.getAllFromIndex('suggestions', 'byStatus', status);
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+  return all
+    .filter(suggestion => (suggestion.boardId ?? DEFAULT_BOARD_ID) === boardId)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getSuggestion(id: string): Promise<ScoutSuggestion | undefined> {
@@ -27,6 +36,7 @@ export async function getSuggestion(id: string): Promise<ScoutSuggestion | undef
 }
 
 export interface CreateSuggestionInput {
+  boardId?: BoardId;
   rawText: string;
   rationale: string;
   source: string;
@@ -35,9 +45,12 @@ export interface CreateSuggestionInput {
 }
 
 export async function createSuggestion(input: CreateSuggestionInput): Promise<ScoutSuggestion> {
+  const boardId = input.boardId ?? DEFAULT_BOARD_ID;
+  await ensureBoardStorageBridge(boardId);
   const now = Date.now();
   const suggestion: ScoutSuggestion = {
     id: crypto.randomUUID(),
+    boardId,
     rawText: input.rawText,
     rationale: input.rationale,
     source: input.source,

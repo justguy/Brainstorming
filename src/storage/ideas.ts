@@ -1,5 +1,14 @@
+import { DEFAULT_BOARD_ID } from '../board/types';
+import type { BoardId, Idea, LlmMessage, BriefState, Panel } from '../types';
 import { getDb } from './db';
-import type { Idea, LlmMessage, BriefState, Panel } from '../types';
+import { ensureBoardStorageBridge } from './migrationBridge';
+import {
+  appendTurnRecord,
+  countTurnsForIdea,
+  getTurnLogPageFromStore,
+  syncTurnsForIdea,
+  type TurnLogPage,
+} from './turns';
 
 // Lay new panels along a diagonal cascade so they don't all overlap.
 // The offset is seeded from the idea's createdAt so a given idea is stable.
@@ -40,6 +49,7 @@ function hydrateIdea(idea: Idea): Idea {
   const bs = idea.briefState ?? ({} as BriefState);
   const hydrated: Idea = {
     ...idea,
+    boardId: idea.boardId ?? DEFAULT_BOARD_ID,
     briefState: {
       ...bs,
       mustStayTrueRules: bs.mustStayTrueRules ?? [],
@@ -60,6 +70,7 @@ function hydrateIdea(idea: Idea): Idea {
 }
 
 async function fetchIdea(id: string): Promise<Idea> {
+  await ensureBoardStorageBridge();
   const db = await getDb();
   const idea = await db.get('ideas', id);
   if (!idea) throw new Error(`Idea not found: ${id}`);
@@ -70,16 +81,19 @@ async function fetchIdea(id: string): Promise<Idea> {
 // CRUD
 // ---------------------------------------------------------------------------
 
-/** Return all ideas sorted by updatedAt descending. */
-export async function listIdeas(): Promise<Idea[]> {
+/** Return all ideas for one board, sorted by updatedAt descending. */
+export async function listIdeas(boardId: BoardId = DEFAULT_BOARD_ID): Promise<Idea[]> {
+  await ensureBoardStorageBridge(boardId);
   const db = await getDb();
-  const all = await db.getAllFromIndex('ideas', 'byUpdatedAt');
-  // getAllFromIndex returns ascending; reverse for descending
-  return all.reverse().map(hydrateIdea);
+  const all = await db.getAllFromIndex('ideas', 'byBoardId', boardId);
+  return all
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .map(hydrateIdea);
 }
 
 /** Return a single idea by id, or undefined if not found. */
 export async function getIdea(id: string): Promise<Idea | undefined> {
+  await ensureBoardStorageBridge();
   const db = await getDb();
   const row = await db.get('ideas', id);
   return row ? hydrateIdea(row) : undefined;
@@ -90,14 +104,18 @@ export async function createIdea({
   rawText,
   tags,
   panel,
+  boardId = DEFAULT_BOARD_ID,
 }: {
   rawText: string;
   tags: string[];
   panel?: Panel;
+  boardId?: BoardId;
 }): Promise<Idea> {
+  await ensureBoardStorageBridge(boardId);
   const now = Date.now();
   const idea: Idea = {
     id: crypto.randomUUID(),
+    boardId,
     rawText,
     tags,
     createdAt: now,
@@ -119,9 +137,13 @@ export async function createIdea({
 /** Shallow-merge patch into idea and bump updatedAt. */
 export async function updateIdea(id: string, patch: Partial<Idea>): Promise<Idea> {
   const idea = await fetchIdea(id);
-  const updated: Idea = { ...idea, ...patch, id, updatedAt: Date.now() };
+  const boardId = patch.boardId ?? idea.boardId ?? DEFAULT_BOARD_ID;
+  const updated: Idea = { ...idea, ...patch, id, boardId, updatedAt: Date.now() };
   const db = await getDb();
   await db.put('ideas', updated);
+  if (patch.turnLog) {
+    await syncTurnsForIdea(boardId, id, updated.turnLog, updated.lastTurnAt ?? updated.updatedAt);
+  }
   return updated;
 }
 
@@ -150,10 +172,12 @@ export async function restoreIdea(id: string): Promise<Idea> {
 }
 
 /** List every discarded idea, newest-discarded first (by updatedAt). */
-export async function listDiscardedIdeas(): Promise<Idea[]> {
+export async function listDiscardedIdeas(boardId: BoardId = DEFAULT_BOARD_ID): Promise<Idea[]> {
+  await ensureBoardStorageBridge(boardId);
   const db = await getDb();
   const all = await db.getAllFromIndex('ideas', 'byStatus', 'discarded');
   return all
+    .filter(idea => (idea.boardId ?? DEFAULT_BOARD_ID) === boardId)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .map(hydrateIdea);
 }
@@ -174,13 +198,8 @@ export async function appendTurn(id: string, msg: LlmMessage): Promise<Idea> {
   };
   const db = await getDb();
   await db.put('ideas', updated);
+  await appendTurnRecord(updated.boardId ?? DEFAULT_BOARD_ID, id, msg, now);
   return updated;
-}
-
-export interface TurnLogPage {
-  entries: LlmMessage[];
-  nextCursor: string | null;
-  totalTurns: number;
 }
 
 export async function getTurnLogPage(
@@ -188,6 +207,11 @@ export async function getTurnLogPage(
   options: { cursor?: string; limit?: number } = {},
 ): Promise<TurnLogPage> {
   const idea = await fetchIdea(id);
+  const boardId = idea.boardId ?? DEFAULT_BOARD_ID;
+  const storedTurns = await countTurnsForIdea(boardId, id);
+  if (storedTurns > 0) {
+    return getTurnLogPageFromStore(boardId, id, options);
+  }
   const start = Math.max(0, Number.parseInt(options.cursor ?? '0', 10) || 0);
   const limit = Math.min(100, Math.max(1, options.limit ?? 20));
   const entries = idea.turnLog.slice(start, start + limit);

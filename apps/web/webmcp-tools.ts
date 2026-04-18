@@ -699,7 +699,7 @@ const findConnectionsTool: ModelContextTool = {
     'Runs the connection-finder over live ideas, discarded ideas, and ready supporting docs, ' +
     'then populates the Connections panel. Returns up to 10 links (often fewer) with kind ' +
     '(builds_on | contradicts | revives_killed | shared_theme), the involved idea ids, a rationale, and strength. ' +
-    'Use this after making non-trivial changes to the board — the results are ephemeral and re-running always refreshes.',
+    'Use this after making non-trivial changes to the board — the latest result is persisted to board state, and re-running refreshes it.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: false },
   execute: async () => {
@@ -732,7 +732,7 @@ const drawConnectionTool: ModelContextTool = {
   description:
     'Creates a visible connection between two currently visible canvas ideas and renders it immediately on the board. ' +
     'Use this when the relationship is already known and should be shown without re-running the full connection finder. ' +
-    'This is board-scoped, ephemeral state; it does not persist to IndexedDB.',
+    'This is board-scoped state and persists with the rest of the canvas.',
   inputSchema: {
     type: 'object',
     properties: {

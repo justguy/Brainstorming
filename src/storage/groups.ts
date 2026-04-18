@@ -1,10 +1,13 @@
+import { DEFAULT_BOARD_ID } from '../board/types';
+import type { BoardId, IdeaGroup } from '../types';
 import { getDb } from './db';
-import type { IdeaGroup } from '../types';
+import { ensureBoardStorageBridge } from './migrationBridge';
 
-export async function listGroups(): Promise<IdeaGroup[]> {
+export async function listGroups(boardId: BoardId = DEFAULT_BOARD_ID): Promise<IdeaGroup[]> {
+  await ensureBoardStorageBridge(boardId);
   const db = await getDb();
-  const all = await db.getAllFromIndex('groups', 'byUpdatedAt');
-  return all.reverse();
+  const all = await db.getAllFromIndex('groups', 'byBoardId', boardId);
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getGroup(id: string): Promise<IdeaGroup | undefined> {
@@ -12,10 +15,17 @@ export async function getGroup(id: string): Promise<IdeaGroup | undefined> {
   return db.get('groups', id);
 }
 
-export async function createGroup(ideaIds: string[], theme?: string, sharedQuestion?: string): Promise<IdeaGroup> {
+export async function createGroup(
+  ideaIds: string[],
+  theme?: string,
+  sharedQuestion?: string,
+  boardId: BoardId = DEFAULT_BOARD_ID,
+): Promise<IdeaGroup> {
+  await ensureBoardStorageBridge(boardId);
   const now = Date.now();
   const group: IdeaGroup = {
     id: crypto.randomUUID(),
+    boardId,
     ideaIds: [...new Set(ideaIds)],
     theme,
     sharedQuestion,
