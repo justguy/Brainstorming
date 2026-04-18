@@ -15,7 +15,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { Idea, IdeaGroup, SupportingDoc } from '../../src/types';
-import { listIdeas, getIdea, getTurnLogPage, createIdea, discardIdea, restoreIdea, listDiscardedIdeas } from '../../src/storage/ideas';
+import { listIdeas, getIdea, getTurnLogPage, listDiscardedIdeas } from '../../src/storage/ideas';
 import { getCritique, listCritiques, listCritiquesForIdea } from '../../src/storage/critiques';
 import { listGroups } from '../../src/storage/groups';
 import {
@@ -39,6 +39,7 @@ import {
   type DocFactExtractorOutput,
 } from '../../src/orchestrator/roles/docFactExtractor';
 import { findSubPhase } from '../../src/orchestrator/subPhases';
+import type { LegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
 
 // ---------------------------------------------------------------------------
 // safeRegisterTool — StrictMode-resilient registerTool wrapper
@@ -266,16 +267,16 @@ const captureIdeaTool: ModelContextTool = {
     if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {
       return 'ERROR: `rawText` must be a non-empty string describing the idea.';
     }
-    const idea = await createIdea({ rawText: rawText.trim(), tags: tags ?? [] });
-    // Signal the UI to select the new idea
-    await dispatchAndWait(
-      'brainstorm:selectIdea',
-      { ideaId: idea.id },
-      `Idea captured and opened: "${idea.rawText.slice(0, 60)}"`,
+    const { ideaId, error } = await dispatchAndWaitForDetail<{ ideaId?: string; error?: string }>(
+      'brainstorm:captureIdea',
+      { rawText: rawText.trim(), tags: tags ?? [] },
     );
+    if (error || !ideaId) {
+      return `ERROR: ${error ?? 'capture failed'}`;
+    }
     return {
-      ideaId: idea.id,
-      message: `Idea captured with id ${idea.id}. Phase 0 is ready — call advance_phase to begin ambiguity extraction.`,
+      ideaId,
+      message: `Idea captured with id ${ideaId}. Phase 0 is ready — call advance_phase to begin ambiguity extraction.`,
     };
   },
 };
@@ -498,8 +499,11 @@ const discardIdeaTool: ModelContextTool = {
     if (!ideaId) return 'ERROR: `ideaId` is required.';
     const idea = await getIdea(ideaId);
     if (!idea) return `ERROR: no idea with id ${ideaId}.`;
-    await discardIdea(ideaId);
-    window.dispatchEvent(new CustomEvent('brainstorm:ideasChanged', { detail: { ideaId, kind: 'discarded', reason } }));
+    await dispatchAndWait(
+      'brainstorm:discardIdea',
+      { ideaId, reason },
+      `Idea discarded: "${ideaId}"`,
+    );
     return `Idea "${ideaId}" moved to discard pile.`;
   },
 };
@@ -525,8 +529,11 @@ const restoreIdeaTool: ModelContextTool = {
     if (idea.status !== 'discarded') {
       return `ERROR: idea "${ideaId}" is not in the discard pile (status=${idea.status}).`;
     }
-    await restoreIdea(ideaId);
-    window.dispatchEvent(new CustomEvent('brainstorm:ideasChanged', { detail: { ideaId, kind: 'restored' } }));
+    await dispatchAndWait(
+      'brainstorm:restoreIdea',
+      { ideaId },
+      `Idea restored: "${ideaId}"`,
+    );
     return `Idea "${ideaId}" restored to the canvas.`;
   },
 };
@@ -1122,7 +1129,7 @@ const retryDocExtractionTool: ModelContextTool = {
 // Lifecycle tools — phase-contextual
 // ---------------------------------------------------------------------------
 
-function makeAdvancePhaseTool(selectedIdea: Idea, specLabel: string, skippable: boolean): ModelContextTool {
+function makeAdvancePhaseTool(selectedIdea: LegacyToolIdea, specLabel: string, skippable: boolean): ModelContextTool {
   return {
     name: 'advance_phase',
     description:
@@ -1166,7 +1173,7 @@ function makeAdvancePhaseTool(selectedIdea: Idea, specLabel: string, skippable: 
   };
 }
 
-function makeSubmitClarificationsTool(selectedIdea: Idea): ModelContextTool {
+function makeSubmitClarificationsTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const questions = selectedIdea.clarifications.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
   return {
     name: 'submit_clarifications',
@@ -1204,7 +1211,7 @@ function makeSubmitClarificationsTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeSelectApproachTool(selectedIdea: Idea): ModelContextTool {
+function makeSelectApproachTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const approaches = selectedIdea.briefState.approaches
     .map((a, i) => `${i + 1}. [${a.id}] ${a.label}: ${a.summary}`)
     .join('\n');
@@ -1255,7 +1262,7 @@ function makeSelectApproachTool(selectedIdea: Idea): ModelContextTool {
 // Micro-step tools — per-entry patches for lens (0.5), challenge (2.5), stress (4.5)
 // ---------------------------------------------------------------------------
 
-function makePinLensTool(selectedIdea: Idea): ModelContextTool {
+function makePinLensTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const lenses = selectedIdea.briefState.lenses
     .map((l, i) => `${i + 1}. [${l.id}] (${l.kind}) ${l.frame} — ${l.insight.slice(0, 80)}`)
     .join('\n');
@@ -1286,7 +1293,7 @@ function makePinLensTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeDismissLensTool(selectedIdea: Idea): ModelContextTool {
+function makeDismissLensTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   return {
     name: 'dismiss_lens',
     description: 'Dismisses a lens the user finds irrelevant. It stays visible but de-emphasized.',
@@ -1313,7 +1320,7 @@ function makeDismissLensTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeNoteLensTool(selectedIdea: Idea): ModelContextTool {
+function makeNoteLensTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   return {
     name: 'note_lens',
     description: 'Attaches the user\'s reaction/note to a lens entry.',
@@ -1341,7 +1348,7 @@ function makeNoteLensTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeRespondChallengeTool(selectedIdea: Idea): ModelContextTool {
+function makeRespondChallengeTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const challenges = selectedIdea.briefState.challenges
     .map((c, i) => `${i + 1}. [${c.id}] ${c.critique.slice(0, 100)}`)
     .join('\n');
@@ -1393,7 +1400,7 @@ function makeRespondChallengeTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeMarkStressHandledTool(selectedIdea: Idea): ModelContextTool {
+function makeMarkStressHandledTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const stresses = selectedIdea.briefState.stressResults
     .map((s, i) => `${i + 1}. [${s.id}] rule ${s.ruleIndex + 1}: ${s.edgeCase.slice(0, 80)}`)
     .join('\n');
@@ -1441,7 +1448,7 @@ function makeMarkStressHandledTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeChooseNextStepTool(selectedIdea: Idea): ModelContextTool {
+function makeChooseNextStepTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   return {
     name: 'choose_next_step',
     description:
@@ -1488,7 +1495,7 @@ function makeChooseNextStepTool(selectedIdea: Idea): ModelContextTool {
  *
  * Phase-contextual tools are registered/unregistered whenever selectedIdea changes.
  */
-export function useBrainstormingTools(selectedIdea: Idea | null): void {
+export function useBrainstormingTools(selectedIdea: LegacyToolIdea | null): void {
   // Global tool AbortController — lives for the component lifetime
   const globalAcRef = useRef<AbortController | null>(null);
   // Lifecycle tool AbortController — re-created whenever selectedIdea changes

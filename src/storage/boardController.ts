@@ -1,0 +1,262 @@
+import { createCapturedIdea } from '../board/ideaFactory';
+import type { ChangeActor, ChangeSetKind, ChangeSetRecord } from '../board/types';
+import type { BoardId, Idea } from '../types';
+import {
+  applyPatches,
+  createEntityPatches,
+  hydrateBoardState,
+  supersedeFutureChanges,
+} from './boardJournal';
+import { getRedoChangeSet, listChangeSets } from './changeSets';
+import { loadBoardDocument } from './boardDocument';
+import { ensureBoard } from './boards';
+import { getDb } from './db';
+
+export interface BoardHistoryState {
+  canUndo: boolean;
+  canRedo: boolean;
+  cursor: number;
+  nextSeq: number;
+}
+
+export interface BoardCommitResult {
+  document: Awaited<ReturnType<typeof loadBoardDocument>>;
+  history: BoardHistoryState;
+  changeSet?: ChangeSetRecord;
+}
+
+export function createBoardController(boardId: BoardId) {
+  return {
+    boardId,
+    captureIdea(input: { rawText: string; tags: string[]; actor: ChangeActor }) {
+      return commitCapturedIdea(boardId, input);
+    },
+    moveIdeaPanel(input: { ideaId: string; x: number; y: number; actor: ChangeActor }) {
+      return commitIdeaMutation(boardId, {
+        kind: 'move_idea',
+        actor: input.actor,
+        summary: `Moved idea ${input.ideaId}`,
+        ideaId: input.ideaId,
+        mutate: idea => {
+          const panel = {
+            ...(idea.panel ?? { width: 260, height: 180 }),
+            x: input.x,
+            y: input.y,
+            width: idea.panel?.width ?? 260,
+            height: idea.panel?.height ?? 180,
+            groupId: idea.panel?.groupId,
+          };
+          return { ...idea, panel };
+        },
+      });
+    },
+    discardIdea(input: { ideaId: string; actor: ChangeActor }) {
+      return commitIdeaMutation(boardId, {
+        kind: 'discard_idea',
+        actor: input.actor,
+        summary: `Discarded idea ${input.ideaId}`,
+        ideaId: input.ideaId,
+        mutate: idea => ({ ...idea, status: 'discarded' }),
+      });
+    },
+    restoreIdea(input: { ideaId: string; actor: ChangeActor }) {
+      return commitIdeaMutation(boardId, {
+        kind: 'restore_idea',
+        actor: input.actor,
+        summary: `Restored idea ${input.ideaId}`,
+        ideaId: input.ideaId,
+        mutate: idea => ({ ...idea, status: 'captured' }),
+      });
+    },
+    undo() {
+      return replayChangeSet(boardId, 'undo');
+    },
+    redo() {
+      return replayChangeSet(boardId, 'redo');
+    },
+    listChangeSets(limit = 50) {
+      return listChangeSets(boardId, limit);
+    },
+    getHistoryState() {
+      return getHistoryState(boardId);
+    },
+  };
+}
+
+async function commitIdeaMutation(
+  boardId: BoardId,
+  input: {
+    kind: Extract<ChangeSetKind, 'move_idea' | 'discard_idea' | 'restore_idea'>;
+    actor: ChangeActor;
+    summary: string;
+    ideaId: string;
+    mutate: (idea: Idea) => Idea;
+  },
+): Promise<BoardCommitResult> {
+  await ensureBoard(boardId);
+  const db = await getDb();
+  const tx = db.transaction(['boards', 'ideas', 'changeSets'], 'readwrite');
+  const boardsStore = tx.objectStore('boards');
+  const ideasStore = tx.objectStore('ideas');
+  const changeSetsStore = tx.objectStore('changeSets');
+  const currentBoard = hydrateBoardState(await boardsStore.get(boardId));
+  if (!currentBoard) throw new Error(`Board not found: ${boardId}`);
+
+  const beforeIdea = await ideasStore.get(input.ideaId);
+  if (!beforeIdea) {
+    throw new Error(`Idea not found: ${input.ideaId}`);
+  }
+
+  const now = Date.now();
+  const seq = currentBoard.nextChangeSeq;
+  const baseSeq = currentBoard.changeCursor;
+  const afterIdea = { ...input.mutate(beforeIdea), id: beforeIdea.id, boardId, updatedAt: now };
+
+  const ideaPatches = createEntityPatches('ideas', afterIdea.id, beforeIdea, afterIdea);
+  if (ideaPatches.forward.length === 0) {
+    await tx.done;
+    const document = await loadBoardDocument(boardId);
+    return { document, history: await getHistoryState(boardId) };
+  }
+
+  const nextBoard = {
+    ...currentBoard,
+    updatedAt: now,
+    changeCursor: seq,
+    nextChangeSeq: seq + 1,
+  };
+  const boardPatches = createEntityPatches('boards', boardId, currentBoard, nextBoard);
+  const changeSet: ChangeSetRecord = {
+    id: crypto.randomUUID(),
+    boardId,
+    seq,
+    baseSeq,
+    kind: input.kind,
+    actor: input.actor,
+    summary: input.summary,
+    affected: [
+      { store: 'boards', id: boardId },
+      { store: 'ideas', id: afterIdea.id },
+    ],
+    forward: [...ideaPatches.forward, ...boardPatches.forward],
+    inverse: [...boardPatches.inverse, ...ideaPatches.inverse],
+    committedAt: now,
+    status: 'committed',
+  };
+
+  await supersedeFutureChanges(changeSetsStore, boardId, currentBoard.changeCursor + 1);
+  await ideasStore.put(afterIdea);
+  await boardsStore.put(nextBoard);
+  await changeSetsStore.put(changeSet);
+  await tx.done;
+
+  const document = await loadBoardDocument(boardId);
+  return { document, changeSet, history: await getHistoryState(boardId) };
+}
+
+async function replayChangeSet(
+  boardId: BoardId,
+  direction: 'undo' | 'redo',
+): Promise<BoardCommitResult | null> {
+  await ensureBoard(boardId);
+  const db = await getDb();
+  const tx = db.transaction(['boards', 'ideas', 'changeSets'], 'readwrite');
+  const boardsStore = tx.objectStore('boards');
+  const changeSetsStore = tx.objectStore('changeSets');
+  const board = hydrateBoardState(await boardsStore.get(boardId));
+  if (!board) throw new Error(`Board not found: ${boardId}`);
+
+  const targetSeq = direction === 'undo' ? board.changeCursor : board.changeCursor + 1;
+  if (targetSeq <= 0) {
+    await tx.done;
+    return null;
+  }
+
+  const changeSet = await changeSetsStore.index('byBoardSeq').get([boardId, targetSeq]);
+  if (!changeSet) {
+    await tx.done;
+    return null;
+  }
+  if (direction === 'redo' && changeSet.status !== 'undone') {
+    await tx.done;
+    return null;
+  }
+
+  await applyPatches(tx, direction === 'undo' ? changeSet.inverse : changeSet.forward);
+  await changeSetsStore.put({
+    ...changeSet,
+    status: direction === 'undo' ? 'undone' : 'committed',
+    undoneAt: direction === 'undo' ? Date.now() : undefined,
+  });
+  await tx.done;
+
+  const document = await loadBoardDocument(boardId);
+  return { document, changeSet, history: await getHistoryState(boardId) };
+}
+
+async function getHistoryState(boardId: BoardId): Promise<BoardHistoryState> {
+  const board = await ensureBoard(boardId);
+  return {
+    canUndo: board.changeCursor > 0,
+    canRedo: !!(await getRedoChangeSet(boardId, board.changeCursor + 1)),
+    cursor: board.changeCursor,
+    nextSeq: board.nextChangeSeq,
+  };
+}
+
+async function commitCapturedIdea(
+  boardId: BoardId,
+  input: { rawText: string; tags: string[]; actor: ChangeActor },
+): Promise<BoardCommitResult> {
+  await ensureBoard(boardId);
+  const db = await getDb();
+  const tx: any = db.transaction(['boards', 'ideas', 'changeSets'], 'readwrite');
+  const boardsStore = tx.objectStore('boards');
+  const ideasStore = tx.objectStore('ideas');
+  const changeSetsStore = tx.objectStore('changeSets');
+  const currentBoard = hydrateBoardState(await boardsStore.get(boardId));
+  if (!currentBoard) throw new Error(`Board not found: ${boardId}`);
+
+  const now = Date.now();
+  const seq = currentBoard.nextChangeSeq;
+  const afterIdea = createCapturedIdea({
+    boardId,
+    rawText: input.rawText,
+    tags: input.tags,
+    createdAt: now,
+  });
+  const ideaPatches = createEntityPatches('ideas', afterIdea.id, undefined, afterIdea);
+  const nextBoard = {
+    ...currentBoard,
+    updatedAt: now,
+    changeCursor: seq,
+    nextChangeSeq: seq + 1,
+  };
+  const boardPatches = createEntityPatches('boards', boardId, currentBoard, nextBoard);
+  const changeSet: ChangeSetRecord = {
+    id: crypto.randomUUID(),
+    boardId,
+    seq,
+    baseSeq: currentBoard.changeCursor,
+    kind: 'capture_idea',
+    actor: input.actor,
+    summary: `Captured idea: ${input.rawText.slice(0, 80)}`,
+    affected: [
+      { store: 'boards', id: boardId },
+      { store: 'ideas', id: afterIdea.id },
+    ],
+    forward: [...ideaPatches.forward, ...boardPatches.forward],
+    inverse: [...boardPatches.inverse, ...ideaPatches.inverse],
+    committedAt: now,
+    status: 'committed',
+  };
+
+  await supersedeFutureChanges(changeSetsStore, boardId, currentBoard.changeCursor + 1);
+  await ideasStore.put(afterIdea);
+  await boardsStore.put(nextBoard);
+  await changeSetsStore.put(changeSet);
+  await tx.done;
+
+  const document = await loadBoardDocument(boardId);
+  return { document, changeSet, history: await getHistoryState(boardId) };
+}

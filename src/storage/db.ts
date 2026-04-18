@@ -1,6 +1,6 @@
 import { openDB as idbOpenDB, type IDBPDatabase, type DBSchema } from 'idb';
 import type { Connection, Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion } from '../types';
-import type { BoardRecord, BoardTweaksRecord, IdeaTurnRecord } from '../board/types';
+import type { BoardRecord, BoardTweaksRecord, ChangeSetRecord, IdeaTurnRecord } from '../board/types';
 
 export interface Schema extends DBSchema {
   boards: {
@@ -80,10 +80,20 @@ export interface Schema extends DBSchema {
       byUpdatedAt: number;
     };
   };
+  changeSets: {
+    key: string;
+    value: ChangeSetRecord;
+    indexes: {
+      byBoardId: string;
+      byBoardSeq: [string, number];
+      byBoardStatus: [string, string];
+      byCommittedAt: number;
+    };
+  };
 }
 
 const DB_NAME = 'brainstorming-orchestrator';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 let _dbPromise: Promise<IDBPDatabase<Schema>> | null = null;
 
@@ -175,6 +185,15 @@ export function getDb(): Promise<IDBPDatabase<Schema>> {
           const connections = transaction.objectStore('connections');
           if (!connections.indexNames.contains('byBoardId')) {
             connections.createIndex('byBoardId', 'boardId');
+          }
+        }
+        if (oldVersion < 8) {
+          if (!db.objectStoreNames.contains('changeSets')) {
+            const store = db.createObjectStore('changeSets', { keyPath: 'id' });
+            store.createIndex('byBoardId', 'boardId');
+            store.createIndex('byBoardSeq', ['boardId', 'seq']);
+            store.createIndex('byBoardStatus', ['boardId', 'status']);
+            store.createIndex('byCommittedAt', 'committedAt');
           }
         }
       },

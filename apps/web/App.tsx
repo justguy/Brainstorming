@@ -26,21 +26,17 @@
  *   'brainstorm:mergeIdeas'   → merge two ideas via LLM into a new one
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { Idea, IdeaCritique, IdeaGroup, Connection, SupportingDoc, ScoutSuggestion } from '../../src/types';
 import { DEFAULT_BOARD_ID } from '../../src/board/types';
-import { loadDefaultBoardDocument } from '../../src/storage/boardDocument';
-import { listIdeas, createIdea, updateIdea, discardIdea, restoreIdea } from '../../src/storage/ideas';
+import { createIdea, updateIdea } from '../../src/storage/ideas';
 import { updateBriefState } from '../../src/storage/ideas';
 import {
   createCritique,
   dismissCritique as dismissCritiqueStore,
-  listCritiques,
   listCritiquesForIdea,
 } from '../../src/storage/critiques';
 import {
-  listSuggestionsByStatus,
-  listSuggestions,
   createSuggestion,
   admitSuggestion as admitSuggestionStore,
   dismissSuggestion as dismissSuggestionStore,
@@ -48,7 +44,6 @@ import {
   getSuggestion,
 } from '../../src/storage/suggestions';
 import {
-  listGroups,
   createGroup,
   updateGroup,
   addIdeaToGroup,
@@ -67,7 +62,7 @@ import { CritiqueCardsLayer } from '../../src/canvas/CritiqueCardsLayer';
 import DiscardPile from '../../src/canvas/DiscardPile';
 import ConnectionsPanel from '../../src/canvas/ConnectionsPanel';
 import DocsModal from '../../src/docs/DocsModal';
-import { countDocsForIdea, listDocsForIdea } from '../../src/storage/docs';
+import { listDocsForIdea } from '../../src/storage/docs';
 import {
   connectionFinder,
   buildConnectionFinderTask,
@@ -94,7 +89,11 @@ import {
   replaceGeneratedConnections,
   upsertConnection,
 } from './connectionState';
-import { listConnections, replaceConnections } from '../../src/storage/connections';
+import {
+  defaultBoardRepository,
+  mapStandaloneBoardSnapshot,
+  type StandaloneBoardSnapshot,
+} from './boardRepository';
 import { SoftModeHint } from './SoftModeHint';
 import {
   dismissSoftModeHint,
@@ -107,6 +106,8 @@ import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDed
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
 import { CaptureIdeaPopover } from './CaptureIdeaPopover';
+import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
+import { createBoardController } from '../../src/storage/boardController';
 
 // ---------------------------------------------------------------------------
 // Hash router
@@ -162,6 +163,8 @@ function connectionStrengthWeight(strength: Connection['strength']): number {
 export default function App(): React.ReactElement {
   const [hash, navigate] = useHashRoute();
   const [boardId, setBoardId] = useState(DEFAULT_BOARD_ID);
+  const boardRepository = useMemo(() => defaultBoardRepository.forBoard(boardId), [boardId]);
+  const boardController = useMemo(() => createBoardController(boardId), [boardId]);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [groups, setGroups] = useState<IdeaGroup[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -201,6 +204,12 @@ export default function App(): React.ReactElement {
   const [animatedCritiqueIds, setAnimatedCritiqueIds] = useState<string[]>([]);
   const [animatedSuggestionIds, setAnimatedSuggestionIds] = useState<string[]>([]);
   const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
+  const [historyState, setHistoryState] = useState({
+    canUndo: false,
+    canRedo: false,
+    cursor: 0,
+    nextSeq: 1,
+  });
   const [aiActions, setAiActions] = useState<Array<{
     origin: 'ai';
     kind: 'connections' | 'scout' | 'critique';
@@ -221,35 +230,40 @@ export default function App(): React.ReactElement {
   // discarded (user dismissed) both stay in IDB but are hidden from the board.
   const visibleIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
   const discardedIdeas = ideas.filter(i => i.status === 'discarded');
-  const selectedIdea = ideas.find(i => i.id === selectedId) ?? null;
+  const selectedBoardIdea = ideas.find(i => i.id === selectedId) ?? null;
+  const selectedLegacyToolIdea = createLegacyToolIdea(selectedBoardIdea);
   const activeCritiques = critiques.filter(critique => critique.status === 'active');
 
   // Register WebMCP tools (global + lifecycle)
-  useBrainstormingTools(selectedIdea);
+  useBrainstormingTools(selectedLegacyToolIdea);
 
   // ---------------------------------------------------------------------------
   // Data loading
   // ---------------------------------------------------------------------------
 
-  function applyBoardSnapshot(snapshot: Awaited<ReturnType<typeof loadDefaultBoardDocument>>): void {
+  function applyBoardSnapshot(snapshot: StandaloneBoardSnapshot): void {
     setBoardId(snapshot.board.id);
     setIdeas(snapshot.ideas);
     setGroups(snapshot.groups);
     setConnections(snapshot.connections);
     setCritiques(snapshot.critiques);
-    setSuggestions(snapshot.suggestions.filter(suggestion => suggestion.status === 'pending').slice(0, MAX_VISIBLE_SUGGESTIONS));
-    setDocCounts(() => {
-      const counts: Record<string, number> = {};
-      for (const doc of snapshot.docs) {
-        counts[doc.ideaId] = (counts[doc.ideaId] ?? 0) + 1;
-      }
-      return counts;
-    });
+    setSuggestions(snapshot.suggestions);
+    setDocCounts(snapshot.docCounts);
+  }
+
+  function applyCommittedBoard(
+    document: Awaited<ReturnType<typeof boardRepository.loadDocument>>,
+    history: typeof historyState,
+  ): void {
+    applyBoardSnapshot(mapStandaloneBoardSnapshot(document));
+    setHistoryState(history);
+    setSelectedId(prev => (prev && document.ideas.some(idea => idea.id === prev) ? prev : null));
   }
 
   async function loadBoard() {
     try {
-      applyBoardSnapshot(await loadDefaultBoardDocument());
+      applyBoardSnapshot(await boardRepository.loadSnapshot());
+      setHistoryState(await boardController.getHistoryState());
     } catch {
       // non-fatal
     } finally {
@@ -267,14 +281,12 @@ export default function App(): React.ReactElement {
 
   async function loadDocCounts(ideaIds: string[]): Promise<void> {
     try {
-      const entries = await Promise.all(
-        ideaIds.map(async id => [id, await countDocsForIdea(id, boardId)] as const),
+      const counts = Object.fromEntries(
+        await Promise.all(
+          ideaIds.map(async id => [id, await boardRepository.countDocsForIdea(id)] as const),
+        ),
       );
-      setDocCounts(prev => {
-        const next = { ...prev };
-        for (const [id, n] of entries) next[id] = n;
-        return next;
-      });
+      setDocCounts(prev => ({ ...prev, ...counts }));
     } catch {
       // non-fatal
     }
@@ -308,7 +320,7 @@ export default function App(): React.ReactElement {
 
   useEffect(() => {
     if (!connectionsHydrated) return;
-    replaceConnections(connections, boardId).catch(() => {
+    boardRepository.replaceConnections(connections).catch(() => {
       // non-fatal
     });
   }, [boardId, connections, connectionsHydrated]);
@@ -446,12 +458,19 @@ export default function App(): React.ReactElement {
   // Canvas operations
   // ---------------------------------------------------------------------------
 
-  async function handleMove(ideaId: string, x: number, y: number): Promise<void> {
-    const idea = ideas.find(i => i.id === ideaId);
-    if (!idea) return;
-    const panel = { ...(idea.panel ?? { width: 260, height: 180 }), x, y, width: idea.panel?.width ?? 260, height: idea.panel?.height ?? 180, groupId: idea.panel?.groupId };
-    const updated = await updateIdea(ideaId, { panel });
-    setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+  async function handleMove(
+    ideaId: string,
+    x: number,
+    y: number,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
+    const result = await boardController.moveIdeaPanel({
+      ideaId,
+      x,
+      y,
+      actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
+    });
+    applyCommittedBoard(result.document, result.history);
     markActivity('edit');
   }
 
@@ -766,12 +785,72 @@ export default function App(): React.ReactElement {
       loadCritiques();
     };
 
+    const handleCaptureIdeaEvent = async (e: Event) => {
+      const ev = e as CustomEvent<{ rawText: string; tags?: string[]; requestId?: string }>;
+      const { rawText, tags, requestId } = ev.detail;
+      let ideaId: string | undefined;
+      let error: string | undefined;
+      setCreating(true);
+      try {
+        const result = await boardController.captureIdea({
+          rawText: rawText.trim(),
+          tags: tags ?? [],
+          actor: { type: 'tool', source: 'webmcp' },
+        });
+        applyCommittedBoard(result.document, result.history);
+        ideaId = result.changeSet?.affected.find(entry => entry.store === 'ideas')?.id;
+        setSelectedId(ideaId ?? null);
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'capture failed';
+      } finally {
+        setCreating(false);
+      }
+      if (requestId) {
+        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ideaId, error } }));
+      }
+    };
+
     // Canvas operations — delegate to the same handlers the UI uses
     const handleMoveEvent = async (e: Event) => {
       const ev = e as CustomEvent<{ ideaId: string; x: number; y: number; requestId?: string }>;
       const { ideaId, x, y, requestId } = ev.detail;
-      try { await handleMove(ideaId, x, y); } catch (err) { console.error('[App] move failed:', err); }
+      try { await handleMove(ideaId, x, y, 'webmcp'); } catch (err) { console.error('[App] move failed:', err); }
       if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
+    };
+    const handleDiscardIdeaEvent = async (e: Event) => {
+      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
+      const { ideaId, requestId } = ev.detail;
+      let error: string | undefined;
+      try {
+        const result = await boardController.discardIdea({
+          ideaId,
+          actor: { type: 'tool', source: 'webmcp' },
+        });
+        applyCommittedBoard(result.document, result.history);
+        if (selectedId === ideaId) setSelectedId(null);
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'discard failed';
+      }
+      if (requestId) {
+        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
+      }
+    };
+    const handleRestoreIdeaEvent = async (e: Event) => {
+      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
+      const { ideaId, requestId } = ev.detail;
+      let error: string | undefined;
+      try {
+        const result = await boardController.restoreIdea({
+          ideaId,
+          actor: { type: 'tool', source: 'webmcp' },
+        });
+        applyCommittedBoard(result.document, result.history);
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'restore failed';
+      }
+      if (requestId) {
+        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
+      }
     };
     const handleGroupEvent = async (e: Event) => {
       const ev = e as CustomEvent<{ ideaIdA: string; ideaIdB: string; requestId?: string }>;
@@ -946,6 +1025,7 @@ export default function App(): React.ReactElement {
       }
     };
 
+    window.addEventListener('brainstorm:captureIdea', handleCaptureIdeaEvent as EventListener);
     window.addEventListener('brainstorm:selectIdea', handleSelectIdea);
     window.addEventListener('brainstorm:advancePhase', handleAdvancePhase as EventListener);
     window.addEventListener('brainstorm:exportHandoff', handleExportHandoff);
@@ -954,6 +1034,8 @@ export default function App(): React.ReactElement {
     window.addEventListener('brainstorm:patchChallenge', handlePatchChallenge as EventListener);
     window.addEventListener('brainstorm:patchStress', handlePatchStress as EventListener);
     window.addEventListener('brainstorm:movePanel', handleMoveEvent as EventListener);
+    window.addEventListener('brainstorm:discardIdea', handleDiscardIdeaEvent as EventListener);
+    window.addEventListener('brainstorm:restoreIdea', handleRestoreIdeaEvent as EventListener);
     window.addEventListener('brainstorm:groupIdeas', handleGroupEvent as EventListener);
     window.addEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
     window.addEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
@@ -970,6 +1052,7 @@ export default function App(): React.ReactElement {
     window.addEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
 
     return () => {
+      window.removeEventListener('brainstorm:captureIdea', handleCaptureIdeaEvent as EventListener);
       window.removeEventListener('brainstorm:selectIdea', handleSelectIdea);
       window.removeEventListener('brainstorm:advancePhase', handleAdvancePhase as EventListener);
       window.removeEventListener('brainstorm:exportHandoff', handleExportHandoff);
@@ -978,6 +1061,8 @@ export default function App(): React.ReactElement {
       window.removeEventListener('brainstorm:patchChallenge', handlePatchChallenge as EventListener);
       window.removeEventListener('brainstorm:patchStress', handlePatchStress as EventListener);
       window.removeEventListener('brainstorm:movePanel', handleMoveEvent as EventListener);
+      window.removeEventListener('brainstorm:discardIdea', handleDiscardIdeaEvent as EventListener);
+      window.removeEventListener('brainstorm:restoreIdea', handleRestoreIdeaEvent as EventListener);
       window.removeEventListener('brainstorm:groupIdeas', handleGroupEvent as EventListener);
       window.removeEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
       window.removeEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
@@ -1008,9 +1093,13 @@ export default function App(): React.ReactElement {
         .split(',')
         .map(t => t.trim())
         .filter(Boolean);
-      const idea = await createIdea({ boardId, rawText: text, tags });
-      await loadIdeas();
-      setSelectedId(idea.id);
+      const result = await boardController.captureIdea({
+        rawText: text,
+        tags,
+        actor: { type: 'user', source: 'canvas' },
+      });
+      applyCommittedBoard(result.document, result.history);
+      setSelectedId(result.changeSet?.affected.find(entry => entry.store === 'ideas')?.id ?? null);
       setNewIdeaText('');
       setNewIdeaTags('');
       markActivity('edit');
@@ -1031,9 +1120,12 @@ export default function App(): React.ReactElement {
 
   async function handleDiscard(ideaId: string): Promise<void> {
     try {
-      await discardIdea(ideaId);
+      const result = await boardController.discardIdea({
+        ideaId,
+        actor: { type: 'user', source: 'canvas' },
+      });
+      applyCommittedBoard(result.document, result.history);
       if (selectedId === ideaId) setSelectedId(null);
-      await loadIdeas();
       markActivity('edit');
     } catch (err) {
       console.error('[App] discard failed:', err);
@@ -1042,11 +1134,34 @@ export default function App(): React.ReactElement {
 
   async function handleRestore(ideaId: string): Promise<void> {
     try {
-      await restoreIdea(ideaId);
-      await loadIdeas();
+      const result = await boardController.restoreIdea({
+        ideaId,
+        actor: { type: 'user', source: 'canvas' },
+      });
+      applyCommittedBoard(result.document, result.history);
       markActivity('edit');
     } catch (err) {
       console.error('[App] restore failed:', err);
+    }
+  }
+
+  async function handleUndo(): Promise<void> {
+    try {
+      const result = await boardController.undo();
+      if (!result) return;
+      applyCommittedBoard(result.document, result.history);
+    } catch (err) {
+      console.error('[App] undo failed:', err);
+    }
+  }
+
+  async function handleRedo(): Promise<void> {
+    try {
+      const result = await boardController.redo();
+      if (!result) return;
+      applyCommittedBoard(result.document, result.history);
+    } catch (err) {
+      console.error('[App] redo failed:', err);
     }
   }
 
@@ -1063,9 +1178,9 @@ export default function App(): React.ReactElement {
       const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
       const discarded = ideas.filter(i => i.status === 'discarded');
       const docsPerIdea = await Promise.all(
-        boardIdeas.map(i => listDocsForIdea(i.id, boardId).catch(() => [] as SupportingDoc[])),
+        boardIdeas.map(idea => boardRepository.listDocsForIdea(idea.id).catch(() => [] as SupportingDoc[])),
       );
-      const supportingDocs = docsPerIdea.flat().filter(d => d.status === 'ready');
+      const supportingDocs = docsPerIdea.flat().filter(doc => doc.status === 'ready');
 
       const task = buildConnectionFinderTask({
         boardIdeas,
@@ -1212,11 +1327,11 @@ export default function App(): React.ReactElement {
       const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
       const discarded = ideas.filter(i => i.status === 'discarded');
       const docsPerIdea = await Promise.all(
-        boardIdeas.map(i => listDocsForIdea(i.id, boardId).catch(() => [] as SupportingDoc[])),
+        boardIdeas.map(idea => boardRepository.listDocsForIdea(idea.id).catch(() => [] as SupportingDoc[])),
       );
-      const supportingDocs = docsPerIdea.flat().filter(d => d.status === 'ready');
+      const supportingDocs = docsPerIdea.flat().filter(doc => doc.status === 'ready');
 
-      const existing = await listSuggestions(boardId);
+      const existing = await boardRepository.listSuggestions();
       const alreadyProposedRawTexts = existing
         .filter(s => s.status === 'pending' || s.status === 'admitted')
         .map(s => s.rawText);
@@ -1364,7 +1479,7 @@ export default function App(): React.ReactElement {
     }
 
     if (softModeAssessment.inferredMode === 'stress') {
-      const targetIdeaId = selectedIdea?.id ?? visibleIdeas[0]?.id;
+      const targetIdeaId = selectedBoardIdea?.id ?? visibleIdeas[0]?.id;
       if (targetIdeaId) await runCritiqueIdea(targetIdeaId);
     }
   }
@@ -1376,7 +1491,7 @@ export default function App(): React.ReactElement {
       case 'structure':
         return 'Find links';
       case 'stress':
-        return selectedIdea || visibleIdeas[0] ? 'Stress-test idea' : undefined;
+        return selectedBoardIdea || visibleIdeas[0] ? 'Stress-test idea' : undefined;
       case 'converge':
       default:
         return undefined;
@@ -1404,7 +1519,7 @@ export default function App(): React.ReactElement {
         return;
       }
 
-      const critiqueTarget = selectedIdea ?? visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) > 0) ?? visibleIdeas[0];
+      const critiqueTarget = selectedBoardIdea ?? visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) > 0) ?? visibleIdeas[0];
       if (critiqueTarget) {
         const activeForIdea = activeCritiques.filter(critique => critique.ideaId === critiqueTarget.id);
         const lastCritiqueAt = auto.critiqueByIdea[critiqueTarget.id] ?? 0;
@@ -1448,7 +1563,7 @@ export default function App(): React.ReactElement {
     connections.length,
     suggestions.length,
     docCounts,
-    selectedIdea,
+    selectedBoardIdea,
     activeCritiques,
   ]);
 
@@ -1523,6 +1638,22 @@ export default function App(): React.ReactElement {
               ai:{aiActions[0].kind}
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => { void handleUndo(); }}
+            disabled={!historyState.canUndo}
+            className="text-sm text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 rounded px-2 py-1 disabled:opacity-40"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={() => { void handleRedo(); }}
+            disabled={!historyState.canRedo}
+            className="text-sm text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 rounded px-2 py-1 disabled:opacity-40"
+          >
+            Redo
+          </button>
           <button
             type="button"
             onClick={() => navigate('#/options')}
@@ -1675,7 +1806,7 @@ export default function App(): React.ReactElement {
         })()}
 
         {/* Workspace slideover */}
-        {selectedIdea && (
+        {selectedBoardIdea && (
           <>
             <div
               className="absolute inset-0 bg-black/20 z-30"
@@ -1698,9 +1829,9 @@ export default function App(): React.ReactElement {
               </div>
               <div className="flex-1 min-h-0">
                 <Workspace
-                  idea={selectedIdea}
+                  idea={selectedBoardIdea}
                   onUpdate={handleIdeaUpdate}
-                  docCount={docCounts[selectedIdea.id] ?? 0}
+                  docCount={docCounts[selectedBoardIdea.id] ?? 0}
                   onOpenDocs={id => setDocsIdeaId(id)}
                 />
               </div>

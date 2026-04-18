@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { Density, Idea, LlmMessage } from '../types';
 import { advance } from '../orchestrator/stateMachine';
-import { SUB_PHASES, findSubPhase } from '../orchestrator/subPhases';
 import { getSettings } from '../storage/settings';
 import { updateIdea } from '../storage/ideas';
 import { invokeActiveTabTool } from '../webmcp/contextBridge';
@@ -14,6 +13,7 @@ import ApproachTemplate from './fallbacks/ApproachTemplate';
 import LensGrid from './LensGrid';
 import ChallengesList from './ChallengesList';
 import StressTestTiles from './StressTestTiles';
+import { createLegacyWorkspaceAdapter } from './legacyPhaseAdapter';
 
 function slugify(text: string): string {
   // Phase 3 fix: spec says first 40 chars, kebab-cased
@@ -149,9 +149,8 @@ export default function Workspace({ idea: initialIdea, onUpdate, docCount = 0, o
     }
   }
 
-  const currentPhase = idea.phase as number;
-  const activeSpec = findSubPhase(currentPhase);
-  const showFallback = idea.readiness === 'yellow';
+  const phaseAdapter = createLegacyWorkspaceAdapter(idea);
+  const { activeSpec, currentPhase, showFallback } = phaseAdapter;
 
   function renderActivePhaseInput(): React.ReactNode {
     if (!activeSpec) return null;
@@ -443,41 +442,36 @@ export default function Workspace({ idea: initialIdea, onUpdate, docCount = 0, o
 
       {/* Phase sections */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
-        {SUB_PHASES.map(spec => {
-          const p = spec.number;
-          const isLocked = p > currentPhase;
-          const isActive = Math.abs(p - currentPhase) < 1e-9;
-          const isMicro = spec.kind === 'micro';
-          const title = isMicro ? `${spec.label} (optional)` : spec.label;
-
+        {phaseAdapter.sections.map(section => {
+          const { spec } = section;
           return (
             <div
               key={spec.id}
-              className={isMicro ? 'pl-6 border-l-2 border-violet-200 ml-2' : ''}
+              className={section.isMicro ? 'pl-6 border-l-2 border-violet-200 ml-2' : ''}
             >
               <PhaseSection
-                phaseNumber={p}
-                title={title}
-                locked={isLocked}
-                active={isActive}
+                phaseNumber={section.phaseNumber}
+                title={section.title}
+                locked={section.isLocked}
+                active={section.isActive}
               >
                 {/* Render markdown artifact for completed main phases */}
-                {!isLocked && !isActive && !isMicro && idea.artifactMd && (
+                {!section.isLocked && !section.isActive && !section.isMicro && section.artifactContent && (
                   <Markdown
-                    content={extractPhaseSection(idea.artifactMd, Math.floor(p))}
+                    content={section.artifactContent}
                     density={density}
                   />
                 )}
 
                 {/* Completed micro-step: show micro-specific UI in read-only mode via same component */}
-                {!isLocked && !isActive && isMicro && renderMicroReadOnly(spec.componentKey)}
+                {!section.isLocked && !section.isActive && section.isMicro && renderMicroReadOnly(spec.componentKey)}
 
                 {/* Active phase: show full artifact so far + interactive input */}
-                {isActive && (
+                {section.isActive && (
                   <div className="space-y-4">
-                    {!isMicro && idea.artifactMd && (
+                    {!section.isMicro && section.artifactContent && (
                       <Markdown
-                        content={extractPhaseSection(idea.artifactMd, Math.floor(p))}
+                        content={section.artifactContent}
                         density={density}
                       />
                     )}
@@ -491,32 +485,4 @@ export default function Workspace({ idea: initialIdea, onUpdate, docCount = 0, o
       </div>
     </div>
   );
-}
-
-/**
- * Extract the content for a specific phase from the full artifactMd.
- * Looks for a heading like `## Phase N:` and returns its content until the next `## Phase`.
- * Falls back to full content if nothing matches.
- */
-function extractPhaseSection(artifactMd: string, phase: number): string {
-  const lines = artifactMd.split('\n');
-  const phaseHeading = new RegExp(`^##\\s+Phase\\s+${phase}[^0-9]`, 'i');
-  const nextPhaseHeading = /^##\s+Phase\s+\d/i;
-
-  let inside = false;
-  const out: string[] = [];
-
-  for (const line of lines) {
-    if (!inside && phaseHeading.test(line)) {
-      inside = true;
-      out.push(line);
-      continue;
-    }
-    if (inside) {
-      if (nextPhaseHeading.test(line) && !phaseHeading.test(line)) break;
-      out.push(line);
-    }
-  }
-
-  return out.length > 0 ? out.join('\n') : artifactMd;
 }

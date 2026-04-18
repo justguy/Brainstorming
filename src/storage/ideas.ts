@@ -1,3 +1,4 @@
+import { createCapturedIdea, defaultBriefState, defaultPanelForIdea } from '../board/ideaFactory';
 import { DEFAULT_BOARD_ID } from '../board/types';
 import type { BoardId, Idea, LlmMessage, BriefState, Panel } from '../types';
 import { getDb } from './db';
@@ -9,39 +10,6 @@ import {
   syncTurnsForIdea,
   type TurnLogPage,
 } from './turns';
-
-// Lay new panels along a diagonal cascade so they don't all overlap.
-// The offset is seeded from the idea's createdAt so a given idea is stable.
-function defaultPanelFor(idea: Idea): Panel {
-  const seed = Math.floor((idea.createdAt ?? Date.now()) % 10000) / 10000;
-  const col = Math.floor(seed * 6);
-  const row = Math.floor(seed * 4);
-  return {
-    x: 40 + col * 60 + row * 20,
-    y: 40 + row * 80 + col * 15,
-    width: 260,
-    height: 180,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function defaultBriefState(): BriefState {
-  return {
-    mustStayTrueRules: [],
-    approaches: [],
-    rejectedApproaches: [],
-    risks: [],
-    successCriteria: [],
-    outOfScope: [],
-    openQuestions: [],
-    lenses: [],
-    challenges: [],
-    stressResults: [],
-  };
-}
 
 // Backfill fields added in later migrations onto older rows so callers can
 // assume the full shape. Mutates a copy, not the caller's object.
@@ -64,7 +32,7 @@ function hydrateIdea(idea: Idea): Idea {
       stressResults: bs.stressResults ?? [],
     },
     lastTurnAt: idea.lastTurnAt ?? (idea.turnLog.length > 0 ? idea.updatedAt : undefined),
-    panel: idea.panel ?? defaultPanelFor(idea),
+    panel: idea.panel ?? defaultPanelForIdea(idea),
   };
   return hydrated;
 }
@@ -112,23 +80,7 @@ export async function createIdea({
   boardId?: BoardId;
 }): Promise<Idea> {
   await ensureBoardStorageBridge(boardId);
-  const now = Date.now();
-  const idea: Idea = {
-    id: crypto.randomUUID(),
-    boardId,
-    rawText,
-    tags,
-    createdAt: now,
-    updatedAt: now,
-    status: 'captured',
-    phase: 0,
-    briefState: defaultBriefState(),
-    ambiguities: [],
-    clarifications: [],
-    turnLog: [],
-    readiness: 'red',
-  };
-  idea.panel = panel ?? defaultPanelFor(idea);
+  const idea = createCapturedIdea({ rawText, tags, panel, boardId });
   const db = await getDb();
   await db.put('ideas', idea);
   return idea;

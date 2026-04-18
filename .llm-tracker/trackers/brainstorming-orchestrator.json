@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-025 remains in progress, but the first board-first foundation slice is verified: board/turn/tweak stores, board-scoped repositories, migration bridge, single board-document hydration, and successful typecheck/build/build:web. Next work is reducing the remaining phase/workspace compatibility surface.",
-    "rev": 20,
-    "updatedAt": "2026-04-18T02:39:21.767Z"
+    "scratchpad": "bo-025 is complete. The standalone web app now hydrates from a board repository snapshot and isolates legacy phase/workspace concerns behind explicit adapters. Starting bo-026 next: patch journal and reversible BoardController foundation.",
+    "rev": 23,
+    "updatedAt": "2026-04-18T03:08:32.510Z"
   },
   "tasks": [
     {
@@ -1173,7 +1173,7 @@
       "id": "bo-025",
       "title": "Design Core: board document and board-scoped repositories",
       "goal": "Replace the web app's phase-first hot path with a canonical board document and board-scoped stores for boards, ideas, connections, critiques, turns, and tweaks, with a migration bridge from existing local data.",
-      "status": "in_progress",
+      "status": "complete",
       "placement": {
         "swimlaneId": "architecture",
         "priorityId": "p0"
@@ -1214,23 +1214,13 @@
           "board-model",
           "migration"
         ],
-        "notes": "First board-first foundation slice landed and passed typecheck plus both builds. Remaining work is phase/workspace compatibility reduction and broader controller cutover, so the task stays in_progress.",
+        "notes": "Completed the board-first repository cutover for the standalone web app: App now hydrates from a board repository snapshot, workspace phase rendering is isolated behind a legacy adapter, and WebMCP lifecycle tools consume a legacy tool projection instead of the raw selected board idea.",
         "files_touched": [
-          "src/types.ts",
-          "src/board/types.ts",
-          "src/storage/db.ts",
-          "src/storage/boards.ts",
-          "src/storage/tweaks.ts",
-          "src/storage/turns.ts",
-          "src/storage/migrationBridge.ts",
-          "src/storage/boardDocument.ts",
-          "src/storage/ideas.ts",
-          "src/storage/groups.ts",
-          "src/storage/critiques.ts",
-          "src/storage/suggestions.ts",
-          "src/storage/docs.ts",
-          "src/storage/connections.ts",
-          "apps/web/App.tsx"
+          "apps/web/App.tsx",
+          "apps/web/boardRepository.ts",
+          "apps/web/webmcp-tools.ts",
+          "src/workspace/Workspace.tsx",
+          "src/workspace/legacyPhaseAdapter.ts"
         ],
         "verification": [
           "npm run typecheck",
@@ -1248,7 +1238,7 @@
       "id": "bo-026",
       "title": "Design Core: patch journal and reversible BoardController",
       "goal": "Route all committed board mutations through a central BoardController that emits forward and inverse JSON patches, persists ChangeSets, and becomes the only mutation path for user and AI actions.",
-      "status": "not_started",
+      "status": "in_progress",
       "placement": {
         "swimlaneId": "architecture",
         "priorityId": "p0"
@@ -1259,7 +1249,7 @@
         "apps/web/App.tsx:160-313"
       ],
       "effort": "l",
-      "comment": "Undo/redo and readable change history require one mutation engine rather than scattered React state writes.",
+      "comment": "First journal slice landed: board changeCursor/nextChangeSeq metadata, changeSets persistence, id-keyed JSON patches, BoardController-backed capture/move/discard/restore, WebMCP routed through the same path, and undo/redo replay in the web app. Remaining work: widen the controller to multi-entity mutations and remove remaining direct committed writes.",
       "definition_of_done": [
         "All committed board mutations route through a single applyChange or equivalent mutation API.",
         "ChangeSets persist forward and inverse JSON patches with actor, summary, and affected entity metadata.",
@@ -1287,7 +1277,9 @@
           "history"
         ],
         "notes": "This is the mechanism behind undo/redo, change history, and reversible AI structural edits."
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
