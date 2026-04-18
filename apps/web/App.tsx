@@ -33,22 +33,16 @@ import { createIdea, updateIdea } from '../../src/storage/ideas';
 import { updateBriefState } from '../../src/storage/ideas';
 import {
   createCritique,
-  dismissCritique as dismissCritiqueStore,
   listCritiquesForIdea,
 } from '../../src/storage/critiques';
 import {
   createSuggestion,
   admitSuggestion as admitSuggestionStore,
-  dismissSuggestion as dismissSuggestionStore,
   setSuggestionElaboration,
   getSuggestion,
 } from '../../src/storage/suggestions';
 import {
-  createGroup,
-  updateGroup,
-  addIdeaToGroup,
   removeIdeaFromGroup,
-  getGroup,
 } from '../../src/storage/groups';
 import { getSettings } from '../../src/storage/settings';
 import { advance } from '../../src/orchestrator/stateMachine';
@@ -474,53 +468,39 @@ export default function App(): React.ReactElement {
     markActivity('edit');
   }
 
-  async function handleGroup(ideaIdA: string, ideaIdB: string): Promise<void> {
+  async function handleGroup(
+    ideaIdA: string,
+    ideaIdB: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
     const a = ideas.find(i => i.id === ideaIdA);
     const b = ideas.find(i => i.id === ideaIdB);
     if (!a || !b) return;
 
     setCanvasBusy('Naming group…');
     try {
-      let groupId: string;
-
-      // If B is already in a group, join it. Else if A is, add B to A's. Else create.
-      if (b.panel?.groupId) {
-        groupId = b.panel.groupId;
-        await addIdeaToGroup(groupId, ideaIdA);
-      } else if (a.panel?.groupId) {
-        groupId = a.panel.groupId;
-        await addIdeaToGroup(groupId, ideaIdB);
-      } else {
-        const g = await createGroup([ideaIdA, ideaIdB], undefined, undefined, boardId);
-        groupId = g.id;
-      }
-
-      // Stamp groupId on both ideas' panels
-      const patchedA = await updateIdea(ideaIdA, {
-        panel: { ...(a.panel ?? { x: 0, y: 0, width: 260, height: 180 }), groupId },
+      const grouped = await boardController.groupIdeas({
+        ideaIdA,
+        ideaIdB,
+        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
       });
-      const patchedB = await updateIdea(ideaIdB, {
-        panel: { ...(b.panel ?? { x: 0, y: 0, width: 260, height: 180 }), groupId },
-      });
-      setIdeas(prev =>
-        prev.map(i => (i.id === patchedA.id ? patchedA : i.id === patchedB.id ? patchedB : i)),
-      );
+      applyCommittedBoard(grouped.document, grouped.history);
 
-      // Refresh groups + kick off theming
-      await loadGroups();
-      const group = await getGroup(groupId);
+      const group = grouped.document.groups.find((entry: IdeaGroup) => entry.id === grouped.groupId);
       if (group) {
         const groupIdeas = group.ideaIds
-          .map(id => (id === patchedA.id ? patchedA : id === patchedB.id ? patchedB : ideas.find(x => x.id === id)))
+          .map(id => grouped.document.ideas.find(entry => entry.id === id))
           .filter((x): x is Idea => !!x);
         const task = buildGroupThemerTask(groupIdeas);
-        const { result } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
-        if (result) {
-          await updateGroup(groupId, {
-            theme: result.theme,
-            sharedQuestion: result.sharedQuestion,
+        const { result: themeResult } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
+        if (themeResult) {
+          const themed = await boardController.setGroupTheme({
+            groupId: group.id,
+            theme: themeResult.theme,
+            sharedQuestion: themeResult.sharedQuestion,
+            actor: { type: 'ai', source: 'system', label: 'groupThemer' },
           });
-          await loadGroups();
+          applyCommittedBoard(themed.document, themed.history);
         }
       }
       markActivity('group');
@@ -531,17 +511,18 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function handleUngroup(ideaId: string): Promise<void> {
+  async function handleUngroup(
+    ideaId: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
     const idea = ideas.find(i => i.id === ideaId);
     if (!idea?.panel?.groupId) return;
-    const groupId = idea.panel.groupId;
     try {
-      await removeIdeaFromGroup(groupId, ideaId);
-      const patched = await updateIdea(ideaId, {
-        panel: { ...idea.panel, groupId: undefined },
+      const result = await boardController.ungroupIdea({
+        ideaId,
+        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
       });
-      setIdeas(prev => prev.map(i => (i.id === patched.id ? patched : i)));
-      await loadGroups();
+      applyCommittedBoard(result.document, result.history);
       markActivity('group');
     } catch (err) {
       console.error('[App] ungroup failed:', err);
@@ -855,13 +836,13 @@ export default function App(): React.ReactElement {
     const handleGroupEvent = async (e: Event) => {
       const ev = e as CustomEvent<{ ideaIdA: string; ideaIdB: string; requestId?: string }>;
       const { ideaIdA, ideaIdB, requestId } = ev.detail;
-      try { await handleGroup(ideaIdA, ideaIdB); } catch (err) { console.error('[App] group failed:', err); }
+      try { await handleGroup(ideaIdA, ideaIdB, 'webmcp'); } catch (err) { console.error('[App] group failed:', err); }
       if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
     };
     const handleUngroupEvent = async (e: Event) => {
       const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
       const { ideaId, requestId } = ev.detail;
-      try { await handleUngroup(ideaId); } catch (err) { console.error('[App] ungroup failed:', err); }
+      try { await handleUngroup(ideaId, 'webmcp'); } catch (err) { console.error('[App] ungroup failed:', err); }
       if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
     };
     const handleMergeEvent = async (e: Event) => {
@@ -954,7 +935,7 @@ export default function App(): React.ReactElement {
       let error: string | undefined;
 
       try {
-        await handleDismissCritique(critiqueId);
+        await handleDismissCritique(critiqueId, 'webmcp');
       } catch (err) {
         error = err instanceof Error ? err.message : 'dismiss critique failed';
       }
@@ -1016,7 +997,7 @@ export default function App(): React.ReactElement {
       const { suggestionId, requestId } = ev.detail;
       let error: string | undefined;
       try {
-        await handleDismissSuggestion(suggestionId);
+        await handleDismissSuggestion(suggestionId, 'webmcp');
       } catch (err) {
         error = err instanceof Error ? err.message : 'dismiss failed';
       }
@@ -1294,10 +1275,16 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function handleDismissCritique(id: string): Promise<void> {
+  async function handleDismissCritique(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
     try {
-      await dismissCritiqueStore(id);
-      await loadCritiques();
+      const result = await boardController.dismissCritique({
+        critiqueId: id,
+        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
+      });
+      applyCommittedBoard(result.document, result.history);
     } catch (err) {
       console.error('[App] dismiss critique failed:', err);
     }
@@ -1434,11 +1421,17 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function handleDismissSuggestion(id: string): Promise<void> {
+  async function handleDismissSuggestion(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
     setSuggestionBusy(prev => ({ ...prev, [id]: 'dismiss' }));
     try {
-      await dismissSuggestionStore(id);
-      await loadSuggestions();
+      const result = await boardController.dismissSuggestion({
+        suggestionId: id,
+        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
+      });
+      applyCommittedBoard(result.document, result.history);
     } catch (err) {
       console.error('[App] dismiss suggestion failed:', err);
     } finally {

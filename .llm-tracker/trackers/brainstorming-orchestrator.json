@@ -69,8 +69,8 @@
       }
     ],
     "scratchpad": "bo-025 is complete. The standalone web app now hydrates from a board repository snapshot and isolates legacy phase/workspace concerns behind explicit adapters. Starting bo-026 next: patch journal and reversible BoardController foundation.",
-    "rev": 23,
-    "updatedAt": "2026-04-18T03:08:32.510Z"
+    "rev": 25,
+    "updatedAt": "2026-04-18T03:26:09.466Z"
   },
   "tasks": [
     {
@@ -1249,7 +1249,7 @@
         "apps/web/App.tsx:160-313"
       ],
       "effort": "l",
-      "comment": "First journal slice landed: board changeCursor/nextChangeSeq metadata, changeSets persistence, id-keyed JSON patches, BoardController-backed capture/move/discard/restore, WebMCP routed through the same path, and undo/redo replay in the web app. Remaining work: widen the controller to multi-entity mutations and remove remaining direct committed writes.",
+      "comment": "Expanded the live journal slice again: critique and suggestion dismissals now route through controller-backed changeSets alongside capture/move/discard/restore/group/ungroup/setGroupTheme, and undo/redo replays those overlay patches too. Remaining work: critique creation, suggestion admit/elaborate, docs, connections, and merge still have direct committed writes.",
       "definition_of_done": [
         "All committed board mutations route through a single applyChange or equivalent mutation API.",
         "ChangeSets persist forward and inverse JSON patches with actor, summary, and affected entity metadata.",

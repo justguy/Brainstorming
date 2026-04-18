@@ -7,23 +7,14 @@ import {
   hydrateBoardState,
   supersedeFutureChanges,
 } from './boardJournal';
-import { getRedoChangeSet, listChangeSets } from './changeSets';
+import { listChangeSets } from './changeSets';
 import { loadBoardDocument } from './boardDocument';
 import { ensureBoard } from './boards';
+import { getBoardHistoryState } from './boardHistoryState';
+import { commitGroupIdeas, commitSetGroupTheme, commitUngroupIdea } from './boardGroupMutations';
+import type { BoardCommitResult } from './boardControllerTypes';
 import { getDb } from './db';
-
-export interface BoardHistoryState {
-  canUndo: boolean;
-  canRedo: boolean;
-  cursor: number;
-  nextSeq: number;
-}
-
-export interface BoardCommitResult {
-  document: Awaited<ReturnType<typeof loadBoardDocument>>;
-  history: BoardHistoryState;
-  changeSet?: ChangeSetRecord;
-}
+import { commitDismissCritique, commitDismissSuggestion } from './boardOverlayMutations';
 
 export function createBoardController(boardId: BoardId) {
   return {
@@ -68,6 +59,26 @@ export function createBoardController(boardId: BoardId) {
         mutate: idea => ({ ...idea, status: 'captured' }),
       });
     },
+    groupIdeas(input: { ideaIdA: string; ideaIdB: string; actor: ChangeActor }) {
+      return commitGroupIdeas(boardId, input);
+    },
+    ungroupIdea(input: { ideaId: string; actor: ChangeActor }) {
+      return commitUngroupIdea(boardId, input);
+    },
+    setGroupTheme(input: {
+      groupId: string;
+      theme?: string;
+      sharedQuestion?: string;
+      actor: ChangeActor;
+    }) {
+      return commitSetGroupTheme(boardId, input);
+    },
+    dismissCritique(input: { critiqueId: string; actor: ChangeActor }) {
+      return commitDismissCritique(boardId, input);
+    },
+    dismissSuggestion(input: { suggestionId: string; actor: ChangeActor }) {
+      return commitDismissSuggestion(boardId, input);
+    },
     undo() {
       return replayChangeSet(boardId, 'undo');
     },
@@ -78,7 +89,7 @@ export function createBoardController(boardId: BoardId) {
       return listChangeSets(boardId, limit);
     },
     getHistoryState() {
-      return getHistoryState(boardId);
+      return getBoardHistoryState(boardId);
     },
   };
 }
@@ -116,7 +127,7 @@ async function commitIdeaMutation(
   if (ideaPatches.forward.length === 0) {
     await tx.done;
     const document = await loadBoardDocument(boardId);
-    return { document, history: await getHistoryState(boardId) };
+    return { document, history: await getBoardHistoryState(boardId) };
   }
 
   const nextBoard = {
@@ -151,7 +162,7 @@ async function commitIdeaMutation(
   await tx.done;
 
   const document = await loadBoardDocument(boardId);
-  return { document, changeSet, history: await getHistoryState(boardId) };
+  return { document, changeSet, history: await getBoardHistoryState(boardId) };
 }
 
 async function replayChangeSet(
@@ -160,7 +171,10 @@ async function replayChangeSet(
 ): Promise<BoardCommitResult | null> {
   await ensureBoard(boardId);
   const db = await getDb();
-  const tx = db.transaction(['boards', 'ideas', 'changeSets'], 'readwrite');
+  const tx = db.transaction(
+    ['boards', 'ideas', 'groups', 'docs', 'suggestions', 'critiques', 'connections', 'tweaks', 'changeSets'],
+    'readwrite',
+  );
   const boardsStore = tx.objectStore('boards');
   const changeSetsStore = tx.objectStore('changeSets');
   const board = hydrateBoardState(await boardsStore.get(boardId));
@@ -191,17 +205,7 @@ async function replayChangeSet(
   await tx.done;
 
   const document = await loadBoardDocument(boardId);
-  return { document, changeSet, history: await getHistoryState(boardId) };
-}
-
-async function getHistoryState(boardId: BoardId): Promise<BoardHistoryState> {
-  const board = await ensureBoard(boardId);
-  return {
-    canUndo: board.changeCursor > 0,
-    canRedo: !!(await getRedoChangeSet(boardId, board.changeCursor + 1)),
-    cursor: board.changeCursor,
-    nextSeq: board.nextChangeSeq,
-  };
+  return { document, changeSet, history: await getBoardHistoryState(boardId) };
 }
 
 async function commitCapturedIdea(
@@ -258,5 +262,5 @@ async function commitCapturedIdea(
   await tx.done;
 
   const document = await loadBoardDocument(boardId);
-  return { document, changeSet, history: await getHistoryState(boardId) };
+  return { document, changeSet, history: await getBoardHistoryState(boardId) };
 }

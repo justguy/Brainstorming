@@ -87,7 +87,9 @@ export type ChangeSetKind =
   | 'restore_idea'
   | 'group_ideas'
   | 'ungroup_idea'
-  | 'set_group_theme';
+  | 'set_group_theme'
+  | 'dismiss_critique'
+  | 'dismiss_suggestion';
 
 export type ChangeSetStatus = 'committed' | 'undone' | 'superseded';
 
