@@ -1,20 +1,26 @@
 import { createCapturedIdea } from '../board/ideaFactory';
 import type { ChangeActor, ChangeSetKind, ChangeSetRecord } from '../board/types';
 import type { BoardId, Idea } from '../types';
-import {
-  applyPatches,
-  createEntityPatches,
-  hydrateBoardState,
-  supersedeFutureChanges,
-} from './boardJournal';
+import { createEntityPatches, hydrateBoardState, supersedeFutureChanges } from './boardJournal';
 import { listChangeSets } from './changeSets';
 import { loadBoardDocument } from './boardDocument';
 import { ensureBoard } from './boards';
 import { getBoardHistoryState } from './boardHistoryState';
+import { replayChangeSet } from './boardHistoryReplay';
+import { commitMergeIdeas } from './boardMergeMutations';
 import { commitGroupIdeas, commitSetGroupTheme, commitUngroupIdea } from './boardGroupMutations';
-import type { BoardCommitResult } from './boardControllerTypes';
+import { commitUpdateIdea } from './boardIdeaMutations';
+import type { BoardCommitResult, BoardIdeaCommitResult } from './boardControllerTypes';
 import { getDb } from './db';
 import { commitDismissCritique, commitDismissSuggestion } from './boardOverlayMutations';
+import { commitReplaceConnections } from './boardConnectionMutations';
+import { commitCreateDoc, commitDeleteDoc, commitUpdateDoc } from './boardDocMutations';
+import {
+  commitAdmitSuggestion,
+  commitCreateCritique,
+  commitCreateSuggestion,
+  commitElaborateSuggestion,
+} from './boardGeneratedMutations';
 
 export function createBoardController(boardId: BoardId) {
   return {
@@ -59,6 +65,20 @@ export function createBoardController(boardId: BoardId) {
         mutate: idea => ({ ...idea, status: 'captured' }),
       });
     },
+    updateIdea(input: { ideaId: string; patch: Partial<Idea>; actor: ChangeActor; summary?: string }) {
+      return commitUpdateIdea(boardId, input);
+    },
+    mergeIdeas(input: {
+      draggedId: string;
+      targetId: string;
+      mergedRawText: string;
+      mergedTags: string[];
+      synthesisNotes: string;
+      tensions: string[];
+      actor: ChangeActor;
+    }) {
+      return commitMergeIdeas(boardId, input);
+    },
     groupIdeas(input: { ideaIdA: string; ideaIdB: string; actor: ChangeActor }) {
       return commitGroupIdeas(boardId, input);
     },
@@ -78,6 +98,42 @@ export function createBoardController(boardId: BoardId) {
     },
     dismissSuggestion(input: { suggestionId: string; actor: ChangeActor }) {
       return commitDismissSuggestion(boardId, input);
+    },
+    createCritique(input: { ideaId: string; critique: string; evidenceAsk: string; actor: ChangeActor }) {
+      return commitCreateCritique(boardId, input);
+    },
+    createSuggestion(input: {
+      rawText: string;
+      rationale: string;
+      source: string;
+      relatedIdeaIds?: string[];
+      panel?: import('../types').ScoutSuggestion['panel'];
+      actor: ChangeActor;
+    }) {
+      return commitCreateSuggestion(boardId, input);
+    },
+    elaborateSuggestion(input: { suggestionId: string; elaboration: string; actor: ChangeActor }) {
+      return commitElaborateSuggestion(boardId, input);
+    },
+    admitSuggestion(input: { suggestionId: string; actor: ChangeActor }) {
+      return commitAdmitSuggestion(boardId, input);
+    },
+    createDoc(input: { ideaId: string; title: string; rawText: string; actor: ChangeActor }) {
+      return commitCreateDoc(boardId, { ...input, boardId });
+    },
+    updateDoc(input: {
+      docId: string;
+      patch: Partial<Pick<import('../types').SupportingDoc, 'title' | 'rawText' | 'summary' | 'facts' | 'status' | 'error'>>;
+      actor: ChangeActor;
+      summary?: string;
+    }) {
+      return commitUpdateDoc(boardId, input);
+    },
+    deleteDoc(input: { docId: string; actor: ChangeActor }) {
+      return commitDeleteDoc(boardId, input);
+    },
+    replaceConnections(input: { connections: import('../types').Connection[]; actor: ChangeActor; summary?: string }) {
+      return commitReplaceConnections(boardId, input);
     },
     undo() {
       return replayChangeSet(boardId, 'undo');
@@ -165,53 +221,10 @@ async function commitIdeaMutation(
   return { document, changeSet, history: await getBoardHistoryState(boardId) };
 }
 
-async function replayChangeSet(
-  boardId: BoardId,
-  direction: 'undo' | 'redo',
-): Promise<BoardCommitResult | null> {
-  await ensureBoard(boardId);
-  const db = await getDb();
-  const tx = db.transaction(
-    ['boards', 'ideas', 'groups', 'docs', 'suggestions', 'critiques', 'connections', 'tweaks', 'changeSets'],
-    'readwrite',
-  );
-  const boardsStore = tx.objectStore('boards');
-  const changeSetsStore = tx.objectStore('changeSets');
-  const board = hydrateBoardState(await boardsStore.get(boardId));
-  if (!board) throw new Error(`Board not found: ${boardId}`);
-
-  const targetSeq = direction === 'undo' ? board.changeCursor : board.changeCursor + 1;
-  if (targetSeq <= 0) {
-    await tx.done;
-    return null;
-  }
-
-  const changeSet = await changeSetsStore.index('byBoardSeq').get([boardId, targetSeq]);
-  if (!changeSet) {
-    await tx.done;
-    return null;
-  }
-  if (direction === 'redo' && changeSet.status !== 'undone') {
-    await tx.done;
-    return null;
-  }
-
-  await applyPatches(tx, direction === 'undo' ? changeSet.inverse : changeSet.forward);
-  await changeSetsStore.put({
-    ...changeSet,
-    status: direction === 'undo' ? 'undone' : 'committed',
-    undoneAt: direction === 'undo' ? Date.now() : undefined,
-  });
-  await tx.done;
-
-  const document = await loadBoardDocument(boardId);
-  return { document, changeSet, history: await getBoardHistoryState(boardId) };
-}
-
 async function commitCapturedIdea(
   boardId: BoardId,
   input: { rawText: string; tags: string[]; actor: ChangeActor },
-): Promise<BoardCommitResult> {
+): Promise<BoardIdeaCommitResult> {
   await ensureBoard(boardId);
   const db = await getDb();
   const tx: any = db.transaction(['boards', 'ideas', 'changeSets'], 'readwrite');
@@ -262,5 +275,5 @@ async function commitCapturedIdea(
   await tx.done;
 
   const document = await loadBoardDocument(boardId);
-  return { document, changeSet, history: await getBoardHistoryState(boardId) };
+  return { idea: afterIdea, document, changeSet, history: await getBoardHistoryState(boardId) };
 }

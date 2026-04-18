@@ -8,6 +8,7 @@ import type {
   ScoutSuggestion,
   SupportingDoc,
 } from '../types';
+import type { BeatName } from '../beats/types';
 
 export const DEFAULT_BOARD_ID: BoardId = 'local-board';
 export const DEFAULT_BOARD_TITLE = 'Main Board';
@@ -76,7 +77,7 @@ export type BoardPatchOp =
 export interface ChangeActor {
   type: 'user' | 'ai' | 'tool' | 'system';
   source: 'canvas' | 'webmcp' | 'workspace' | 'beat' | 'system';
-  beat?: string;
+  beat?: BeatName;
   label?: string;
 }
 
@@ -85,10 +86,20 @@ export type ChangeSetKind =
   | 'move_idea'
   | 'discard_idea'
   | 'restore_idea'
+  | 'update_idea'
+  | 'merge_ideas'
   | 'group_ideas'
   | 'ungroup_idea'
   | 'set_group_theme'
   | 'dismiss_critique'
+  | 'create_critique'
+  | 'create_suggestion'
+  | 'elaborate_suggestion'
+  | 'admit_suggestion'
+  | 'create_doc'
+  | 'update_doc'
+  | 'delete_doc'
+  | 'replace_connections'
   | 'dismiss_suggestion';
 
 export type ChangeSetStatus = 'committed' | 'undone' | 'superseded';

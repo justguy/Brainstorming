@@ -5,7 +5,7 @@
  */
 import React, { useState } from 'react';
 import type { Idea, RiskItem, Severity } from '../../types';
-import { updateIdea } from '../../storage/ideas';
+import { createBoardController } from '../../storage/boardController';
 import Button from '../../ui/Button';
 
 const CHALLENGE_QUESTIONS: { id: string; question: string; hint: string }[] = [
@@ -93,14 +93,20 @@ export default function PremortemQuestions({ idea, onUpdate }: PremortemQuestion
     }));
 
     try {
-      const updated = await updateIdea(idea.id, {
-        briefState: {
-          ...idea.briefState,
-          risks: [...idea.briefState.risks, ...newRisks],
+      const boardController = createBoardController(idea.boardId ?? 'local-board');
+      const committed = await boardController.updateIdea({
+        ideaId: idea.id,
+        patch: {
+          briefState: {
+            ...idea.briefState,
+            risks: [...idea.briefState.risks, ...newRisks],
+          },
+          readiness: 'yellow', // fallback path — not AI-reviewed
         },
-        readiness: 'yellow', // fallback path — not AI-reviewed
+        actor: { type: 'user', source: 'workspace' },
+        summary: `Added ${newRisks.length} fallback risks to idea ${idea.id}`,
       });
-      onUpdate(updated);
+      onUpdate(committed.idea);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save answers.');
     } finally {

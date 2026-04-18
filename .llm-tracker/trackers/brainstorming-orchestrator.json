@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-025 is complete. The standalone web app now hydrates from a board repository snapshot and isolates legacy phase/workspace concerns behind explicit adapters. Starting bo-026 next: patch journal and reversible BoardController foundation.",
-    "rev": 25,
-    "updatedAt": "2026-04-18T03:26:09.466Z"
+    "scratchpad": "bo-025 through bo-028 are complete. The app now has board-scoped storage and journaled mutations, a typed five-beat runtime, and a board-first WebMCP surface with legacy phase-local tool registration removed. The next architecture task is bo-030: durable turns, tweaks, tombstones, and reversible deletes.",
+    "rev": 33,
+    "updatedAt": "2026-04-18T05:32:33.674Z"
   },
   "tasks": [
     {
@@ -1238,7 +1238,7 @@
       "id": "bo-026",
       "title": "Design Core: patch journal and reversible BoardController",
       "goal": "Route all committed board mutations through a central BoardController that emits forward and inverse JSON patches, persists ChangeSets, and becomes the only mutation path for user and AI actions.",
-      "status": "in_progress",
+      "status": "complete",
       "placement": {
         "swimlaneId": "architecture",
         "priorityId": "p0"
@@ -1249,7 +1249,7 @@
         "apps/web/App.tsx:160-313"
       ],
       "effort": "l",
-      "comment": "Expanded the live journal slice again: critique and suggestion dismissals now route through controller-backed changeSets alongside capture/move/discard/restore/group/ungroup/setGroupTheme, and undo/redo replays those overlay patches too. Remaining work: critique creation, suggestion admit/elaborate, docs, connections, and merge still have direct committed writes.",
+      "comment": "Completed the live journal cutover: committed board mutations across the web app, WebMCP tools, workspace shell, sidepanel consent/create flows, and fallback forms now route through the boardController changeSet path, with dead compatibility writes removed from the board repository. Verification: npm run typecheck passes; vite builds remain blocked by local ENOSPC on dist outputs.",
       "definition_of_done": [
         "All committed board mutations route through a single applyChange or equivalent mutation API.",
         "ChangeSets persist forward and inverse JSON patches with actor, summary, and affected entity metadata.",
@@ -1288,7 +1288,7 @@
       "id": "bo-027",
       "title": "Design Core: beat runtime and proposal contract",
       "goal": "Replace the current web-app phase loop with a board-level callBeat runtime for scout, connect, critique, cluster, and summarise, using strict JSON beat outputs and candidate proposals instead of direct structural writes.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "architecture",
         "priorityId": "p0"
@@ -1300,7 +1300,7 @@
         "src/orchestrator/subPhases.ts:45-57"
       ],
       "effort": "l",
-      "comment": "The design target is beat-scoped and board-first; the current 8-phase model is the wrong contract for W3.",
+      "comment": "Completed the beat runtime/proposal contract slice. Added `src/beats/types.ts`, `src/orchestrator/beatRegistry.ts`, `src/orchestrator/runBeat.ts`, and `apps/web/beatContext.ts`; introduced the `boardSummariser` role; routed the live scout/connect/critique paths in `apps/web/App.tsx` through typed beat envelopes before commit; surfaced active beat state in the header; and tightened `ChangeActor.beat` typing. Verification: `npm run typecheck`, `npm run build:web`, and `npm run build` all pass.",
       "definition_of_done": [
         "The web path exposes exactly five beats: scout, connect, critique, cluster, and summarise.",
         "Each beat returns strict JSON with candidates, sources, confidence metadata, and patch payloads or equivalent change intents.",
@@ -1330,7 +1330,8 @@
           "llm-contracts"
         ],
         "notes": "This is the contract shift from phase progression to board beats."
-      }
+      },
+      "assignee": "codex"
     },
     {
       "dependencies": [
@@ -1339,7 +1340,7 @@
       "id": "bo-028",
       "title": "Design Core: board-first WebMCP surface",
       "goal": "Retarget the existing WebMCP boundary around board verbs and beat runs instead of legacy phase and workspace concepts, while keeping the direct web app WebMCP integration.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "architecture",
         "priorityId": "p1"
@@ -1350,7 +1351,7 @@
         "Design/Integration Guide.html:456-479"
       ],
       "effort": "m",
-      "comment": "The current app already has the right outer interface; the contract behind it needs to become board-native.",
+      "comment": "Completed the board-first WebMCP surface cut. Added `get_board` and `run_beat` to `apps/web/webmcp-tools.ts`, wired `brainstorm:runBeat` handling in `apps/web/App.tsx`, and demoted the legacy phase-local WebMCP lifecycle registrations so the active surface is board-first and beat-first. Verification: `npm run typecheck`, `npm run build:web`, and `npm run build` all pass.",
       "definition_of_done": [
         "Board tools cover the board document, beat invocation, candidate admission or dismissal, and connection or critique operations through the board controller.",
         "dispatch-and-wait or equivalent request handling stays intact for the standalone web app.",
@@ -1377,7 +1378,8 @@
           "tooling"
         ],
         "notes": "This preserves WebMCP while aligning it to the guide's board and beat model."
-      }
+      },
+      "assignee": "codex"
     },
     {
       "dependencies": [

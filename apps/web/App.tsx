@@ -28,25 +28,30 @@
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { Idea, IdeaCritique, IdeaGroup, Connection, SupportingDoc, ScoutSuggestion } from '../../src/types';
-import { DEFAULT_BOARD_ID } from '../../src/board/types';
-import { createIdea, updateIdea } from '../../src/storage/ideas';
-import { updateBriefState } from '../../src/storage/ideas';
+import type { ChangeActor } from '../../src/board/types';
+import { DEFAULT_BOARD_ID, DEFAULT_BOARD_TITLE } from '../../src/board/types';
+import type {
+  BeatContextMap,
+  BeatName,
+  BeatResult,
+  BeatRunState,
+  ClusterBeatContext,
+  ConnectBeatContext,
+  CritiqueBeatContext,
+  ScoutBeatContext,
+  SummariseBeatContext,
+} from '../../src/beats/types';
 import {
-  createCritique,
   listCritiquesForIdea,
 } from '../../src/storage/critiques';
 import {
-  createSuggestion,
-  admitSuggestion as admitSuggestionStore,
-  setSuggestionElaboration,
   getSuggestion,
 } from '../../src/storage/suggestions';
-import {
-  removeIdeaFromGroup,
-} from '../../src/storage/groups';
 import { getSettings } from '../../src/storage/settings';
 import { advance } from '../../src/orchestrator/stateMachine';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
+import { runBeat } from '../../src/orchestrator/runBeat';
+import { docFactExtractor, buildDocFactExtractorTask, type DocFactExtractorOutput } from '../../src/orchestrator/roles/docFactExtractor';
 import { groupThemer, buildGroupThemerTask, type GroupThemerOutput } from '../../src/orchestrator/roles/groupThemer';
 import { ideaMerger, buildIdeaMergerTask, type IdeaMergerOutput } from '../../src/orchestrator/roles/ideaMerger';
 import Button from '../../src/ui/Button';
@@ -56,22 +61,7 @@ import { CritiqueCardsLayer } from '../../src/canvas/CritiqueCardsLayer';
 import DiscardPile from '../../src/canvas/DiscardPile';
 import ConnectionsPanel from '../../src/canvas/ConnectionsPanel';
 import DocsModal from '../../src/docs/DocsModal';
-import { listDocsForIdea } from '../../src/storage/docs';
-import {
-  connectionFinder,
-  buildConnectionFinderTask,
-  type ConnectionFinderOutput,
-} from '../../src/orchestrator/roles/connectionFinder';
-import {
-  buildStandaloneCritiqueTask,
-  devilsAdvocate,
-  type DevilsAdvocateOutput,
-} from '../../src/orchestrator/roles/devilsAdvocate';
-import {
-  outsideKnowledgeScout,
-  buildScoutTask,
-  type OutsideKnowledgeScoutOutput,
-} from '../../src/orchestrator/roles/outsideKnowledgeScout';
+import { getDoc, listDocsForIdea } from '../../src/storage/docs';
 import {
   suggestionElaborator,
   buildElaboratorTask,
@@ -100,8 +90,16 @@ import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDed
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
 import { CaptureIdeaPopover } from './CaptureIdeaPopover';
+import {
+  buildClusterBeatContext,
+  buildConnectBeatContext,
+  buildCritiqueBeatContext,
+  buildScoutBeatContext,
+  buildSummariseBeatContext,
+} from './beatContext';
 import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
 import { createBoardController } from '../../src/storage/boardController';
+import type { BoardCommitResult, BoardDocCommitResult } from '../../src/storage/boardControllerTypes';
 
 // ---------------------------------------------------------------------------
 // Hash router
@@ -150,6 +148,28 @@ function connectionStrengthWeight(strength: Connection['strength']): number {
   }
 }
 
+type SupportingDocMutationController = {
+  createDoc(input: { ideaId: string; title: string; rawText: string; actor: ChangeActor }): Promise<BoardDocCommitResult>;
+  updateDoc(input: {
+    docId: string;
+    patch: Partial<SupportingDoc>;
+    actor: ChangeActor;
+    summary?: string;
+  }): Promise<BoardDocCommitResult>;
+  deleteDoc(input: { docId: string; actor: ChangeActor }): Promise<BoardCommitResult>;
+};
+
+type SupportingDocMutations = {
+  createDoc(input: { ideaId: string; title: string; rawText: string; actor: ChangeActor }): Promise<SupportingDoc>;
+  updateDoc(input: {
+    docId: string;
+    patch: Partial<SupportingDoc>;
+    actor: ChangeActor;
+    summary?: string;
+  }): Promise<SupportingDoc>;
+  deleteDoc(input: { docId: string; actor: ChangeActor }): Promise<void>;
+};
+
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
@@ -159,6 +179,7 @@ export default function App(): React.ReactElement {
   const [boardId, setBoardId] = useState(DEFAULT_BOARD_ID);
   const boardRepository = useMemo(() => defaultBoardRepository.forBoard(boardId), [boardId]);
   const boardController = useMemo(() => createBoardController(boardId), [boardId]);
+  const supportingDocController = boardController as typeof boardController & SupportingDocMutationController;
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [groups, setGroups] = useState<IdeaGroup[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -172,7 +193,6 @@ export default function App(): React.ReactElement {
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [connectionsHydrated, setConnectionsHydrated] = useState(false);
   const [findingConnections, setFindingConnections] = useState(false);
   const [lastConnectionsRunAt, setLastConnectionsRunAt] = useState<number | null>(null);
   const [highlightIds, setHighlightIds] = useState<string[]>([]);
@@ -204,9 +224,10 @@ export default function App(): React.ReactElement {
     cursor: 0,
     nextSeq: 1,
   });
+  const [activeBeatRun, setActiveBeatRun] = useState<BeatRunState | null>(null);
   const [aiActions, setAiActions] = useState<Array<{
     origin: 'ai';
-    kind: 'connections' | 'scout' | 'critique';
+    kind: BeatName;
     createdAt: number;
     ideaId?: string;
   }>>([]);
@@ -254,14 +275,65 @@ export default function App(): React.ReactElement {
     setSelectedId(prev => (prev && document.ideas.some(idea => idea.id === prev) ? prev : null));
   }
 
+  const supportingDocMutations: SupportingDocMutations = {
+    async createDoc(input) {
+      const committed = await supportingDocController.createDoc(input);
+      applyCommittedBoard(committed.document, committed.history);
+      return committed.doc;
+    },
+    async updateDoc(input) {
+      const committed = await supportingDocController.updateDoc(input);
+      applyCommittedBoard(committed.document, committed.history);
+      return committed.doc;
+    },
+    async deleteDoc(input) {
+      const committed = await supportingDocController.deleteDoc(input);
+      applyCommittedBoard(committed.document, committed.history);
+    },
+  };
+
+  async function refineSupportingDoc(doc: SupportingDoc, actor: ChangeActor): Promise<SupportingDoc> {
+    try {
+      const task = buildDocFactExtractorTask(doc.title, doc.rawText);
+      const { result } = await runAdhocRole<DocFactExtractorOutput>(docFactExtractor, task);
+      if (!result) {
+        return supportingDocMutations.updateDoc({
+          docId: doc.id,
+          patch: {
+            status: 'failed',
+            error: 'Extractor returned no result. Try editing the text and re-saving.',
+          },
+          actor,
+        });
+      }
+      return supportingDocMutations.updateDoc({
+        docId: doc.id,
+        patch: {
+          status: 'ready',
+          summary: result.summary,
+          facts: result.facts,
+          error: undefined,
+        },
+        actor,
+      });
+    } catch (err) {
+      return supportingDocMutations.updateDoc({
+        docId: doc.id,
+        patch: {
+          status: 'failed',
+          error: err instanceof Error ? err.message : 'Extraction failed.',
+        },
+        actor,
+      });
+    }
+  }
+
   async function loadBoard() {
     try {
       applyBoardSnapshot(await boardRepository.loadSnapshot());
       setHistoryState(await boardController.getHistoryState());
     } catch {
       // non-fatal
-    } finally {
-      setConnectionsHydrated(true);
     }
   }
 
@@ -311,13 +383,6 @@ export default function App(): React.ReactElement {
     loadBoard();
     checkApiKey();
   }, []);
-
-  useEffect(() => {
-    if (!connectionsHydrated) return;
-    boardRepository.replaceConnections(connections).catch(() => {
-      // non-fatal
-    });
-  }, [boardId, connections, connectionsHydrated]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockMs(Date.now()), 1000);
@@ -391,7 +456,40 @@ export default function App(): React.ReactElement {
     setActivity(prev => ({ ...prev, lastInteractionAt: now }));
   }
 
-  function recordAiAction(kind: 'connections' | 'scout' | 'critique', ideaId?: string): void {
+  function beatTrigger(origin?: RevealOrigin): BeatContextMap[BeatName]['trigger'] {
+    return origin === 'ai' ? 'automatic' : 'manual';
+  }
+
+  function beatSize(origin?: RevealOrigin): BeatContextMap[BeatName]['size'] {
+    return origin === 'ai' ? 'small' : 'big';
+  }
+
+  function beatAggressiveness(origin?: RevealOrigin): BeatContextMap[BeatName]['aggressiveness'] {
+    return origin === 'ai' ? 'gentle' : 'balanced';
+  }
+
+  async function runBoardBeat(context: ScoutBeatContext): Promise<BeatResult<'scout'>>;
+  async function runBoardBeat(context: ConnectBeatContext): Promise<BeatResult<'connect'>>;
+  async function runBoardBeat(context: CritiqueBeatContext): Promise<BeatResult<'critique'>>;
+  async function runBoardBeat(context: ClusterBeatContext): Promise<BeatResult<'cluster'>>;
+  async function runBoardBeat(context: SummariseBeatContext): Promise<BeatResult<'summarise'>>;
+  async function runBoardBeat(context: BeatContextMap[BeatName]): Promise<BeatResult<BeatName>> {
+    setActiveBeatRun({
+      beat: context.beat,
+      trigger: context.trigger,
+      size: context.size,
+      status: 'running',
+      startedAt: Date.now(),
+      focusIdeaId: 'focusIdeaId' in context ? context.focusIdeaId : undefined,
+    });
+    try {
+      return await runBeat(context as any);
+    } finally {
+      setActiveBeatRun(null);
+    }
+  }
+
+  function recordAiAction(kind: Extract<BeatName, 'connect' | 'scout' | 'critique'>, ideaId?: string): void {
     const action = {
       origin: 'ai' as const,
       kind,
@@ -529,7 +627,11 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function handleMerge(draggedId: string, targetId: string): Promise<void> {
+  async function handleMerge(
+    draggedId: string,
+    targetId: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
     const a = ideas.find(i => i.id === draggedId);
     const b = ideas.find(i => i.id === targetId);
     if (!a || !b) return;
@@ -542,35 +644,17 @@ export default function App(): React.ReactElement {
         console.warn('[App] merge LLM call returned no result — skipping merge.');
         return;
       }
-      // Create the new merged idea at the target's position
-      const targetPanel = b.panel ?? { x: 60, y: 60, width: 260, height: 180 };
-      const merged = await createIdea({
-        boardId,
-        rawText: result.mergedRawText,
-        tags: result.mergedTags,
-        panel: { ...targetPanel, groupId: undefined },
+      const committed = await boardController.mergeIdeas({
+        draggedId,
+        targetId,
+        mergedRawText: result.mergedRawText,
+        mergedTags: result.mergedTags,
+        synthesisNotes: result.synthesisNotes,
+        tensions: result.tensions,
+        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
       });
-      const mergedWithProvenance = await updateIdea(merged.id, {
-        mergedFrom: [a.id, b.id],
-        briefState: {
-          ...merged.briefState,
-          openQuestions: [
-            ...(result.tensions.length > 0 ? [`Tensions: ${result.tensions.join(' | ')}`] : []),
-            `Merge notes: ${result.synthesisNotes}`,
-          ],
-        },
-      });
-
-      // Archive the originals (kept in IDB for history, hidden from canvas)
-      await updateIdea(a.id, { status: 'archived' });
-      await updateIdea(b.id, { status: 'archived' });
-
-      // Remove from any groups they were in
-      if (a.panel?.groupId) await removeIdeaFromGroup(a.panel.groupId, a.id);
-      if (b.panel?.groupId) await removeIdeaFromGroup(b.panel.groupId, b.id);
-
-      await loadBoard();
-      setSelectedId(mergedWithProvenance.id);
+      applyCommittedBoard(committed.document, committed.history);
+      setSelectedId(committed.idea.id);
       markActivity('edit');
     } catch (err) {
       console.error('[App] merge failed:', err);
@@ -610,11 +694,13 @@ export default function App(): React.ReactElement {
       setAdvancingFromTool(true);
       try {
         const updated = await advance(idea, userInput ?? '', !!skip);
-        await updateIdea(updated.id, updated);
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-        if (idea.id === selectedId) {
-          setSelectedId(updated.id);
-        }
+        const committed = await boardController.updateIdea({
+          ideaId: updated.id,
+          patch: updated,
+          actor: { type: 'tool', source: 'webmcp' },
+          summary: `Advanced idea ${updated.id} to phase ${updated.phase}`,
+        });
+        applyCommittedBoard(committed.document, committed.history);
       } catch (err) {
         console.error('[App] advancePhase failed:', err);
       } finally {
@@ -643,8 +729,13 @@ export default function App(): React.ReactElement {
             ? { ...l, ...(verdict ? { verdict } : {}), ...(userNote !== undefined ? { userNote } : {}) }
             : l,
         );
-        const updated = await updateBriefState(ideaId, { lenses });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+        const committed = await boardController.updateIdea({
+          ideaId,
+          patch: { briefState: { ...idea.briefState, lenses } },
+          actor: { type: 'tool', source: 'webmcp' },
+          summary: `Updated lens ${lensId} on idea ${ideaId}`,
+        });
+        applyCommittedBoard(committed.document, committed.history);
       } catch (err) {
         console.error('[App] patchLens failed:', err);
       } finally {
@@ -670,8 +761,13 @@ export default function App(): React.ReactElement {
             ? { ...c, ...(stance ? { stance } : {}), ...(userRebuttal !== undefined ? { userRebuttal } : {}) }
             : c,
         );
-        const updated = await updateBriefState(ideaId, { challenges });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+        const committed = await boardController.updateIdea({
+          ideaId,
+          patch: { briefState: { ...idea.briefState, challenges } },
+          actor: { type: 'tool', source: 'webmcp' },
+          summary: `Updated challenge ${challengeId} on idea ${ideaId}`,
+        });
+        applyCommittedBoard(committed.document, committed.history);
       } catch (err) {
         console.error('[App] patchChallenge failed:', err);
       } finally {
@@ -697,8 +793,13 @@ export default function App(): React.ReactElement {
             ? { ...s, ...(handled !== undefined ? { handled } : {}), ...(userResponse !== undefined ? { userResponse } : {}) }
             : s,
         );
-        const updated = await updateBriefState(ideaId, { stressResults });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+        const committed = await boardController.updateIdea({
+          ideaId,
+          patch: { briefState: { ...idea.briefState, stressResults } },
+          actor: { type: 'tool', source: 'webmcp' },
+          summary: `Updated stress result ${stressId} on idea ${ideaId}`,
+        });
+        applyCommittedBoard(committed.document, committed.history);
       } catch (err) {
         console.error('[App] patchStress failed:', err);
       } finally {
@@ -731,10 +832,20 @@ export default function App(): React.ReactElement {
       }>;
       const { ideaId, nextStep, requestId } = ev.detail;
       try {
-        const updated = await updateBriefState(ideaId, {
-          nextStep: nextStep as Idea['briefState']['nextStep'],
+        const idea = ideas.find(entry => entry.id === ideaId);
+        if (!idea) return;
+        const committed = await boardController.updateIdea({
+          ideaId,
+          patch: {
+            briefState: {
+              ...idea.briefState,
+              nextStep: nextStep as Idea['briefState']['nextStep'],
+            },
+          },
+          actor: { type: 'tool', source: 'webmcp' },
+          summary: `Selected next step for idea ${ideaId}`,
         });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+        applyCommittedBoard(committed.document, committed.history);
       } catch (err) {
         console.error('[App] chooseNextStep failed:', err);
       } finally {
@@ -759,6 +870,102 @@ export default function App(): React.ReactElement {
       } else {
         // Unknown idea — refresh all visible
         loadDocCounts(ideas.filter(i => i.status !== 'archived').map(i => i.id));
+      }
+    };
+
+    const handleAttachSupportingDocEvent = async (e: Event) => {
+      const ev = e as CustomEvent<{ ideaId: string; title?: string; rawText: string; requestId?: string }>;
+      const { ideaId, title, rawText, requestId } = ev.detail;
+      let error: string | undefined;
+      let doc: SupportingDoc | undefined;
+      try {
+        if (!ideaId) throw new Error('ideaId is required');
+        if (!rawText || rawText.trim().length === 0) throw new Error('rawText must be non-empty');
+        doc = await supportingDocMutations.createDoc({
+          ideaId,
+          title: title ?? '',
+          rawText,
+          actor: { type: 'tool', source: 'webmcp' },
+        });
+        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId } }));
+        doc = await refineSupportingDoc(doc, { type: 'tool', source: 'webmcp' });
+        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId } }));
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'attach failed';
+      }
+      if (requestId) {
+        window.dispatchEvent(
+          new CustomEvent(`tool-completion-${requestId}`, {
+            detail: doc
+              ? {
+                  ok: !error,
+                  error,
+                  docId: doc.id,
+                  status: doc.status,
+                  summary: doc.summary,
+                  facts: doc.facts,
+                }
+              : { ok: !error, error },
+          }),
+        );
+      }
+    };
+
+    const handleDeleteSupportingDocEvent = async (e: Event) => {
+      const ev = e as CustomEvent<{ docId: string; requestId?: string }>;
+      const { docId, requestId } = ev.detail;
+      let error: string | undefined;
+      try {
+        const doc = await getDoc(docId);
+        if (!doc) throw new Error(`no doc with id ${docId}`);
+        await supportingDocMutations.deleteDoc({
+          docId,
+          actor: { type: 'tool', source: 'webmcp' },
+        });
+        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: doc.ideaId } }));
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'delete failed';
+      }
+      if (requestId) {
+        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
+      }
+    };
+
+    const handleRetrySupportingDocEvent = async (e: Event) => {
+      const ev = e as CustomEvent<{ docId: string; requestId?: string }>;
+      const { docId, requestId } = ev.detail;
+      let error: string | undefined;
+      let doc: SupportingDoc | undefined;
+      try {
+        const current = await getDoc(docId);
+        if (!current) throw new Error(`no doc with id ${docId}`);
+        doc = await supportingDocMutations.updateDoc({
+          docId,
+          patch: { status: 'processing', error: undefined },
+          actor: { type: 'tool', source: 'webmcp' },
+          summary: `Retried extraction for ${current.title}`,
+        });
+        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: current.ideaId } }));
+        doc = await refineSupportingDoc(doc, { type: 'tool', source: 'webmcp' });
+        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: current.ideaId } }));
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'retry failed';
+      }
+      if (requestId) {
+        window.dispatchEvent(
+          new CustomEvent(`tool-completion-${requestId}`, {
+            detail: doc
+              ? {
+                  ok: !error,
+                  error,
+                  docId: doc.id,
+                  status: doc.status,
+                  summary: doc.summary,
+                  facts: doc.facts,
+                }
+              : { ok: !error, error },
+          }),
+        );
       }
     };
 
@@ -848,7 +1055,7 @@ export default function App(): React.ReactElement {
     const handleMergeEvent = async (e: Event) => {
       const ev = e as CustomEvent<{ draggedId: string; targetId: string; requestId?: string }>;
       const { draggedId, targetId, requestId } = ev.detail;
-      try { await handleMerge(draggedId, targetId); } catch (err) { console.error('[App] merge failed:', err); }
+      try { await handleMerge(draggedId, targetId, 'webmcp'); } catch (err) { console.error('[App] merge failed:', err); }
       if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
     };
 
@@ -859,7 +1066,7 @@ export default function App(): React.ReactElement {
       const { requestId } = ev.detail ?? {};
       let count = 0;
       try {
-        const found = await runConnectionFinder();
+        const found = await runConnectionFinder({ source: 'webmcp' });
         count = found.length;
       } catch (err) {
         console.error('[App] find_connections failed:', err);
@@ -869,7 +1076,7 @@ export default function App(): React.ReactElement {
       }
     };
 
-    const handleDrawConnectionEvent = (e: Event) => {
+    const handleDrawConnectionEvent = async (e: Event) => {
       const ev = e as CustomEvent<{
         fromIdeaId: string;
         toIdeaId: string;
@@ -901,7 +1108,12 @@ export default function App(): React.ReactElement {
           rationale: rationale.trim(),
         });
         connectionId = connection.id;
-        setConnections(prev => upsertConnection(prev, connection));
+        const committed = await boardController.replaceConnections({
+          connections: upsertConnection(connections, connection),
+          actor: { type: 'tool', source: 'webmcp' },
+          summary: `Added manual connection ${connection.id}`,
+        });
+        applyCommittedBoard(committed.document, committed.history);
         setLastConnectionsRunAt(connection.createdAt);
         handleHighlight(connection.ideaIds);
       }
@@ -918,7 +1130,7 @@ export default function App(): React.ReactElement {
       let error: string | undefined;
 
       try {
-        const critique = await runCritiqueIdea(ideaId);
+        const critique = await runCritiqueIdea(ideaId, { source: 'webmcp' });
         critiqueId = critique?.id;
       } catch (err) {
         error = err instanceof Error ? err.message : 'critique failed';
@@ -951,7 +1163,7 @@ export default function App(): React.ReactElement {
       const { requestId } = ev.detail ?? {};
       let count = 0;
       try {
-        const created = await runScout();
+        const created = await runScout({ source: 'webmcp' });
         count = created.length;
       } catch (err) {
         console.error('[App] scout_ideas failed:', err);
@@ -961,13 +1173,117 @@ export default function App(): React.ReactElement {
       }
     };
 
+    const handleRunBeatEvent = async (e: Event) => {
+      const ev = e as CustomEvent<{ beat: BeatName; focusIdeaId?: string; requestId?: string }>;
+      const { beat, focusIdeaId, requestId } = ev.detail;
+      let detail: Record<string, unknown>;
+
+      try {
+        switch (beat) {
+          case 'scout': {
+            const created = await runScout({ source: 'webmcp' });
+            detail = {
+              ok: true,
+              beat,
+              mode: 'committed',
+              count: created.length,
+              suggestions: created.map(suggestion => ({
+                id: suggestion.id,
+                rawText: suggestion.rawText,
+                rationale: suggestion.rationale,
+                source: suggestion.source,
+                relatedIdeaIds: suggestion.relatedIdeaIds ?? [],
+                status: suggestion.status,
+              })),
+            };
+            break;
+          }
+          case 'connect': {
+            const found = await runConnectionFinder({ source: 'webmcp' });
+            detail = {
+              ok: true,
+              beat,
+              mode: 'committed',
+              count: found.length,
+              connections: found,
+            };
+            break;
+          }
+          case 'critique': {
+            if (!focusIdeaId) throw new Error('run_beat critique requires focusIdeaId.');
+            const critique = await runCritiqueIdea(focusIdeaId, { source: 'webmcp' });
+            detail = {
+              ok: !!critique,
+              beat,
+              mode: 'committed',
+              critiqueId: critique?.id,
+              critique,
+            };
+            break;
+          }
+          case 'cluster': {
+            const result = await runBoardBeat(buildClusterBeatContext({
+              boardId,
+              boardTitle: DEFAULT_BOARD_TITLE,
+              ideas,
+              connections,
+              trigger: 'manual',
+              size: 'big',
+              aggressiveness: 'balanced',
+            }));
+            detail = {
+              ok: result.ok,
+              beat,
+              mode: 'preview',
+              meta: result.meta,
+              hints: result.ok ? result.proposal.hints : [],
+              reason: result.ok ? undefined : result.reason,
+            };
+            break;
+          }
+          case 'summarise': {
+            const result = await runBoardBeat(buildSummariseBeatContext({
+              boardId,
+              boardTitle: DEFAULT_BOARD_TITLE,
+              ideas,
+              connections,
+              trigger: 'manual',
+              size: 'big',
+              aggressiveness: 'balanced',
+            }));
+            detail = {
+              ok: result.ok,
+              beat,
+              mode: 'preview',
+              meta: result.meta,
+              summaries: result.ok ? result.proposal.summaries : [],
+              reason: result.ok ? undefined : result.reason,
+            };
+            break;
+          }
+          default:
+            detail = { ok: false, beat, error: `Unsupported beat: ${beat}` };
+        }
+      } catch (err) {
+        detail = {
+          ok: false,
+          beat,
+          error: err instanceof Error ? err.message : `${beat} failed`,
+        };
+      }
+
+      if (requestId) {
+        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail }));
+      }
+    };
+
     const handleAdmitSuggestionEvent = async (e: Event) => {
       const ev = e as CustomEvent<{ suggestionId: string; requestId?: string }>;
       const { suggestionId, requestId } = ev.detail;
       let admittedIdeaId: string | undefined;
       let error: string | undefined;
       try {
-        await handleAdmitSuggestion(suggestionId);
+        await handleAdmitSuggestion(suggestionId, 'webmcp');
         const updated = await getSuggestion(suggestionId);
         admittedIdeaId = updated?.admittedIdeaId;
       } catch (err) {
@@ -983,7 +1299,7 @@ export default function App(): React.ReactElement {
       const { suggestionId, requestId } = ev.detail;
       let error: string | undefined;
       try {
-        await handleElaborateSuggestion(suggestionId);
+        await handleElaborateSuggestion(suggestionId, 'webmcp');
       } catch (err) {
         error = err instanceof Error ? err.message : 'elaborate failed';
       }
@@ -1021,6 +1337,9 @@ export default function App(): React.ReactElement {
     window.addEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
     window.addEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
     window.addEventListener('brainstorm:docsChanged', handleDocsChanged as EventListener);
+    window.addEventListener('brainstorm:attachSupportingDoc', handleAttachSupportingDocEvent as EventListener);
+    window.addEventListener('brainstorm:deleteSupportingDoc', handleDeleteSupportingDocEvent as EventListener);
+    window.addEventListener('brainstorm:retrySupportingDoc', handleRetrySupportingDocEvent as EventListener);
     window.addEventListener('brainstorm:critiquesChanged', handleCritiquesChanged as EventListener);
     window.addEventListener('brainstorm:ideasChanged', handleIdeasChanged as EventListener);
     window.addEventListener('brainstorm:findConnections', handleFindConnectionsEvent as EventListener);
@@ -1028,6 +1347,7 @@ export default function App(): React.ReactElement {
     window.addEventListener('brainstorm:critiqueIdea', handleCritiqueIdeaEvent as EventListener);
     window.addEventListener('brainstorm:dismissCritique', handleDismissCritiqueEvent as EventListener);
     window.addEventListener('brainstorm:scout', handleScoutEvent as EventListener);
+    window.addEventListener('brainstorm:runBeat', handleRunBeatEvent as EventListener);
     window.addEventListener('brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener);
     window.addEventListener('brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener);
     window.addEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
@@ -1048,6 +1368,9 @@ export default function App(): React.ReactElement {
       window.removeEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
       window.removeEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
       window.removeEventListener('brainstorm:docsChanged', handleDocsChanged as EventListener);
+      window.removeEventListener('brainstorm:attachSupportingDoc', handleAttachSupportingDocEvent as EventListener);
+      window.removeEventListener('brainstorm:deleteSupportingDoc', handleDeleteSupportingDocEvent as EventListener);
+      window.removeEventListener('brainstorm:retrySupportingDoc', handleRetrySupportingDocEvent as EventListener);
       window.removeEventListener('brainstorm:critiquesChanged', handleCritiquesChanged as EventListener);
       window.removeEventListener('brainstorm:ideasChanged', handleIdeasChanged as EventListener);
       window.removeEventListener('brainstorm:findConnections', handleFindConnectionsEvent as EventListener);
@@ -1055,11 +1378,12 @@ export default function App(): React.ReactElement {
       window.removeEventListener('brainstorm:critiqueIdea', handleCritiqueIdeaEvent as EventListener);
       window.removeEventListener('brainstorm:dismissCritique', handleDismissCritiqueEvent as EventListener);
       window.removeEventListener('brainstorm:scout', handleScoutEvent as EventListener);
+      window.removeEventListener('brainstorm:runBeat', handleRunBeatEvent as EventListener);
       window.removeEventListener('brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener);
       window.removeEventListener('brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener);
       window.removeEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
     };
-  }, [ideas, selectedId, connections, suggestions]);
+  }, [boardId, ideas, selectedId, connections, suggestions]);
 
   // ---------------------------------------------------------------------------
   // Capture
@@ -1153,6 +1477,7 @@ export default function App(): React.ReactElement {
   async function runConnectionFinder(options: {
     origin?: RevealOrigin;
     limitGenerated?: number;
+    source?: 'canvas' | 'webmcp' | 'beat';
   } = {}): Promise<Connection[]> {
     setFindingConnections(true);
     try {
@@ -1162,20 +1487,37 @@ export default function App(): React.ReactElement {
         boardIdeas.map(idea => boardRepository.listDocsForIdea(idea.id).catch(() => [] as SupportingDoc[])),
       );
       const supportingDocs = docsPerIdea.flat().filter(doc => doc.status === 'ready');
-
-      const task = buildConnectionFinderTask({
-        boardIdeas,
-        discardedIdeas: discarded,
+      const beatResult = await runBoardBeat(buildConnectBeatContext({
+        boardId,
+        boardTitle: DEFAULT_BOARD_TITLE,
+        ideas,
         supportingDocs,
-      });
-      const { result } = await runAdhocRole<ConnectionFinderOutput>(connectionFinder, task);
-      const now = Date.now();
-      if (!result) {
-        setConnections(prev => prev.filter(connection => connection.id.startsWith('manual-')));
+        trigger: beatTrigger(options.origin),
+        size: beatSize(options.origin),
+        aggressiveness: beatAggressiveness(options.origin),
+      }));
+      const now = beatResult.meta.finishedAt;
+      const proposedConnections = beatResult.ok ? beatResult.proposal.connections : [];
+      if (proposedConnections.length === 0) {
+        const committed = await boardController.replaceConnections({
+          connections: connections.filter(connection => connection.id.startsWith('manual-')),
+          actor: options.origin === 'ai'
+            ? { type: 'ai', source: 'beat', beat: 'connect', label: 'connectionFinder' }
+            : options.source === 'webmcp'
+            ? { type: 'tool', source: 'webmcp' }
+            : { type: 'user', source: 'canvas' },
+          summary: 'Refreshed board connections',
+        });
+        applyCommittedBoard(committed.document, committed.history);
         setLastConnectionsRunAt(now);
         return [];
       }
-      const materialised = materializeConnections(ideas, supportingDocs, result, now);
+      const materialised = materializeConnections(
+        ideas,
+        supportingDocs,
+        { connections: proposedConnections },
+        now,
+      );
       const nextGenerated = [...materialised]
         .sort((left, right) => {
           const strengthDelta = connectionStrengthWeight(right.strength) - connectionStrengthWeight(left.strength);
@@ -1183,7 +1525,16 @@ export default function App(): React.ReactElement {
           return left.createdAt - right.createdAt;
         })
         .slice(0, options.limitGenerated ?? materialised.length);
-      setConnections(prev => replaceGeneratedConnections(prev, nextGenerated));
+      const committed = await boardController.replaceConnections({
+        connections: replaceGeneratedConnections(connections, nextGenerated),
+        actor: options.origin === 'ai'
+          ? { type: 'ai', source: 'beat', beat: 'connect', label: 'connectionFinder' }
+          : options.source === 'webmcp'
+          ? { type: 'tool', source: 'webmcp' }
+          : { type: 'user', source: 'canvas' },
+        summary: 'Refreshed board connections',
+      });
+      applyCommittedBoard(committed.document, committed.history);
       setLastConnectionsRunAt(now);
       if (options.origin === 'ai' && nextGenerated.length > 0) {
         revealConnections(nextGenerated.map(connection => connection.id));
@@ -1220,7 +1571,7 @@ export default function App(): React.ReactElement {
 
   async function runCritiqueIdea(
     ideaId: string,
-    options: { origin?: RevealOrigin } = {},
+    options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat' } = {},
   ): Promise<IdeaCritique | null> {
     setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: true }));
     try {
@@ -1239,34 +1590,43 @@ export default function App(): React.ReactElement {
       const supportingDocs = (await listDocsForIdea(ideaId, boardId)).filter(doc => doc.status === 'ready');
       const boardIdeas = ideas.filter(entry => entry.status !== 'archived' && entry.status !== 'discarded');
       const priorCritiques = await listCritiquesForIdea(ideaId, undefined, boardId);
-      const task = buildStandaloneCritiqueTask({
-        idea,
-        boardIdeas,
+      const beatResult = await runBoardBeat(buildCritiqueBeatContext({
+        boardId,
+        boardTitle: DEFAULT_BOARD_TITLE,
+        ideas: boardIdeas,
+        focusIdeaId: ideaId,
         supportingDocs,
         existingCritiques: priorCritiques,
-      });
-      const { result } = await runAdhocRole<DevilsAdvocateOutput>(devilsAdvocate, task);
-      if (!result || result.challenges.length === 0) {
+        trigger: beatTrigger(options.origin),
+        size: beatSize(options.origin),
+        aggressiveness: beatAggressiveness(options.origin),
+      }));
+      if (!beatResult.ok || beatResult.proposal.challenges.length === 0) {
         throw new Error('Devil’s advocate returned no critique.');
       }
 
       const priorCritiqueTexts = new Set(
         priorCritiques.map(critique => critique.critique.trim().toLowerCase()),
       );
-      const nextChallenge = result.challenges.find(challenge => (
+      const nextChallenge = beatResult.proposal.challenges.find(challenge => (
         !priorCritiqueTexts.has(challenge.critique.trim().toLowerCase())
       ));
       if (!nextChallenge) {
         throw new Error('No new critique surfaced beyond the ones already shown.');
       }
 
-      const critique = await createCritique({
-        boardId,
+      const critiqueResult = await boardController.createCritique({
         ideaId,
         critique: nextChallenge.critique,
         evidenceAsk: nextChallenge.evidenceAsk,
+        actor: options.origin === 'ai'
+          ? { type: 'ai', source: 'beat', beat: 'critique', label: 'devilsAdvocate' }
+          : options.source === 'webmcp'
+          ? { type: 'tool', source: 'webmcp' }
+          : { type: 'user', source: 'canvas' },
       });
-      await loadCritiques();
+      const critique = critiqueResult.critique;
+      applyCommittedBoard(critiqueResult.document, critiqueResult.history);
       handleHighlight([ideaId]);
       if (options.origin === 'ai') revealCritique(critique.id);
       return critique;
@@ -1308,6 +1668,7 @@ export default function App(): React.ReactElement {
   async function runScout(options: {
     origin?: RevealOrigin;
     limitNew?: number;
+    source?: 'canvas' | 'webmcp' | 'beat';
   } = {}): Promise<ScoutSuggestion[]> {
     setScouting(true);
     try {
@@ -1324,41 +1685,50 @@ export default function App(): React.ReactElement {
         .map(s => s.rawText);
       const dismissedRawTexts = existing.filter(s => s.status === 'dismissed').map(s => s.rawText);
 
-      const task = buildScoutTask({
-        boardIdeas,
-        discardedIdeas: discarded,
+      const beatResult = await runBoardBeat(buildScoutBeatContext({
+        boardId,
+        boardTitle: DEFAULT_BOARD_TITLE,
+        ideas,
         supportingDocs,
-        alreadyProposedRawTexts,
-        dismissedRawTexts,
-      });
-      const { result } = await runAdhocRole<OutsideKnowledgeScoutOutput>(outsideKnowledgeScout, task);
-      const now = Date.now();
+        existingSuggestions: existing,
+        trigger: beatTrigger(options.origin),
+        size: beatSize(options.origin),
+        aggressiveness: beatAggressiveness(options.origin),
+      }));
+      const now = beatResult.meta.finishedAt;
       setLastScoutRunAt(now);
-      if (!result || result.suggestions.length === 0) return [];
+      if (!beatResult.ok || beatResult.proposal.suggestions.length === 0) return [];
 
       const visibleSuggestions = pickVisibleSuggestions({
         currentVisibleCount: suggestions.length,
         alreadyProposedRawTexts,
         dismissedRawTexts,
-        suggestions: result.suggestions,
+        suggestions: beatResult.proposal.suggestions,
       }).slice(0, options.limitNew ?? MAX_VISIBLE_SUGGESTIONS);
       if (visibleSuggestions.length === 0) return [];
 
       const allIds = new Set(ideas.map(i => i.id));
       const created: ScoutSuggestion[] = [];
+      let lastCommit: Awaited<ReturnType<typeof boardController.createSuggestion>> | null = null;
       for (let i = 0; i < visibleSuggestions.length; i++) {
         const s = visibleSuggestions[i];
-        const createdSuggestion = await createSuggestion({
-          boardId,
+        lastCommit = await boardController.createSuggestion({
           rawText: s.rawText,
           rationale: s.rationale,
           source: s.source,
           relatedIdeaIds: s.relatedIdeaIds?.filter(id => allIds.has(id)),
           panel: ghostPanelFor(suggestions.length + i),
+          actor: options.origin === 'ai'
+            ? { type: 'ai', source: 'beat', beat: 'scout', label: 'outsideKnowledgeScout' }
+            : options.source === 'webmcp'
+            ? { type: 'tool', source: 'webmcp' }
+            : { type: 'user', source: 'canvas' },
         });
-        created.push(createdSuggestion);
+        created.push(lastCommit.suggestion);
       }
-      await loadSuggestions();
+      if (lastCommit) {
+        applyCommittedBoard(lastCommit.document, lastCommit.history);
+      }
       if (created.length > 0) setSuggestionsExpanded(false);
       if (options.origin === 'ai' && created.length > 0) {
         revealSuggestions(created.map(suggestion => suggestion.id));
@@ -1372,22 +1742,19 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function handleAdmitSuggestion(id: string): Promise<void> {
+  async function handleAdmitSuggestion(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
     setSuggestionBusy(prev => ({ ...prev, [id]: 'admit' }));
     try {
-      const s = await getSuggestion(id);
-      if (!s) return;
-      const bodyParts = [s.rawText];
-      if (s.elaboration) bodyParts.push('', '## Scout elaboration', s.elaboration);
-      if (s.rationale) bodyParts.push('', `_Scout rationale:_ ${s.rationale}`);
-      const idea = await createIdea({
-        boardId,
-        rawText: bodyParts.join('\n'),
-        tags: ['from-scout', s.source.split(':')[0]?.trim() || 'scout'],
-        panel: s.panel ? { ...s.panel } : undefined,
+      const result = await boardController.admitSuggestion({
+        suggestionId: id,
+        actor: source === 'webmcp'
+          ? { type: 'tool', source: 'webmcp' }
+          : { type: 'user', source: 'canvas' },
       });
-      await admitSuggestionStore(id, idea.id);
-      await loadBoard();
+      applyCommittedBoard(result.document, result.history);
       markActivity('edit');
     } catch (err) {
       console.error('[App] admit suggestion failed:', err);
@@ -1396,7 +1763,10 @@ export default function App(): React.ReactElement {
     }
   }
 
-  async function handleElaborateSuggestion(id: string): Promise<void> {
+  async function handleElaborateSuggestion(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
     setSuggestionBusy(prev => ({ ...prev, [id]: 'elaborate' }));
     try {
       const s = await getSuggestion(id);
@@ -1412,8 +1782,14 @@ export default function App(): React.ReactElement {
       if (result.implicationsIfAdmitted.length > 0) {
         parts.push('', '**If admitted:**', ...result.implicationsIfAdmitted.map(x => `- ${x}`));
       }
-      await setSuggestionElaboration(id, parts.join('\n'));
-      await loadSuggestions();
+      const committed = await boardController.elaborateSuggestion({
+        suggestionId: id,
+        elaboration: parts.join('\n'),
+        actor: source === 'webmcp'
+          ? { type: 'tool', source: 'webmcp' }
+          : { type: 'user', source: 'canvas' },
+      });
+      applyCommittedBoard(committed.document, committed.history);
     } catch (err) {
       console.error('[App] elaborate suggestion failed:', err);
     } finally {
@@ -1508,7 +1884,7 @@ export default function App(): React.ReactElement {
       ) {
         auto.lastConnectionsAt = now;
         const found = await runConnectionFinder({ origin: 'ai', limitGenerated: 1 });
-        if (!cancelled && found.length > 0) recordAiAction('connections');
+        if (!cancelled && found.length > 0) recordAiAction('connect');
         return;
       }
 
@@ -1626,6 +2002,11 @@ export default function App(): React.ReactElement {
           >
             {facilitatorPaused ? 'Facilitator paused' : 'Facilitator active'}
           </button>
+          {activeBeatRun && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
+              {activeBeatRun.trigger === 'automatic' ? 'auto' : 'manual'}:{activeBeatRun.size}:{activeBeatRun.beat}
+            </span>
+          )}
           {aiActions[0] && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
               ai:{aiActions[0].kind}
@@ -1789,11 +2170,13 @@ export default function App(): React.ReactElement {
           if (!docsIdea) return null;
           return (
             <DocsModal
+              boardId={boardId}
               ideaId={docsIdeaId}
               ideaTitle={docsIdea.rawText.slice(0, 80)}
               open={true}
               onClose={() => setDocsIdeaId(null)}
               onDocsChanged={(id, count) => setDocCounts(prev => ({ ...prev, [id]: count }))}
+              docMutations={supportingDocMutations}
             />
           );
         })()}

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { Idea, ActiveTabToolContext } from '../types';
-import { listIdeas, createIdea, updateIdea } from '../storage/ideas';
+import { DEFAULT_BOARD_ID } from '../board/types';
+import { createBoardController } from '../storage/boardController';
+import { listIdeas } from '../storage/ideas';
 import { getSettings } from '../storage/settings';
 import { queryActiveTabTools } from '../webmcp/contextBridge';
 import IdeaListItem from '../ui/IdeaListItem';
@@ -98,9 +100,14 @@ export default function SidePanel(): React.ReactElement {
     if (!text) return;
     setCreating(true);
     try {
-      const idea = await createIdea({ rawText: text, tags: [] });
+      const boardController = createBoardController(DEFAULT_BOARD_ID);
+      const committed = await boardController.captureIdea({
+        rawText: text,
+        tags: [],
+        actor: { type: 'user', source: 'workspace', label: 'sidepanel-create' },
+      });
       await loadIdeas();
-      setSelectedId(idea.id);
+      setSelectedId(committed.idea.id);
       setNewIdeaText('');
       setShowNewForm(false);
     } catch {
@@ -157,11 +164,15 @@ export default function SidePanel(): React.ReactElement {
     const idea = ideas.find(i => i.id === selectedId);
     if (!idea) return;
 
-    // Persist the tool context on the idea
-    const updated: Idea = { ...idea, liveToolContext: pendingToolCtx, updatedAt: Date.now() };
     try {
-      await updateIdea(updated.id, updated);
-      setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
+      const boardController = createBoardController(idea.boardId ?? DEFAULT_BOARD_ID);
+      const committed = await boardController.updateIdea({
+        ideaId: idea.id,
+        patch: { liveToolContext: pendingToolCtx },
+        actor: { type: 'user', source: 'workspace', label: 'sidepanel-consent' },
+        summary: `Allowed live tool context for idea ${idea.id}`,
+      });
+      setIdeas(prev => prev.map(i => (i.id === committed.idea.id ? committed.idea : i)));
     } catch { /* non-fatal */ }
 
     setConsentDecisions(prev => ({ ...prev, [selectedId]: 'allowed' }));

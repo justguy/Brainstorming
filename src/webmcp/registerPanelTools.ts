@@ -13,7 +13,9 @@
  */
 
 import { detectWebMcpSupport } from './detectSupport';
-import { listIdeas, getIdea, createIdea } from '../storage/ideas';
+import { DEFAULT_BOARD_ID } from '../board/types';
+import { createBoardController } from '../storage/boardController';
+import { listIdeas, getIdea } from '../storage/ideas';
 import type { Idea } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -185,14 +187,16 @@ const captureIdeaTool: ModelContextTool = {
     if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {
       return { error: 'rawText must be a non-empty string.' };
     }
-    const idea = await createIdea({
+    const boardController = createBoardController(DEFAULT_BOARD_ID);
+    const committed = await boardController.captureIdea({
       rawText: rawText.trim(),
       tags: Array.isArray(tags) ? tags.filter(t => typeof t === 'string') : [],
+      actor: { type: 'tool', source: 'webmcp', label: 'panel-capture' },
     });
     return {
-      ideaId:    idea.id,
-      phase:     idea.phase,
-      readiness: idea.readiness,
+      ideaId:    committed.idea.id,
+      phase:     committed.idea.phase,
+      readiness: committed.idea.readiness,
     };
   },
 };

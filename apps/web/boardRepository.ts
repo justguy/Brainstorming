@@ -38,7 +38,6 @@ import {
   getIdea as getIdeaFromStore,
   listIdeas as listIdeasFromStore,
   restoreIdea as restoreIdeaInStore,
-  updateIdea as updateIdeaInStore,
 } from '../../src/storage/ideas';
 import {
   admitSuggestion as admitSuggestionInStore,
@@ -110,7 +109,6 @@ export interface BoardRepository {
   listIdeas(): Promise<Idea[]>;
   getIdea(ideaId: string): Promise<Idea | undefined>;
   createIdea(input: CreateBoardIdeaInput): Promise<Idea>;
-  updateIdea(ideaId: string, patch: Partial<Idea>): Promise<Idea>;
   discardIdea(ideaId: string): Promise<Idea>;
   restoreIdea(ideaId: string): Promise<Idea>;
   listGroups(): Promise<IdeaGroup[]>;
@@ -156,9 +154,6 @@ export function createBoardRepository(boardId: BoardId = DEFAULT_BOARD_ID): Boar
     },
     createIdea(input: CreateBoardIdeaInput): Promise<Idea> {
       return createIdeaInStore({ ...input, boardId });
-    },
-    updateIdea(ideaId: string, patch: Partial<Idea>): Promise<Idea> {
-      return updateIdeaInStore(ideaId, patch);
     },
     discardIdea(ideaId: string): Promise<Idea> {
       return discardIdeaInStore(ideaId);

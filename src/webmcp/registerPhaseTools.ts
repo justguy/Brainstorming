@@ -14,8 +14,16 @@
 
 import { detectWebMcpSupport } from './detectSupport';
 import { advance } from '../orchestrator/stateMachine';
-import { getIdea, updateIdea } from '../storage/ideas';
+import { DEFAULT_BOARD_ID, type ChangeActor } from '../board/types';
+import { createBoardController } from '../storage/boardController';
+import { getIdea } from '../storage/ideas';
 import type { Phase } from '../types';
+
+const WEBMCP_CHANGE_ACTOR: ChangeActor = {
+  type: 'tool',
+  source: 'webmcp',
+  label: 'WebMCP phase tool',
+};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -27,10 +35,11 @@ function artifactSummary(md: string | undefined): string {
   return md.length <= 200 ? md : md.slice(0, 199) + '…';
 }
 
-/** Safe wrapper: loads idea, calls advance, persists, returns summary. */
+/** Safe wrapper: loads idea, calls advance, journals the new state, returns summary. */
 async function advanceAndPersist(
   ideaId: string,
   userInput: string,
+  skip = false,
 ): Promise<{ newPhase: Phase; artifactSummary: string; error?: string }> {
   const idea = await getIdea(ideaId);
   if (!idea) {
@@ -41,9 +50,15 @@ async function advanceAndPersist(
     };
   }
 
-  const updated = await advance(idea, userInput);
-  // Persist the post-advance state back to storage.
-  await updateIdea(updated.id, updated);
+  const updated = await advance(idea, userInput, skip);
+  const boardController = createBoardController(idea.boardId ?? DEFAULT_BOARD_ID);
+  const committedAt = updated.updatedAt ?? Date.now();
+  await boardController.updateIdea({
+    ideaId: updated.id,
+    patch: { ...updated, updatedAt: committedAt },
+    actor: WEBMCP_CHANGE_ACTOR,
+    summary: `Advanced idea ${updated.id} to phase ${updated.phase}`,
+  });
 
   return {
     newPhase: updated.phase,

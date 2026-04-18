@@ -2,11 +2,10 @@
  * webmcp-tools.ts — WebMCP tool registration for the Brainstorming Orchestrator web app.
  *
  * Pattern mirrors the react-flightsearch demo:
- *  - Global tools (list_ideas, get_idea, capture_idea, export_handoff) are registered
- *    once on mount via the AbortController + signal approach.
- *  - Lifecycle tools (submit_clarifications, select_approach, confirm_rules,
- *    choose_next_step, advance_phase) are registered/unregistered based on which
- *    idea is selected and its current phase.
+ *  - Board-first global tools are registered once on mount via the
+ *    AbortController + signal approach.
+ *  - Legacy phase-local lifecycle tools were intentionally demoted once the
+ *    board-first beat surface became the active paradigm.
  *
  * The dispatchAndWait helper fires a CustomEvent and waits for React state to
  * commit (the component dispatches a completion event in a useEffect that runs
@@ -15,6 +14,8 @@
 
 import { useEffect, useRef } from 'react';
 import type { Idea, IdeaGroup, SupportingDoc } from '../../src/types';
+import { BEAT_NAMES, type BeatName } from '../../src/beats/types';
+import { DEFAULT_BOARD_ID } from '../../src/board/types';
 import { listIdeas, getIdea, getTurnLogPage, listDiscardedIdeas } from '../../src/storage/ideas';
 import { getCritique, listCritiques, listCritiquesForIdea } from '../../src/storage/critiques';
 import { listGroups } from '../../src/storage/groups';
@@ -23,23 +24,10 @@ import {
   listSuggestionsByStatus,
   getSuggestion,
 } from '../../src/storage/suggestions';
-import {
-  listDocsForIdea,
-  getDoc,
-  createDoc,
-  updateDoc,
-  deleteDoc,
-  markDocReady,
-  markDocFailed,
-} from '../../src/storage/docs';
-import { runAdhocRole } from '../../src/orchestrator/adhocRole';
-import {
-  docFactExtractor,
-  buildDocFactExtractorTask,
-  type DocFactExtractorOutput,
-} from '../../src/orchestrator/roles/docFactExtractor';
-import { findSubPhase } from '../../src/orchestrator/subPhases';
+import { listDocsForIdea, getDoc } from '../../src/storage/docs';
 import type { LegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
+import { defaultBoardRepository } from './boardRepository';
+import { createBoardController } from '../../src/storage/boardController';
 
 // ---------------------------------------------------------------------------
 // safeRegisterTool — StrictMode-resilient registerTool wrapper
@@ -93,6 +81,39 @@ function dispatchAndWait(
     };
 
     window.addEventListener(completionEvent, handleCompletion);
+    window.dispatchEvent(new CustomEvent(eventName, { detail: { ...detail, requestId } }));
+  });
+}
+
+type ToolCompletionPayload<T extends object> = T & { ok: boolean; error?: string };
+
+function dispatchAndWaitForResult<T extends object>(
+  eventName: string,
+  detail: Record<string, unknown> = {},
+  timeoutMs = 8000,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const requestId = Math.random().toString(36).substring(2, 15);
+    const completionEvent = `tool-completion-${requestId}`;
+
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener(completionEvent, handleCompletion as EventListener);
+      reject(new Error(`Timed out waiting for UI to update (requestId: ${requestId})`));
+    }, timeoutMs);
+
+    const handleCompletion = (event: Event) => {
+      const ev = event as CustomEvent<ToolCompletionPayload<T>>;
+      clearTimeout(timeoutId);
+      window.removeEventListener(completionEvent, handleCompletion as EventListener);
+      if (!ev.detail?.ok) {
+        reject(new Error(ev.detail?.error ?? 'Action failed'));
+        return;
+      }
+      const { ok: _ok, error: _error, ...data } = ev.detail;
+      resolve(data as T);
+    };
+
+    window.addEventListener(completionEvent, handleCompletion as EventListener);
     window.dispatchEvent(new CustomEvent(eventName, { detail: { ...detail, requestId } }));
   });
 }
@@ -362,6 +383,64 @@ const getCanvasTool: ModelContextTool = {
   },
 };
 
+const getBoardTool: ModelContextTool = {
+  name: 'get_board',
+  description:
+    'Returns the current durable board document: board metadata, ideas, groups, supporting docs, suggestions, critiques, connections, and undo/redo history state. ' +
+    'Use this as the board-first read surface before invoking beats or mutating board entities.',
+  inputSchema: { type: 'object', properties: {} },
+  annotations: { readOnlyHint: true },
+  execute: async () => {
+    const [document, history] = await Promise.all([
+      defaultBoardRepository.forBoard(DEFAULT_BOARD_ID).loadDocument(),
+      createBoardController(DEFAULT_BOARD_ID).getHistoryState(),
+    ]);
+    return {
+      board: document.board,
+      history,
+      ideas: document.ideas.map(idea => ({
+        id: idea.id,
+        rawText: idea.rawText,
+        status: idea.status,
+        tags: idea.tags,
+        panel: idea.panel,
+        readiness: idea.readiness,
+        phase: idea.phase,
+        updatedAt: idea.updatedAt,
+      })),
+      groups: document.groups,
+      docs: document.docs.map(doc => ({
+        id: doc.id,
+        ideaId: doc.ideaId,
+        title: doc.title,
+        status: doc.status,
+        summary: doc.summary,
+        facts: doc.facts,
+        updatedAt: doc.updatedAt,
+      })),
+      suggestions: document.suggestions.map(suggestion => ({
+        id: suggestion.id,
+        rawText: suggestion.rawText,
+        rationale: suggestion.rationale,
+        source: suggestion.source,
+        status: suggestion.status,
+        relatedIdeaIds: suggestion.relatedIdeaIds ?? [],
+        admittedIdeaId: suggestion.admittedIdeaId,
+        updatedAt: suggestion.updatedAt,
+      })),
+      critiques: document.critiques.map(critique => ({
+        id: critique.id,
+        ideaId: critique.ideaId,
+        critique: critique.critique,
+        evidenceAsk: critique.evidenceAsk,
+        status: critique.status,
+        updatedAt: critique.updatedAt,
+      })),
+      connections: document.connections,
+    };
+  },
+};
+
 const movePanelTool: ModelContextTool = {
   name: 'move_panel',
   description:
@@ -578,6 +657,48 @@ const scoutIdeasTool: ModelContextTool = {
     return count === 0
       ? 'Scout ran — no new suggestions surfaced. The board may already be well-covered, or the scout is avoiding ideas already proposed.'
       : `Scout ran — ${count} ghost suggestion${count === 1 ? '' : 's'} added to the canvas.`;
+  },
+};
+
+const runBeatTool: ModelContextTool = {
+  name: 'run_beat',
+  description:
+    'Runs a board-scoped beat by name. `scout`, `connect`, and `critique` use the live board flow and return committed entities. ' +
+    '`cluster` and `summarise` return preview proposals from the beat runtime. Use this as the board-first beat surface instead of phase-local tools.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      beat: {
+        type: 'string',
+        enum: [...BEAT_NAMES],
+        description: 'Beat to invoke.',
+      },
+      focusIdeaId: {
+        type: 'string',
+        minLength: 1,
+        description: 'Optional focus idea id. Required for `critique` and ignored by the other beats.',
+      },
+    },
+    required: ['beat'],
+  },
+  annotations: { readOnlyHint: false },
+  execute: async (input) => {
+    const { beat, focusIdeaId } = input as { beat: BeatName; focusIdeaId?: string };
+    if (!BEAT_NAMES.includes(beat)) {
+      return `ERROR: beat must be one of ${BEAT_NAMES.join(', ')}.`;
+    }
+    if (beat === 'critique' && (!focusIdeaId || !focusIdeaId.trim())) {
+      return 'ERROR: `focusIdeaId` is required when beat is `critique`.';
+    }
+    const detail = await dispatchAndWaitForDetail<Record<string, unknown>>(
+      'brainstorm:runBeat',
+      { beat, focusIdeaId },
+      90_000,
+    );
+    if (typeof detail.error === 'string' && detail.error.length > 0) {
+      return `ERROR: ${detail.error}`;
+    }
+    return detail;
   },
 };
 
@@ -950,19 +1071,6 @@ function docSummary(doc: SupportingDoc): {
   };
 }
 
-async function refineDocInline(doc: SupportingDoc): Promise<SupportingDoc> {
-  try {
-    const task = buildDocFactExtractorTask(doc.title, doc.rawText);
-    const { result } = await runAdhocRole<DocFactExtractorOutput>(docFactExtractor, task);
-    if (!result) {
-      return markDocFailed(doc.id, 'Extractor returned no result.');
-    }
-    return markDocReady(doc.id, result.summary, result.facts);
-  } catch (err) {
-    return markDocFailed(doc.id, err instanceof Error ? err.message : 'Extraction failed.');
-  }
-}
-
 const attachSupportingDocTool: ModelContextTool = {
   name: 'attach_supporting_doc',
   description:
@@ -1013,9 +1121,11 @@ const attachSupportingDocTool: ModelContextTool = {
     if (!rawText || rawText.trim().length === 0) return 'ERROR: `rawText` must be non-empty.';
     const idea = await getIdea(ideaId);
     if (!idea) return `ERROR: no idea with id ${ideaId}.`;
-    const created = await createDoc({ ideaId, title: title ?? '', rawText });
-    const refined = await refineDocInline(created);
-    window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId } }));
+    const refined = await dispatchAndWaitForResult<SupportingDoc>('brainstorm:attachSupportingDoc', {
+      ideaId,
+      title: title ?? '',
+      rawText,
+    });
     return {
       docId: refined.id,
       status: refined.status,
@@ -1088,8 +1198,7 @@ const deleteSupportingDocTool: ModelContextTool = {
     if (!docId) return 'ERROR: `docId` is required.';
     const doc = await getDoc(docId);
     if (!doc) return `ERROR: no doc with id ${docId}.`;
-    await deleteDoc(docId);
-    window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: doc.ideaId } }));
+    await dispatchAndWait('brainstorm:deleteSupportingDoc', { docId }, 'Deleted supporting doc');
     return `Deleted doc "${doc.title}" (${docId}).`;
   },
 };
@@ -1112,9 +1221,7 @@ const retryDocExtractionTool: ModelContextTool = {
     if (!docId) return 'ERROR: `docId` is required.';
     const doc = await getDoc(docId);
     if (!doc) return `ERROR: no doc with id ${docId}.`;
-    await updateDoc(docId, { status: 'processing', error: undefined });
-    const refined = await refineDocInline(doc);
-    window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: doc.ideaId } }));
+    const refined = await dispatchAndWaitForResult<SupportingDoc>('brainstorm:retrySupportingDoc', { docId });
     return {
       docId: refined.id,
       status: refined.status,
@@ -1488,18 +1595,14 @@ function makeChooseNextStepTool(selectedIdea: LegacyToolIdea): ModelContextTool 
 // ---------------------------------------------------------------------------
 
 /**
- * Registers and unregisters WebMCP tools based on the currently selected idea.
+ * Registers the board-first WebMCP surface for the brainstorming app.
  *
- * Global tools (list_ideas, get_idea, capture_idea, export_handoff) are
- * always registered while the hook is mounted.
- *
- * Phase-contextual tools are registered/unregistered whenever selectedIdea changes.
+ * Legacy phase-contextual tools are intentionally not registered here anymore;
+ * the active paradigm is board-first and beat-first.
  */
-export function useBrainstormingTools(selectedIdea: LegacyToolIdea | null): void {
+export function useBrainstormingTools(_selectedIdea: LegacyToolIdea | null): void {
   // Global tool AbortController — lives for the component lifetime
   const globalAcRef = useRef<AbortController | null>(null);
-  // Lifecycle tool AbortController — re-created whenever selectedIdea changes
-  const lifecycleAcRef = useRef<AbortController | null>(null);
 
   // Register global tools once on mount
   useEffect(() => {
@@ -1518,6 +1621,7 @@ export function useBrainstormingTools(selectedIdea: LegacyToolIdea | null): void
       safeRegisterTool(mc, captureIdeaTool, opts);
       safeRegisterTool(mc, exportHandoffTool, opts);
       safeRegisterTool(mc, getCanvasTool, opts);
+      safeRegisterTool(mc, getBoardTool, opts);
       safeRegisterTool(mc, movePanelTool, opts);
       safeRegisterTool(mc, groupIdeasTool, opts);
       safeRegisterTool(mc, ungroupIdeaTool, opts);
@@ -1536,11 +1640,12 @@ export function useBrainstormingTools(selectedIdea: LegacyToolIdea | null): void
       safeRegisterTool(mc, listCritiquesTool, opts);
       safeRegisterTool(mc, dismissCritiqueTool, opts);
       safeRegisterTool(mc, scoutIdeasTool, opts);
+      safeRegisterTool(mc, runBeatTool, opts);
       safeRegisterTool(mc, listSuggestionsTool, opts);
       safeRegisterTool(mc, admitSuggestionTool, opts);
       safeRegisterTool(mc, elaborateSuggestionTool, opts);
       safeRegisterTool(mc, dismissSuggestionTool, opts);
-      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
+      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, get_board, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, run_beat, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
     }
 
     return () => {
@@ -1550,70 +1655,6 @@ export function useBrainstormingTools(selectedIdea: LegacyToolIdea | null): void
       }
     };
   }, []);
-
-  // Register lifecycle tools whenever the selected idea changes
-  useEffect(() => {
-    // Abort any previously registered lifecycle tools
-    if (lifecycleAcRef.current) {
-      lifecycleAcRef.current.abort();
-      lifecycleAcRef.current = null;
-    }
-
-    const mc = window.navigator.modelContext;
-    if (!mc || !selectedIdea) return;
-
-    lifecycleAcRef.current = new AbortController();
-    const opts = { signal: lifecycleAcRef.current.signal };
-
-    const spec = findSubPhase(selectedIdea.phase);
-    const specLabel = spec?.label ?? `step ${selectedIdea.phase}`;
-    const skippable = !!spec?.skippable;
-
-    // Always register advance_phase when an idea is selected
-    safeRegisterTool(mc, makeAdvancePhaseTool(selectedIdea, specLabel, skippable), opts);
-
-    // Main phases that expect user text input
-    if (selectedIdea.phase === 2 && selectedIdea.clarifications.length > 0) {
-      safeRegisterTool(mc, makeSubmitClarificationsTool(selectedIdea), opts);
-    }
-    if (selectedIdea.phase === 3 && selectedIdea.briefState.approaches.length > 0) {
-      safeRegisterTool(mc, makeSelectApproachTool(selectedIdea), opts);
-    }
-
-    // Micro-step tools — available when lenses/challenges/stress results exist,
-    // NOT gated only on current phase. This lets an agent revisit a micro decision
-    // after the main phase has advanced past it.
-    if (selectedIdea.briefState.lenses.length > 0) {
-      safeRegisterTool(mc, makePinLensTool(selectedIdea), opts);
-      safeRegisterTool(mc, makeDismissLensTool(selectedIdea), opts);
-      safeRegisterTool(mc, makeNoteLensTool(selectedIdea), opts);
-    }
-    if (selectedIdea.briefState.challenges.length > 0) {
-      safeRegisterTool(mc, makeRespondChallengeTool(selectedIdea), opts);
-    }
-    if (selectedIdea.briefState.stressResults.length > 0) {
-      safeRegisterTool(mc, makeMarkStressHandledTool(selectedIdea), opts);
-    }
-
-    if (selectedIdea.phase >= 8) {
-      safeRegisterTool(mc, makeChooseNextStepTool(selectedIdea), opts);
-    }
-
-    return () => {
-      if (lifecycleAcRef.current) {
-        lifecycleAcRef.current.abort();
-        lifecycleAcRef.current = null;
-      }
-    };
-  }, [
-    selectedIdea?.id,
-    selectedIdea?.phase,
-    selectedIdea?.briefState.lenses.length,
-    selectedIdea?.briefState.challenges.length,
-    selectedIdea?.briefState.stressResults.length,
-    selectedIdea?.briefState.approaches.length,
-    selectedIdea?.clarifications.length,
-  ]);
 }
 
 export {

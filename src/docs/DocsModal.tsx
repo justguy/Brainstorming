@@ -15,14 +15,10 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import type { SupportingDoc } from '../types';
+import type { ChangeActor } from '../board/types';
+import type { BoardId, SupportingDoc } from '../types';
 import {
   listDocsForIdea,
-  createDoc,
-  updateDoc,
-  deleteDoc,
-  markDocReady,
-  markDocFailed,
 } from '../storage/docs';
 import { runAdhocRole } from '../orchestrator/adhocRole';
 import {
@@ -32,21 +28,36 @@ import {
 } from '../orchestrator/roles/docFactExtractor';
 import Button from '../ui/Button';
 
+interface SupportingDocMutations {
+  createDoc(input: { ideaId: string; title: string; rawText: string; actor: ChangeActor }): Promise<SupportingDoc>;
+  updateDoc(input: {
+    docId: string;
+    patch: Partial<SupportingDoc>;
+    actor: ChangeActor;
+    summary?: string;
+  }): Promise<SupportingDoc>;
+  deleteDoc(input: { docId: string; actor: ChangeActor }): Promise<void>;
+}
+
 export interface DocsModalProps {
+  boardId: BoardId;
   ideaId: string;
   ideaTitle: string;
   open: boolean;
   onClose: () => void;
   /** Called whenever the doc count changes so the caller can refresh its badge. */
   onDocsChanged?: (ideaId: string, count: number) => void;
+  docMutations: SupportingDocMutations;
 }
 
 export default function DocsModal({
+  boardId,
   ideaId,
   ideaTitle,
   open,
   onClose,
   onDocsChanged,
+  docMutations,
 }: DocsModalProps): React.ReactElement | null {
   const [docs, setDocs] = useState<SupportingDoc[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +69,7 @@ export default function DocsModal({
     if (!open) return;
     setLoading(true);
     try {
-      const list = await listDocsForIdea(ideaId);
+      const list = await listDocsForIdea(ideaId, boardId);
       setDocs(list);
       onDocsChanged?.(ideaId, list.length);
     } catch (err) {
@@ -79,7 +90,7 @@ export default function DocsModal({
       setFormText('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ideaId]);
+  }, [open, ideaId, boardId]);
 
   // If an agent (or another surface) mutates docs for this idea, refresh the list.
   useEffect(() => {
@@ -91,20 +102,32 @@ export default function DocsModal({
     window.addEventListener('brainstorm:docsChanged', handler as EventListener);
     return () => window.removeEventListener('brainstorm:docsChanged', handler as EventListener);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ideaId]);
+  }, [open, ideaId, boardId]);
 
-  async function refineDoc(doc: SupportingDoc): Promise<void> {
+  async function refineDoc(doc: SupportingDoc, actor: ChangeActor): Promise<void> {
     try {
       const task = buildDocFactExtractorTask(doc.title, doc.rawText);
       const { result } = await runAdhocRole<DocFactExtractorOutput>(docFactExtractor, task);
       if (!result) {
-        await markDocFailed(doc.id, 'Extractor returned no result. Try editing the text and re-saving.');
+        await docMutations.updateDoc({
+          docId: doc.id,
+          patch: { status: 'failed', error: 'Extractor returned no result. Try editing the text and re-saving.' },
+          actor,
+        });
       } else {
-        await markDocReady(doc.id, result.summary, result.facts);
+        await docMutations.updateDoc({
+          docId: doc.id,
+          patch: { status: 'ready', summary: result.summary, facts: result.facts, error: undefined },
+          actor,
+        });
       }
     } catch (err) {
       console.error('[DocsModal] refineDoc failed:', err);
-      await markDocFailed(doc.id, err instanceof Error ? err.message : 'Extraction failed.');
+      await docMutations.updateDoc({
+        docId: doc.id,
+        patch: { status: 'failed', error: err instanceof Error ? err.message : 'Extraction failed.' },
+        actor,
+      });
     }
     await reload();
     broadcastChange();
@@ -115,13 +138,18 @@ export default function DocsModal({
     if (!text) return;
     setSaving(true);
     try {
-      const doc = await createDoc({ ideaId, title: formTitle, rawText: text });
+      const doc = await docMutations.createDoc({
+        ideaId,
+        title: formTitle,
+        rawText: text,
+        actor: { type: 'user', source: 'canvas' },
+      });
       setFormTitle('');
       setFormText('');
       await reload();
       broadcastChange();
       // Kick off refinement (non-blocking from the modal's perspective — reload picks up status flip)
-      refineDoc(doc);
+      void refineDoc(doc, { type: 'user', source: 'canvas' });
     } catch (err) {
       console.error('[DocsModal] save failed:', err);
     } finally {
@@ -130,15 +158,28 @@ export default function DocsModal({
   }
 
   async function handleRetry(doc: SupportingDoc): Promise<void> {
-    await updateDoc(doc.id, { status: 'processing', error: undefined });
-    await reload();
-    refineDoc(doc);
+    try {
+      const updated = await docMutations.updateDoc({
+        docId: doc.id,
+        patch: { status: 'processing', error: undefined },
+        actor: { type: 'user', source: 'canvas' },
+        summary: `Retried extraction for ${doc.title}`,
+      });
+      broadcastChange();
+      void reload();
+      void refineDoc(updated, { type: 'user', source: 'canvas' });
+    } catch (err) {
+      console.error('[DocsModal] retry failed:', err);
+    }
   }
 
   async function handleDelete(doc: SupportingDoc): Promise<void> {
     if (!window.confirm(`Delete "${doc.title}"? Its facts will no longer be used in prompts.`)) return;
     try {
-      await deleteDoc(doc.id);
+      await docMutations.deleteDoc({
+        docId: doc.id,
+        actor: { type: 'user', source: 'canvas' },
+      });
       await reload();
       broadcastChange();
     } catch (err) {

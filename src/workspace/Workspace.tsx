@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import type { Density, Idea, LlmMessage } from '../types';
 import { advance } from '../orchestrator/stateMachine';
+import { DEFAULT_BOARD_ID } from '../board/types';
 import { getSettings } from '../storage/settings';
-import { updateIdea } from '../storage/ideas';
+import { createBoardController } from '../storage/boardController';
 import { invokeActiveTabTool } from '../webmcp/contextBridge';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
@@ -45,6 +46,7 @@ export default function Workspace({ idea: initialIdea, onUpdate, docCount = 0, o
   const [invokeInputText, setInvokeInputText] = useState('{}');
   const [invokeError, setInvokeError] = useState<string | null>(null);
   const [invoking, setInvoking] = useState(false);
+  const boardController = createBoardController(idea.boardId ?? DEFAULT_BOARD_ID);
 
   // Sync prop changes (e.g. re-selection from list)
   useEffect(() => {
@@ -68,7 +70,12 @@ export default function Workspace({ idea: initialIdea, onUpdate, docCount = 0, o
     try {
       const updated: Idea = await advance(idea, userInput.trim(), skip);
       setUserInput('');
-      await updateIdea(updated.id, updated);
+      await boardController.updateIdea({
+        ideaId: updated.id,
+        patch: updated,
+        actor: { type: 'user', source: 'workspace' },
+        summary: skip ? 'Workspace skipped advance' : 'Workspace advanced idea',
+      });
       handleIdeaUpdate(updated);
     } catch (err) {
       setAdvanceError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
@@ -138,7 +145,12 @@ export default function Workspace({ idea: initialIdea, onUpdate, docCount = 0, o
         updatedAt: now,
         lastTurnAt: now,
       };
-      await updateIdea(updated.id, updated);
+      await boardController.updateIdea({
+        ideaId: updated.id,
+        patch: updated,
+        actor: { type: 'user', source: 'workspace' },
+        summary: `Workspace invoked ${toolName}`,
+      });
       handleIdeaUpdate(updated);
       setInvokeToolName(null);
       setInvokeInputText('{}');
