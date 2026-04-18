@@ -69,8 +69,8 @@
       }
     ],
     "scratchpad": "bo-029, bo-030, and bo-031 are landed in code. The next priority is browser proof for bo-009 two-tab Yjs sync, followed by bo-013 File System Access permission-loss and re-authorization validation. After those truth-seeking checks, the next design slice is bo-032 beat review flow.",
-    "rev": 37,
-    "updatedAt": "2026-04-18T14:56:37.000Z"
+    "rev": 38,
+    "updatedAt": "2026-04-18T15:10:40.000Z"
   },
   "tasks": [
     {
@@ -1395,7 +1395,12 @@
         "priorityId": "p1"
       },
       "references": [
-        "apps/web/App.tsx:1-699",
+        "apps/web/App.tsx:1-149",
+        "apps/web/BoardAppView.tsx:1-35",
+        "apps/web/AppHeaderBar.tsx:1-91",
+        "apps/web/AppCompanionRail.tsx:1-139",
+        "apps/web/BoardCanvasStage.tsx:1-70",
+        "apps/web/BoardWorkspaceOverlays.tsx:1-111",
         "apps/web/useBoardSync.ts:1-208",
         "apps/web/useCanvasIdeaMutations.ts:1-157",
         "apps/web/useCompanionAutomation.ts:1-244",
@@ -1405,7 +1410,7 @@
         "Design/Integration Guide.html:307-315"
       ],
       "effort": "l",
-      "comment": "Landed in code: App.tsx is down to the board shell and layout while session actions, analysis actions, suggestion actions, sync, companion automation, and WebMCP event bridges all live behind explicit hooks.",
+      "comment": "Landed in code: App.tsx is down to route and shell wiring while the top chrome, companion rail, canvas stage, workspace overlays, session actions, analysis actions, suggestion actions, sync, companion automation, and WebMCP event bridges live behind explicit components and hooks.",
       "definition_of_done": [
         "App.tsx no longer owns history mutation logic, storage choreography, facilitator timing, and layout concerns in one file.",
         "Board controller and board UI hooks have explicit boundaries and callers.",
