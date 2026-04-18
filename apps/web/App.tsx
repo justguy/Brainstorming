@@ -46,7 +46,6 @@ import {
 import {
   getSuggestion,
 } from '../../src/storage/suggestions';
-import { advance } from '../../src/orchestrator/stateMachine';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
 import { runBeat } from '../../src/orchestrator/runBeat';
 import Button from '../../src/ui/Button';
@@ -56,17 +55,15 @@ import { CritiqueCardsLayer } from '../../src/canvas/CritiqueCardsLayer';
 import DiscardPile from '../../src/canvas/DiscardPile';
 import ConnectionsPanel from '../../src/canvas/ConnectionsPanel';
 import DocsModal from '../../src/docs/DocsModal';
-import { getDoc, listDocsForIdea } from '../../src/storage/docs';
+import { listDocsForIdea } from '../../src/storage/docs';
 import {
   suggestionElaborator,
   buildElaboratorTask,
   type SuggestionElaboratorOutput,
 } from '../../src/orchestrator/roles/suggestionElaborator';
 import {
-  makeManualConnection,
   materializeConnections,
   replaceGeneratedConnections,
-  upsertConnection,
 } from './connectionState';
 import { SoftModeHint } from './SoftModeHint';
 import { DevCompanionCard } from './DevCompanionCard';
@@ -79,14 +76,17 @@ import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
 import { CaptureIdeaPopover } from './CaptureIdeaPopover';
 import {
-  buildClusterBeatContext,
   buildConnectBeatContext,
   buildCritiqueBeatContext,
   buildScoutBeatContext,
-  buildSummariseBeatContext,
 } from './beatContext';
 import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
+import { useBrainstormAnalysisEvents } from './useBrainstormAnalysisEvents';
+import { useBrainstormLifecycleEvents } from './useBrainstormLifecycleEvents';
+import { useBrainstormSuggestionEvents } from './useBrainstormSuggestionEvents';
 import { useBoardSync } from './useBoardSync';
+import { useBrainstormSupportingDocEvents } from './useBrainstormSupportingDocEvents';
+import { useBrainstormWorkspaceEvents } from './useBrainstormWorkspaceEvents';
 import { useCanvasIdeaMutations } from './useCanvasIdeaMutations';
 import { AUTO_IDLE_MS, useCompanionAutomation } from './useCompanionAutomation';
 
@@ -364,727 +364,67 @@ export default function App(): React.ReactElement {
     markActivity,
   });
 
+  useBrainstormSupportingDocEvents({
+    boardId,
+    ideas,
+    loadDocCounts,
+    markActivity,
+    supportingDocMutations,
+    refineSupportingDoc,
+  });
+  useBrainstormAnalysisEvents({
+    boardId,
+    ideas,
+    connections,
+    boardController,
+    applyCommittedBoard,
+    setLastConnectionsRunAt,
+    handleHighlight,
+    loadCritiques,
+    runConnectionFinder,
+    runCritiqueIdea,
+    handleDismissCritique,
+  });
+  useBrainstormLifecycleEvents({
+    boardId,
+    ideas,
+    boardController,
+    applyCommittedBoard,
+    loadIdeas,
+    setSelectedId,
+    setAdvancingFromTool,
+    setCreating,
+  });
+  useBrainstormSuggestionEvents({
+    boardId,
+    ideas,
+    connections,
+    suggestions,
+    runConnectionFinder,
+    runCritiqueIdea,
+    runScout,
+    runBoardBeat,
+    handleAdmitSuggestion,
+    handleElaborateSuggestion,
+    handleDismissSuggestion,
+  });
+  useBrainstormWorkspaceEvents({
+    boardId,
+    ideas,
+    selectedId,
+    boardController,
+    applyCommittedBoard,
+    loadIdeas,
+    setSelectedId,
+    handleMove,
+    handleGroup,
+    handleUngroup,
+    handleMerge,
+  });
+
   // ---------------------------------------------------------------------------
   // Tool event listeners
   // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    // brainstorm:selectIdea — captures idea created by capture_idea tool
-    const handleSelectIdea = (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      setSelectedId(ideaId);
-      loadIdeas().then(() => {
-        if (requestId) {
-          window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        }
-      });
-    };
-
-    // brainstorm:advancePhase — drives the phase workflow from an agent
-    const handleAdvancePhase = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; userInput?: string; skip?: boolean; requestId?: string }>;
-      const { ideaId, userInput, skip, requestId } = ev.detail;
-
-      const idea = ideas.find(i => i.id === ideaId);
-      if (!idea) {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        return;
-      }
-
-      setAdvancingFromTool(true);
-      try {
-        const updated = await advance(idea, userInput ?? '', !!skip);
-        const committed = await boardController.updateIdea({
-          ideaId: updated.id,
-          patch: updated,
-          actor: { type: 'tool', source: 'webmcp' },
-          summary: `Advanced idea ${updated.id} to phase ${updated.phase}`,
-        });
-        applyCommittedBoard(committed.document, committed.history);
-      } catch (err) {
-        console.error('[App] advancePhase failed:', err);
-      } finally {
-        setAdvancingFromTool(false);
-        if (requestId) {
-          window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        }
-      }
-    };
-
-    // brainstorm:patchLens — pin/dismiss/note a lens entry
-    const handlePatchLens = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        lensId: string;
-        verdict?: 'pending' | 'pinned' | 'dismissed';
-        userNote?: string;
-        requestId?: string;
-      }>;
-      const { ideaId, lensId, verdict, userNote, requestId } = ev.detail;
-      try {
-        const idea = ideas.find(i => i.id === ideaId);
-        if (!idea) return;
-        const lenses = idea.briefState.lenses.map(l =>
-          l.id === lensId
-            ? { ...l, ...(verdict ? { verdict } : {}), ...(userNote !== undefined ? { userNote } : {}) }
-            : l,
-        );
-        const committed = await boardController.updateIdea({
-          ideaId,
-          patch: { briefState: { ...idea.briefState, lenses } },
-          actor: { type: 'tool', source: 'webmcp' },
-          summary: `Updated lens ${lensId} on idea ${ideaId}`,
-        });
-        applyCommittedBoard(committed.document, committed.history);
-      } catch (err) {
-        console.error('[App] patchLens failed:', err);
-      } finally {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:patchChallenge — accept/defer/rebut a challenge entry
-    const handlePatchChallenge = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        challengeId: string;
-        stance?: 'pending' | 'accept' | 'defer' | 'rebut';
-        userRebuttal?: string;
-        requestId?: string;
-      }>;
-      const { ideaId, challengeId, stance, userRebuttal, requestId } = ev.detail;
-      try {
-        const idea = ideas.find(i => i.id === ideaId);
-        if (!idea) return;
-        const challenges = idea.briefState.challenges.map(c =>
-          c.id === challengeId
-            ? { ...c, ...(stance ? { stance } : {}), ...(userRebuttal !== undefined ? { userRebuttal } : {}) }
-            : c,
-        );
-        const committed = await boardController.updateIdea({
-          ideaId,
-          patch: { briefState: { ...idea.briefState, challenges } },
-          actor: { type: 'tool', source: 'webmcp' },
-          summary: `Updated challenge ${challengeId} on idea ${ideaId}`,
-        });
-        applyCommittedBoard(committed.document, committed.history);
-      } catch (err) {
-        console.error('[App] patchChallenge failed:', err);
-      } finally {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:patchStress — mark handled / add response for a stress test entry
-    const handlePatchStress = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        stressId: string;
-        handled?: boolean;
-        userResponse?: string;
-        requestId?: string;
-      }>;
-      const { ideaId, stressId, handled, userResponse, requestId } = ev.detail;
-      try {
-        const idea = ideas.find(i => i.id === ideaId);
-        if (!idea) return;
-        const stressResults = idea.briefState.stressResults.map(s =>
-          s.id === stressId
-            ? { ...s, ...(handled !== undefined ? { handled } : {}), ...(userResponse !== undefined ? { userResponse } : {}) }
-            : s,
-        );
-        const committed = await boardController.updateIdea({
-          ideaId,
-          patch: { briefState: { ...idea.briefState, stressResults } },
-          actor: { type: 'tool', source: 'webmcp' },
-          summary: `Updated stress result ${stressId} on idea ${ideaId}`,
-        });
-        applyCommittedBoard(committed.document, committed.history);
-      } catch (err) {
-        console.error('[App] patchStress failed:', err);
-      } finally {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:exportHandoff — triggered by export_handoff tool
-    const handleExportHandoff = (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      const idea = ideas.find(i => i.id === ideaId);
-      if (idea?.artifactMd) {
-        const slug = idea.rawText.slice(0, 40).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const blob = new Blob([idea.artifactMd], { type: 'text/markdown; charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        chrome.downloads.download({ url, filename: `handoff_${slug}.md` });
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:chooseNextStep — updates nextStep on the brief
-    const handleChooseNextStep = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        nextStep: string;
-        requestId?: string;
-      }>;
-      const { ideaId, nextStep, requestId } = ev.detail;
-      try {
-        const idea = ideas.find(entry => entry.id === ideaId);
-        if (!idea) return;
-        const committed = await boardController.updateIdea({
-          ideaId,
-          patch: {
-            briefState: {
-              ...idea.briefState,
-              nextStep: nextStep as Idea['briefState']['nextStep'],
-            },
-          },
-          actor: { type: 'tool', source: 'webmcp' },
-          summary: `Selected next step for idea ${ideaId}`,
-        });
-        applyCommittedBoard(committed.document, committed.history);
-      } catch (err) {
-        console.error('[App] chooseNextStep failed:', err);
-      } finally {
-        if (requestId) {
-          window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        }
-      }
-    };
-
-    // Discard/restore tools mutate IDB directly; this listener refreshes the visible idea list.
-    const handleIdeasChanged = () => {
-      loadIdeas();
-    };
-
-    // Supporting-doc tools mutate IDB directly; this listener just refreshes the pill count.
-    const handleDocsChanged = (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId?: string }>;
-      const { ideaId } = ev.detail ?? {};
-      markActivity('doc');
-      if (ideaId) {
-        loadDocCounts([ideaId]);
-      } else {
-        // Unknown idea — refresh all visible
-        loadDocCounts(ideas.filter(i => i.status !== 'archived').map(i => i.id));
-      }
-    };
-
-    const handleAttachSupportingDocEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; title?: string; rawText: string; requestId?: string }>;
-      const { ideaId, title, rawText, requestId } = ev.detail;
-      let error: string | undefined;
-      let doc: SupportingDoc | undefined;
-      try {
-        if (!ideaId) throw new Error('ideaId is required');
-        if (!rawText || rawText.trim().length === 0) throw new Error('rawText must be non-empty');
-        doc = await supportingDocMutations.createDoc({
-          ideaId,
-          title: title ?? '',
-          rawText,
-          actor: { type: 'tool', source: 'webmcp' },
-        });
-        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId } }));
-        doc = await refineSupportingDoc(doc, { type: 'tool', source: 'webmcp' });
-        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId } }));
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'attach failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(
-          new CustomEvent(`tool-completion-${requestId}`, {
-            detail: doc
-              ? {
-                  ok: !error,
-                  error,
-                  docId: doc.id,
-                  status: doc.status,
-                  summary: doc.summary,
-                  facts: doc.facts,
-                }
-              : { ok: !error, error },
-          }),
-        );
-      }
-    };
-
-    const handleDeleteSupportingDocEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ docId: string; requestId?: string }>;
-      const { docId, requestId } = ev.detail;
-      let error: string | undefined;
-      try {
-        const doc = await getDoc(docId);
-        if (!doc) throw new Error(`no doc with id ${docId}`);
-        await supportingDocMutations.deleteDoc({
-          docId,
-          actor: { type: 'tool', source: 'webmcp' },
-        });
-        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: doc.ideaId } }));
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'delete failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-
-    const handleRetrySupportingDocEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ docId: string; requestId?: string }>;
-      const { docId, requestId } = ev.detail;
-      let error: string | undefined;
-      let doc: SupportingDoc | undefined;
-      try {
-        const current = await getDoc(docId);
-        if (!current) throw new Error(`no doc with id ${docId}`);
-        doc = await supportingDocMutations.updateDoc({
-          docId,
-          patch: { status: 'processing', error: undefined },
-          actor: { type: 'tool', source: 'webmcp' },
-          summary: `Retried extraction for ${current.title}`,
-        });
-        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: current.ideaId } }));
-        doc = await refineSupportingDoc(doc, { type: 'tool', source: 'webmcp' });
-        window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: current.ideaId } }));
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'retry failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(
-          new CustomEvent(`tool-completion-${requestId}`, {
-            detail: doc
-              ? {
-                  ok: !error,
-                  error,
-                  docId: doc.id,
-                  status: doc.status,
-                  summary: doc.summary,
-                  facts: doc.facts,
-                }
-              : { ok: !error, error },
-          }),
-        );
-      }
-    };
-
-    const handleCritiquesChanged = () => {
-      loadCritiques();
-    };
-
-    const handleCaptureIdeaEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ rawText: string; tags?: string[]; requestId?: string }>;
-      const { rawText, tags, requestId } = ev.detail;
-      let ideaId: string | undefined;
-      let error: string | undefined;
-      setCreating(true);
-      try {
-        const result = await boardController.captureIdea({
-          rawText: rawText.trim(),
-          tags: tags ?? [],
-          actor: { type: 'tool', source: 'webmcp' },
-        });
-        applyCommittedBoard(result.document, result.history);
-        ideaId = result.changeSet?.affected.find(entry => entry.store === 'ideas')?.id;
-        setSelectedId(ideaId ?? null);
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'capture failed';
-      } finally {
-        setCreating(false);
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ideaId, error } }));
-      }
-    };
-
-    // Canvas operations — delegate to the same handlers the UI uses
-    const handleMoveEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; x: number; y: number; requestId?: string }>;
-      const { ideaId, x, y, requestId } = ev.detail;
-      try { await handleMove(ideaId, x, y, 'webmcp'); } catch (err) { console.error('[App] move failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-    const handleDiscardIdeaEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      let error: string | undefined;
-      try {
-        const result = await boardController.discardIdea({
-          ideaId,
-          actor: { type: 'tool', source: 'webmcp' },
-        });
-        applyCommittedBoard(result.document, result.history);
-        if (selectedId === ideaId) setSelectedId(null);
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'discard failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-    const handleRestoreIdeaEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      let error: string | undefined;
-      try {
-        const result = await boardController.restoreIdea({
-          ideaId,
-          actor: { type: 'tool', source: 'webmcp' },
-        });
-        applyCommittedBoard(result.document, result.history);
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'restore failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-    const handleGroupEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaIdA: string; ideaIdB: string; requestId?: string }>;
-      const { ideaIdA, ideaIdB, requestId } = ev.detail;
-      try { await handleGroup(ideaIdA, ideaIdB, 'webmcp'); } catch (err) { console.error('[App] group failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-    const handleUngroupEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      try { await handleUngroup(ideaId, 'webmcp'); } catch (err) { console.error('[App] ungroup failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-    const handleMergeEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ draggedId: string; targetId: string; requestId?: string }>;
-      const { draggedId, targetId, requestId } = ev.detail;
-      try { await handleMerge(draggedId, targetId, 'webmcp'); } catch (err) { console.error('[App] merge failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-
-    // brainstorm:findConnections — agent-driven connection finder run.
-    // Signals completion with the connection count via the requestId envelope.
-    const handleFindConnectionsEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ requestId?: string }>;
-      const { requestId } = ev.detail ?? {};
-      let count = 0;
-      try {
-        const found = await runConnectionFinder({ source: 'webmcp' });
-        count = found.length;
-      } catch (err) {
-        console.error('[App] find_connections failed:', err);
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { count } }));
-      }
-    };
-
-    const handleDrawConnectionEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        fromIdeaId: string;
-        toIdeaId: string;
-        kind: Connection['kind'];
-        rationale: string;
-        requestId?: string;
-      }>;
-      const { fromIdeaId, toIdeaId, kind, rationale, requestId } = ev.detail;
-      let error: string | undefined;
-      let connectionId: string | undefined;
-
-      const visibleIdeaIds = new Set(
-        ideas
-          .filter(idea => idea.status !== 'archived' && idea.status !== 'discarded')
-          .map(idea => idea.id),
-      );
-
-      if (!visibleIdeaIds.has(fromIdeaId) || !visibleIdeaIds.has(toIdeaId)) {
-        error = 'draw_connection requires both idea ids to be visible on the active canvas.';
-      } else if (fromIdeaId === toIdeaId) {
-        error = 'draw_connection requires two different idea ids.';
-      } else if (!rationale.trim()) {
-        error = 'draw_connection requires a non-empty rationale.';
-      } else {
-        const connection = makeManualConnection({
-          fromIdeaId,
-          toIdeaId,
-          kind,
-          rationale: rationale.trim(),
-        });
-        connectionId = connection.id;
-        const committed = await boardController.replaceConnections({
-          connections: upsertConnection(connections, connection),
-          actor: { type: 'tool', source: 'webmcp' },
-          summary: `Added manual connection ${connection.id}`,
-        });
-        applyCommittedBoard(committed.document, committed.history);
-        setLastConnectionsRunAt(connection.createdAt);
-        handleHighlight(connection.ideaIds);
-      }
-
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error, connectionId } }));
-      }
-    };
-
-    const handleCritiqueIdeaEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      let critiqueId: string | undefined;
-      let error: string | undefined;
-
-      try {
-        const critique = await runCritiqueIdea(ideaId, { source: 'webmcp' });
-        critiqueId = critique?.id;
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'critique failed';
-      }
-
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error, critiqueId } }));
-      }
-    };
-
-    const handleDismissCritiqueEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ critiqueId: string; requestId?: string }>;
-      const { critiqueId, requestId } = ev.detail;
-      let error: string | undefined;
-
-      try {
-        await handleDismissCritique(critiqueId, 'webmcp');
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'dismiss critique failed';
-      }
-
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-
-    // brainstorm:scout — agent-driven scout run. Returns count of new suggestions.
-    const handleScoutEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ requestId?: string }>;
-      const { requestId } = ev.detail ?? {};
-      let count = 0;
-      try {
-        const created = await runScout({ source: 'webmcp' });
-        count = created.length;
-      } catch (err) {
-        console.error('[App] scout_ideas failed:', err);
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { count } }));
-      }
-    };
-
-    const handleRunBeatEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ beat: BeatName; focusIdeaId?: string; requestId?: string }>;
-      const { beat, focusIdeaId, requestId } = ev.detail;
-      let detail: Record<string, unknown>;
-
-      try {
-        switch (beat) {
-          case 'scout': {
-            const created = await runScout({ source: 'webmcp' });
-            detail = {
-              ok: true,
-              beat,
-              mode: 'committed',
-              count: created.length,
-              suggestions: created.map(suggestion => ({
-                id: suggestion.id,
-                rawText: suggestion.rawText,
-                rationale: suggestion.rationale,
-                source: suggestion.source,
-                relatedIdeaIds: suggestion.relatedIdeaIds ?? [],
-                status: suggestion.status,
-              })),
-            };
-            break;
-          }
-          case 'connect': {
-            const found = await runConnectionFinder({ source: 'webmcp' });
-            detail = {
-              ok: true,
-              beat,
-              mode: 'committed',
-              count: found.length,
-              connections: found,
-            };
-            break;
-          }
-          case 'critique': {
-            if (!focusIdeaId) throw new Error('run_beat critique requires focusIdeaId.');
-            const critique = await runCritiqueIdea(focusIdeaId, { source: 'webmcp' });
-            detail = {
-              ok: !!critique,
-              beat,
-              mode: 'committed',
-              critiqueId: critique?.id,
-              critique,
-            };
-            break;
-          }
-          case 'cluster': {
-            const result = await runBoardBeat(buildClusterBeatContext({
-              boardId,
-              boardTitle: DEFAULT_BOARD_TITLE,
-              ideas,
-              connections,
-              trigger: 'manual',
-              size: 'big',
-              aggressiveness: 'balanced',
-            }));
-            detail = {
-              ok: result.ok,
-              beat,
-              mode: 'preview',
-              meta: result.meta,
-              hints: result.ok ? result.proposal.hints : [],
-              reason: result.ok ? undefined : result.reason,
-            };
-            break;
-          }
-          case 'summarise': {
-            const result = await runBoardBeat(buildSummariseBeatContext({
-              boardId,
-              boardTitle: DEFAULT_BOARD_TITLE,
-              ideas,
-              connections,
-              trigger: 'manual',
-              size: 'big',
-              aggressiveness: 'balanced',
-            }));
-            detail = {
-              ok: result.ok,
-              beat,
-              mode: 'preview',
-              meta: result.meta,
-              summaries: result.ok ? result.proposal.summaries : [],
-              reason: result.ok ? undefined : result.reason,
-            };
-            break;
-          }
-          default:
-            detail = { ok: false, beat, error: `Unsupported beat: ${beat}` };
-        }
-      } catch (err) {
-        detail = {
-          ok: false,
-          beat,
-          error: err instanceof Error ? err.message : `${beat} failed`,
-        };
-      }
-
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail }));
-      }
-    };
-
-    const handleAdmitSuggestionEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ suggestionId: string; requestId?: string }>;
-      const { suggestionId, requestId } = ev.detail;
-      let admittedIdeaId: string | undefined;
-      let error: string | undefined;
-      try {
-        await handleAdmitSuggestion(suggestionId, 'webmcp');
-        const updated = await getSuggestion(suggestionId);
-        admittedIdeaId = updated?.admittedIdeaId;
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'admit failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { admittedIdeaId, error } }));
-      }
-    };
-
-    const handleElaborateSuggestionEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ suggestionId: string; requestId?: string }>;
-      const { suggestionId, requestId } = ev.detail;
-      let error: string | undefined;
-      try {
-        await handleElaborateSuggestion(suggestionId, 'webmcp');
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'elaborate failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-
-    const handleDismissSuggestionEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ suggestionId: string; requestId?: string }>;
-      const { suggestionId, requestId } = ev.detail;
-      let error: string | undefined;
-      try {
-        await handleDismissSuggestion(suggestionId, 'webmcp');
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'dismiss failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-
-    window.addEventListener('brainstorm:captureIdea', handleCaptureIdeaEvent as EventListener);
-    window.addEventListener('brainstorm:selectIdea', handleSelectIdea);
-    window.addEventListener('brainstorm:advancePhase', handleAdvancePhase as EventListener);
-    window.addEventListener('brainstorm:exportHandoff', handleExportHandoff);
-    window.addEventListener('brainstorm:chooseNextStep', handleChooseNextStep as EventListener);
-    window.addEventListener('brainstorm:patchLens', handlePatchLens as EventListener);
-    window.addEventListener('brainstorm:patchChallenge', handlePatchChallenge as EventListener);
-    window.addEventListener('brainstorm:patchStress', handlePatchStress as EventListener);
-    window.addEventListener('brainstorm:movePanel', handleMoveEvent as EventListener);
-    window.addEventListener('brainstorm:discardIdea', handleDiscardIdeaEvent as EventListener);
-    window.addEventListener('brainstorm:restoreIdea', handleRestoreIdeaEvent as EventListener);
-    window.addEventListener('brainstorm:groupIdeas', handleGroupEvent as EventListener);
-    window.addEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
-    window.addEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
-    window.addEventListener('brainstorm:docsChanged', handleDocsChanged as EventListener);
-    window.addEventListener('brainstorm:attachSupportingDoc', handleAttachSupportingDocEvent as EventListener);
-    window.addEventListener('brainstorm:deleteSupportingDoc', handleDeleteSupportingDocEvent as EventListener);
-    window.addEventListener('brainstorm:retrySupportingDoc', handleRetrySupportingDocEvent as EventListener);
-    window.addEventListener('brainstorm:critiquesChanged', handleCritiquesChanged as EventListener);
-    window.addEventListener('brainstorm:ideasChanged', handleIdeasChanged as EventListener);
-    window.addEventListener('brainstorm:findConnections', handleFindConnectionsEvent as EventListener);
-    window.addEventListener('brainstorm:drawConnection', handleDrawConnectionEvent as EventListener);
-    window.addEventListener('brainstorm:critiqueIdea', handleCritiqueIdeaEvent as EventListener);
-    window.addEventListener('brainstorm:dismissCritique', handleDismissCritiqueEvent as EventListener);
-    window.addEventListener('brainstorm:scout', handleScoutEvent as EventListener);
-    window.addEventListener('brainstorm:runBeat', handleRunBeatEvent as EventListener);
-    window.addEventListener('brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener);
-    window.addEventListener('brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener);
-    window.addEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
-
-    return () => {
-      window.removeEventListener('brainstorm:captureIdea', handleCaptureIdeaEvent as EventListener);
-      window.removeEventListener('brainstorm:selectIdea', handleSelectIdea);
-      window.removeEventListener('brainstorm:advancePhase', handleAdvancePhase as EventListener);
-      window.removeEventListener('brainstorm:exportHandoff', handleExportHandoff);
-      window.removeEventListener('brainstorm:chooseNextStep', handleChooseNextStep as EventListener);
-      window.removeEventListener('brainstorm:patchLens', handlePatchLens as EventListener);
-      window.removeEventListener('brainstorm:patchChallenge', handlePatchChallenge as EventListener);
-      window.removeEventListener('brainstorm:patchStress', handlePatchStress as EventListener);
-      window.removeEventListener('brainstorm:movePanel', handleMoveEvent as EventListener);
-      window.removeEventListener('brainstorm:discardIdea', handleDiscardIdeaEvent as EventListener);
-      window.removeEventListener('brainstorm:restoreIdea', handleRestoreIdeaEvent as EventListener);
-      window.removeEventListener('brainstorm:groupIdeas', handleGroupEvent as EventListener);
-      window.removeEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
-      window.removeEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
-      window.removeEventListener('brainstorm:docsChanged', handleDocsChanged as EventListener);
-      window.removeEventListener('brainstorm:attachSupportingDoc', handleAttachSupportingDocEvent as EventListener);
-      window.removeEventListener('brainstorm:deleteSupportingDoc', handleDeleteSupportingDocEvent as EventListener);
-      window.removeEventListener('brainstorm:retrySupportingDoc', handleRetrySupportingDocEvent as EventListener);
-      window.removeEventListener('brainstorm:critiquesChanged', handleCritiquesChanged as EventListener);
-      window.removeEventListener('brainstorm:ideasChanged', handleIdeasChanged as EventListener);
-      window.removeEventListener('brainstorm:findConnections', handleFindConnectionsEvent as EventListener);
-      window.removeEventListener('brainstorm:drawConnection', handleDrawConnectionEvent as EventListener);
-      window.removeEventListener('brainstorm:critiqueIdea', handleCritiqueIdeaEvent as EventListener);
-      window.removeEventListener('brainstorm:dismissCritique', handleDismissCritiqueEvent as EventListener);
-      window.removeEventListener('brainstorm:scout', handleScoutEvent as EventListener);
-      window.removeEventListener('brainstorm:runBeat', handleRunBeatEvent as EventListener);
-      window.removeEventListener('brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener);
-      window.removeEventListener('brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener);
-      window.removeEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
-    };
-  }, [boardId, ideas, selectedId, connections, suggestions]);
 
   // ---------------------------------------------------------------------------
   // Capture
