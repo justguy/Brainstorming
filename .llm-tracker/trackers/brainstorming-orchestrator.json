@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-030 and bo-031 are landed in code. The remaining top priority is bo-029: finish the App.tsx breakdown so the runtime and action layer stop owning the hot path. After that, the next truth-seeking work is browser validation for bo-009 two-tab Yjs sync and bo-013 File System Access re-authorization before the downstream collaboration and design queue moves.",
-    "rev": 36,
-    "updatedAt": "2026-04-18T14:35:46.000Z"
+    "scratchpad": "bo-029, bo-030, and bo-031 are landed in code. The next priority is browser proof for bo-009 two-tab Yjs sync, followed by bo-013 File System Access permission-loss and re-authorization validation. After those truth-seeking checks, the next design slice is bo-032 beat review flow.",
+    "rev": 37,
+    "updatedAt": "2026-04-18T14:56:37.000Z"
   },
   "tasks": [
     {
@@ -446,7 +446,7 @@
       "status": "in_progress",
       "placement": {
         "swimlaneId": "collaboration",
-        "priorityId": "p2"
+        "priorityId": "p1"
       },
       "references": [
         "ROADMAP.md:268-275"
@@ -628,7 +628,7 @@
       "status": "in_progress",
       "placement": {
         "swimlaneId": "integrations",
-        "priorityId": "p2"
+        "priorityId": "p1"
       },
       "references": [
         "ROADMAP.md:299-299",
@@ -1389,21 +1389,23 @@
       "id": "bo-029",
       "title": "Design Core: extract board shell from apps/web/App.tsx",
       "goal": "Break the monolithic App.tsx into board controller, storage sync, beat orchestration, and inspector modules so board-first behavior is testable and the workspace drawer stops owning the hot path.",
-      "status": "in_progress",
+      "status": "complete",
       "placement": {
         "swimlaneId": "architecture",
         "priorityId": "p1"
       },
       "references": [
-        "apps/web/App.tsx:1-1171",
+        "apps/web/App.tsx:1-699",
         "apps/web/useBoardSync.ts:1-208",
         "apps/web/useCanvasIdeaMutations.ts:1-157",
         "apps/web/useCompanionAutomation.ts:1-244",
-        "apps/web/useBrainstormWorkspaceEvents.ts:1-137",
+        "apps/web/useBoardSessionActions.ts:1-110",
+        "apps/web/useBoardAnalysisActions.ts:1-288",
+        "apps/web/useBoardSuggestionActions.ts:1-284",
         "Design/Integration Guide.html:307-315"
       ],
       "effort": "l",
-      "comment": "The board shell split is materially underway: board sync, canvas mutations, companion automation, and the WebMCP event bridge are extracted, but the runtime and action layer still lives in App.tsx.",
+      "comment": "Landed in code: App.tsx is down to the board shell and layout while session actions, analysis actions, suggestion actions, sync, companion automation, and WebMCP event bridges all live behind explicit hooks.",
       "definition_of_done": [
         "App.tsx no longer owns history mutation logic, storage choreography, facilitator timing, and layout concerns in one file.",
         "Board controller and board UI hooks have explicit boundaries and callers.",
@@ -1431,7 +1433,7 @@
           "refactor",
           "app-shell"
         ],
-        "notes": "This remains the highest-priority open architecture task because App.tsx still owns the runtime and action hot path."
+        "notes": "Build-verified on branch truth; the board shell extraction is landed and downstream work should treat bo-029 as complete."
       }
     },
     {

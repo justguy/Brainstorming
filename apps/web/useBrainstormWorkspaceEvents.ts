@@ -8,7 +8,6 @@ import { createBoardController } from '../../src/storage/boardController';
 interface UseBrainstormWorkspaceEventsArgs {
   boardId: string;
   ideas: Idea[];
-  selectedId: string | null;
   boardController: ReturnType<typeof createBoardController>;
   applyCommittedBoard: (document: BoardDocument, history: BoardHistoryState) => void;
   loadIdeas: () => Promise<void>;
@@ -22,7 +21,6 @@ interface UseBrainstormWorkspaceEventsArgs {
 export function useBrainstormWorkspaceEvents({
   boardId,
   ideas,
-  selectedId,
   boardController,
   applyCommittedBoard,
   loadIdeas,
@@ -63,7 +61,7 @@ export function useBrainstormWorkspaceEvents({
           actor: { type: 'tool', source: 'webmcp' },
         });
         applyCommittedBoard(result.document, result.history);
-        if (selectedId === ideaId) setSelectedId(null);
+        setSelectedId(prev => (prev === ideaId ? null : prev));
       } catch (err) {
         error = err instanceof Error ? err.message : 'discard failed';
       }
@@ -133,5 +131,5 @@ export function useBrainstormWorkspaceEvents({
     return () => {
       listeners.forEach(([name, listener]) => window.removeEventListener(name, listener));
     };
-  }, [boardId, ideas, selectedId]);
+  }, [boardId, ideas]);
 }

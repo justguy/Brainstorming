@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 import type { BoardDocument } from '../../src/board/types';
 import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
@@ -12,7 +11,7 @@ interface UseBrainstormAnalysisEventsArgs {
   connections: Connection[];
   boardController: ReturnType<typeof createBoardController>;
   applyCommittedBoard: (document: BoardDocument, history: BoardHistoryState) => void;
-  setLastConnectionsRunAt: Dispatch<SetStateAction<number | null>>;
+  markConnectionsRunAt: (value: number) => void;
   handleHighlight: (ids: string[]) => void;
   loadCritiques: () => Promise<void>;
   runConnectionFinder: (options?: {
@@ -33,7 +32,7 @@ export function useBrainstormAnalysisEvents({
   connections,
   boardController,
   applyCommittedBoard,
-  setLastConnectionsRunAt,
+  markConnectionsRunAt,
   handleHighlight,
   loadCritiques,
   runConnectionFinder,
@@ -101,7 +100,7 @@ export function useBrainstormAnalysisEvents({
           summary: `Added manual connection ${connection.id}`,
         });
         applyCommittedBoard(committed.document, committed.history);
-        setLastConnectionsRunAt(connection.createdAt);
+        markConnectionsRunAt(connection.createdAt);
         handleHighlight(connection.ideaIds);
       }
 

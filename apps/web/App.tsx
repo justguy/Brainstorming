@@ -26,8 +26,8 @@
  *   'brainstorm:mergeIdeas'   → merge two ideas via LLM into a new one
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import type { Idea, IdeaCritique, Connection, SupportingDoc, ScoutSuggestion } from '../../src/types';
+import React, { useEffect, useState, useCallback } from 'react';
+import type { Idea, IdeaCritique } from '../../src/types';
 import { DEFAULT_BOARD_TITLE } from '../../src/board/types';
 import type {
   BeatContextMap,
@@ -40,13 +40,6 @@ import type {
   ScoutBeatContext,
   SummariseBeatContext,
 } from '../../src/beats/types';
-import {
-  listCritiquesForIdea,
-} from '../../src/storage/critiques';
-import {
-  getSuggestion,
-} from '../../src/storage/suggestions';
-import { runAdhocRole } from '../../src/orchestrator/adhocRole';
 import { runBeat } from '../../src/orchestrator/runBeat';
 import Button from '../../src/ui/Button';
 import Workspace from '../../src/workspace/Workspace';
@@ -55,31 +48,15 @@ import { CritiqueCardsLayer } from '../../src/canvas/CritiqueCardsLayer';
 import DiscardPile from '../../src/canvas/DiscardPile';
 import ConnectionsPanel from '../../src/canvas/ConnectionsPanel';
 import DocsModal from '../../src/docs/DocsModal';
-import { listDocsForIdea } from '../../src/storage/docs';
-import {
-  suggestionElaborator,
-  buildElaboratorTask,
-  type SuggestionElaboratorOutput,
-} from '../../src/orchestrator/roles/suggestionElaborator';
-import {
-  materializeConnections,
-  replaceGeneratedConnections,
-} from './connectionState';
 import { SoftModeHint } from './SoftModeHint';
 import { DevCompanionCard } from './DevCompanionCard';
 import {
   recordActivity,
   type ActivityState,
 } from './softMode';
-import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDedup';
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
 import { CaptureIdeaPopover } from './CaptureIdeaPopover';
-import {
-  buildConnectBeatContext,
-  buildCritiqueBeatContext,
-  buildScoutBeatContext,
-} from './beatContext';
 import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
 import { useBrainstormAnalysisEvents } from './useBrainstormAnalysisEvents';
 import { useBrainstormLifecycleEvents } from './useBrainstormLifecycleEvents';
@@ -89,6 +66,9 @@ import { useBrainstormSupportingDocEvents } from './useBrainstormSupportingDocEv
 import { useBrainstormWorkspaceEvents } from './useBrainstormWorkspaceEvents';
 import { useCanvasIdeaMutations } from './useCanvasIdeaMutations';
 import { AUTO_IDLE_MS, useCompanionAutomation } from './useCompanionAutomation';
+import { useBoardSessionActions } from './useBoardSessionActions';
+import { useBoardAnalysisActions } from './useBoardAnalysisActions';
+import { useBoardSuggestionActions } from './useBoardSuggestionActions';
 
 // ---------------------------------------------------------------------------
 // Hash router
@@ -110,28 +90,10 @@ function useHashRoute(): [string, (hash: string) => void] {
   return [hash, navigate];
 }
 
-const COLLAPSED_SUGGESTION_COUNT = 3;
-const HIGHLIGHT_FLASH_MS = 320;
-const REVEAL_WINDOW_MS = 1_800;
-
-type RevealOrigin = 'manual' | 'ai';
-
 function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
   return target.matches('input, textarea, select, [role="textbox"]');
-}
-
-function connectionStrengthWeight(strength: Connection['strength']): number {
-  switch (strength) {
-    case 'strong':
-      return 2;
-    case 'medium':
-      return 1;
-    case 'weak':
-    default:
-      return 0;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -174,13 +136,6 @@ export default function App(): React.ReactElement {
   const [advancingFromTool, setAdvancingFromTool] = useState(false);
   const [canvasBusy, setCanvasBusy] = useState<string | null>(null);
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
-  const [findingConnections, setFindingConnections] = useState(false);
-  const [lastConnectionsRunAt, setLastConnectionsRunAt] = useState<number | null>(null);
-  const [highlightIds, setHighlightIds] = useState<string[]>([]);
-  const [critiqueBusyByIdea, setCritiqueBusyByIdea] = useState<Record<string, boolean>>({});
-  const [scouting, setScouting] = useState(false);
-  const [lastScoutRunAt, setLastScoutRunAt] = useState<number | null>(null);
-  const [suggestionBusy, setSuggestionBusy] = useState<Record<string, 'admit' | 'elaborate' | 'dismiss' | null>>({});
   const [activity, setActivity] = useState<ActivityState>(() => ({
     lastInteractionAt: Date.now(),
     recentEdits: [],
@@ -191,14 +146,7 @@ export default function App(): React.ReactElement {
   const [dragActive, setDragActive] = useState(false);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
-  const [animatedConnectionIds, setAnimatedConnectionIds] = useState<string[]>([]);
-  const [animatedCritiqueIds, setAnimatedCritiqueIds] = useState<string[]>([]);
-  const [animatedSuggestionIds, setAnimatedSuggestionIds] = useState<string[]>([]);
-  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
   const [activeBeatRun, setActiveBeatRun] = useState<BeatRunState | null>(null);
-  const connectionRevealTimerRef = useRef<number | null>(null);
-  const critiqueRevealTimerRef = useRef<number | null>(null);
-  const suggestionRevealTimerRef = useRef<number | null>(null);
 
   // Canvas shows only active ideas. Archived (post-merge originals) and
   // discarded (user dismissed) both stay in IDB but are hidden from the board.
@@ -278,18 +226,6 @@ export default function App(): React.ReactElement {
     setActivity(prev => ({ ...prev, lastInteractionAt: now }));
   }
 
-  function beatTrigger(origin?: RevealOrigin): BeatContextMap[BeatName]['trigger'] {
-    return origin === 'ai' ? 'automatic' : 'manual';
-  }
-
-  function beatSize(origin?: RevealOrigin): BeatContextMap[BeatName]['size'] {
-    return origin === 'ai' ? 'small' : 'big';
-  }
-
-  function beatAggressiveness(origin?: RevealOrigin): BeatContextMap[BeatName]['aggressiveness'] {
-    return origin === 'ai' ? 'gentle' : 'balanced';
-  }
-
   async function runBoardBeat(context: ScoutBeatContext): Promise<BeatResult<'scout'>>;
   async function runBoardBeat(context: ConnectBeatContext): Promise<BeatResult<'connect'>>;
   async function runBoardBeat(context: CritiqueBeatContext): Promise<BeatResult<'critique'>>;
@@ -311,45 +247,68 @@ export default function App(): React.ReactElement {
     }
   }
 
-  function clearRevealTimer(ref: React.MutableRefObject<number | null>): void {
-    if (ref.current !== null) {
-      window.clearTimeout(ref.current);
-      ref.current = null;
-    }
-  }
-
-  function revealConnections(connectionIds: string[]): void {
-    clearRevealTimer(connectionRevealTimerRef);
-    setAnimatedConnectionIds(connectionIds);
-    connectionRevealTimerRef.current = window.setTimeout(() => {
-      setAnimatedConnectionIds([]);
-      connectionRevealTimerRef.current = null;
-    }, REVEAL_WINDOW_MS);
-  }
-
-  function revealCritique(critiqueId: string): void {
-    clearRevealTimer(critiqueRevealTimerRef);
-    setAnimatedCritiqueIds([critiqueId]);
-    critiqueRevealTimerRef.current = window.setTimeout(() => {
-      setAnimatedCritiqueIds([]);
-      critiqueRevealTimerRef.current = null;
-    }, REVEAL_WINDOW_MS);
-  }
-
-  function revealSuggestions(suggestionIds: string[]): void {
-    clearRevealTimer(suggestionRevealTimerRef);
-    setAnimatedSuggestionIds(suggestionIds);
-    suggestionRevealTimerRef.current = window.setTimeout(() => {
-      setAnimatedSuggestionIds([]);
-      suggestionRevealTimerRef.current = null;
-    }, REVEAL_WINDOW_MS);
-  }
-
-  useEffect(() => {
-    if (suggestions.length <= COLLAPSED_SUGGESTION_COUNT && suggestionsExpanded) {
-      setSuggestionsExpanded(false);
-    }
-  }, [suggestions.length, suggestionsExpanded]);
+  const {
+    handleCapture,
+    handleDiscard,
+    handleRestore,
+    handleUndo,
+    handleRedo,
+  } = useBoardSessionActions({
+    newIdeaText,
+    newIdeaTags,
+    boardController,
+    applyCommittedBoard,
+    setCreating,
+    setSelectedId,
+    setNewIdeaText,
+    setNewIdeaTags,
+    markActivity,
+  });
+  const {
+    findingConnections,
+    lastConnectionsRunAt,
+    highlightIds,
+    critiqueBusyByIdea,
+    animatedConnectionIds,
+    animatedCritiqueIds,
+    markConnectionsRunAt,
+    handleHighlight,
+    runConnectionFinder,
+    runCritiqueIdea,
+    handleDismissCritique,
+  } = useBoardAnalysisActions({
+    boardId,
+    ideas,
+    connections,
+    boardRepository,
+    boardController,
+    applyCommittedBoard,
+    runBoardBeat,
+  });
+  const {
+    scouting,
+    lastScoutRunAt,
+    suggestionBusy,
+    animatedSuggestionIds,
+    suggestionsExpanded,
+    visibleCanvasSuggestions,
+    suggestionOverflowCount,
+    runScout,
+    handleAdmitSuggestion,
+    handleElaborateSuggestion,
+    handleDismissSuggestion,
+    expandSuggestions,
+    collapseSuggestions,
+  } = useBoardSuggestionActions({
+    boardId,
+    ideas,
+    suggestions,
+    boardRepository,
+    boardController,
+    applyCommittedBoard,
+    runBoardBeat,
+    markActivity,
+  });
   const {
     handleMove,
     handleGroup,
@@ -378,7 +337,7 @@ export default function App(): React.ReactElement {
     connections,
     boardController,
     applyCommittedBoard,
-    setLastConnectionsRunAt,
+    markConnectionsRunAt,
     handleHighlight,
     loadCritiques,
     runConnectionFinder,
@@ -411,7 +370,6 @@ export default function App(): React.ReactElement {
   useBrainstormWorkspaceEvents({
     boardId,
     ideas,
-    selectedId,
     boardController,
     applyCommittedBoard,
     loadIdeas,
@@ -425,432 +383,6 @@ export default function App(): React.ReactElement {
   // ---------------------------------------------------------------------------
   // Tool event listeners
   // ---------------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------------
-  // Capture
-  // ---------------------------------------------------------------------------
-
-  async function handleCapture() {
-    const text = newIdeaText.trim();
-    if (!text) return;
-    setCreating(true);
-    try {
-      const tags = newIdeaTags
-        .split(',')
-        .map(t => t.trim())
-        .filter(Boolean);
-      const result = await boardController.captureIdea({
-        rawText: text,
-        tags,
-        actor: { type: 'user', source: 'canvas' },
-      });
-      applyCommittedBoard(result.document, result.history);
-      setSelectedId(result.changeSet?.affected.find(entry => entry.store === 'ideas')?.id ?? null);
-      setNewIdeaText('');
-      setNewIdeaTags('');
-      markActivity('edit');
-    } catch {
-      // ignore
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Discard / restore (UI-side — tool-side paths live in webmcp-tools.ts)
-  // ---------------------------------------------------------------------------
-
-  async function handleDiscard(ideaId: string): Promise<void> {
-    try {
-      const result = await boardController.discardIdea({
-        ideaId,
-        actor: { type: 'user', source: 'canvas' },
-      });
-      applyCommittedBoard(result.document, result.history);
-      if (selectedId === ideaId) setSelectedId(null);
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] discard failed:', err);
-    }
-  }
-
-  async function handleRestore(ideaId: string): Promise<void> {
-    try {
-      const result = await boardController.restoreIdea({
-        ideaId,
-        actor: { type: 'user', source: 'canvas' },
-      });
-      applyCommittedBoard(result.document, result.history);
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] restore failed:', err);
-    }
-  }
-
-  async function handleUndo(): Promise<void> {
-    try {
-      const result = await boardController.undo();
-      if (!result) return;
-      applyCommittedBoard(result.document, result.history);
-    } catch (err) {
-      console.error('[App] undo failed:', err);
-    }
-  }
-
-  async function handleRedo(): Promise<void> {
-    try {
-      const result = await boardController.redo();
-      if (!result) return;
-      applyCommittedBoard(result.document, result.history);
-    } catch (err) {
-      console.error('[App] redo failed:', err);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Connections (ad-hoc LLM call; persisted board state)
-  // ---------------------------------------------------------------------------
-
-  async function runConnectionFinder(options: {
-    origin?: RevealOrigin;
-    limitGenerated?: number;
-    source?: 'canvas' | 'webmcp' | 'beat';
-  } = {}): Promise<Connection[]> {
-    setFindingConnections(true);
-    try {
-      const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
-      const discarded = ideas.filter(i => i.status === 'discarded');
-      const docsPerIdea = await Promise.all(
-        boardIdeas.map(idea => boardRepository.listDocsForIdea(idea.id).catch(() => [] as SupportingDoc[])),
-      );
-      const supportingDocs = docsPerIdea.flat().filter(doc => doc.status === 'ready');
-      const beatResult = await runBoardBeat(buildConnectBeatContext({
-        boardId,
-        boardTitle: DEFAULT_BOARD_TITLE,
-        ideas,
-        supportingDocs,
-        trigger: beatTrigger(options.origin),
-        size: beatSize(options.origin),
-        aggressiveness: beatAggressiveness(options.origin),
-      }));
-      const now = beatResult.meta.finishedAt;
-      const proposedConnections = beatResult.ok ? beatResult.proposal.connections : [];
-      if (proposedConnections.length === 0) {
-        const committed = await boardController.replaceConnections({
-          connections: connections.filter(connection => connection.id.startsWith('manual-')),
-          actor: options.origin === 'ai'
-            ? { type: 'ai', source: 'beat', beat: 'connect', label: 'connectionFinder' }
-            : options.source === 'webmcp'
-            ? { type: 'tool', source: 'webmcp' }
-            : { type: 'user', source: 'canvas' },
-          summary: 'Refreshed board connections',
-        });
-        applyCommittedBoard(committed.document, committed.history);
-        setLastConnectionsRunAt(now);
-        return [];
-      }
-      const materialised = materializeConnections(
-        ideas,
-        supportingDocs,
-        { connections: proposedConnections },
-        now,
-      );
-      const nextGenerated = [...materialised]
-        .sort((left, right) => {
-          const strengthDelta = connectionStrengthWeight(right.strength) - connectionStrengthWeight(left.strength);
-          if (strengthDelta !== 0) return strengthDelta;
-          return left.createdAt - right.createdAt;
-        })
-        .slice(0, options.limitGenerated ?? materialised.length);
-      const committed = await boardController.replaceConnections({
-        connections: replaceGeneratedConnections(connections, nextGenerated),
-        actor: options.origin === 'ai'
-          ? { type: 'ai', source: 'beat', beat: 'connect', label: 'connectionFinder' }
-          : options.source === 'webmcp'
-          ? { type: 'tool', source: 'webmcp' }
-          : { type: 'user', source: 'canvas' },
-        summary: 'Refreshed board connections',
-      });
-      applyCommittedBoard(committed.document, committed.history);
-      setLastConnectionsRunAt(now);
-      if (options.origin === 'ai' && nextGenerated.length > 0) {
-        revealConnections(nextGenerated.map(connection => connection.id));
-      }
-      return nextGenerated;
-    } catch (err) {
-      console.error('[App] connection finder failed:', err);
-      return [];
-    } finally {
-      setFindingConnections(false);
-    }
-  }
-
-  const flashTimerRef = useRef<number | null>(null);
-  function handleHighlight(ids: string[]): void {
-    if (flashTimerRef.current !== null) {
-      window.clearTimeout(flashTimerRef.current);
-    }
-    setHighlightIds(ids);
-    flashTimerRef.current = window.setTimeout(() => {
-      setHighlightIds([]);
-      flashTimerRef.current = null;
-    }, HIGHLIGHT_FLASH_MS);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
-      clearRevealTimer(connectionRevealTimerRef);
-      clearRevealTimer(critiqueRevealTimerRef);
-      clearRevealTimer(suggestionRevealTimerRef);
-    };
-  }, []);
-
-  async function runCritiqueIdea(
-    ideaId: string,
-    options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat' } = {},
-  ): Promise<IdeaCritique | null> {
-    setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: true }));
-    try {
-      const idea = ideas.find(entry => entry.id === ideaId);
-      if (!idea) throw new Error(`Idea not found: ${ideaId}`);
-
-      const activeCritiques = await listCritiquesForIdea(ideaId, 'active', boardId);
-      if (activeCritiques.length >= 2) {
-        throw new Error('This idea already has the maximum number of active critiques.');
-      }
-      const mostRecentCritiqueAt = activeCritiques[0]?.createdAt ?? 0;
-      if (mostRecentCritiqueAt && Date.now() - mostRecentCritiqueAt < 25_000) {
-        throw new Error('This idea is on critique cooldown. Wait a moment before asking for another critique.');
-      }
-
-      const supportingDocs = (await listDocsForIdea(ideaId, boardId)).filter(doc => doc.status === 'ready');
-      const boardIdeas = ideas.filter(entry => entry.status !== 'archived' && entry.status !== 'discarded');
-      const priorCritiques = await listCritiquesForIdea(ideaId, undefined, boardId);
-      const beatResult = await runBoardBeat(buildCritiqueBeatContext({
-        boardId,
-        boardTitle: DEFAULT_BOARD_TITLE,
-        ideas: boardIdeas,
-        focusIdeaId: ideaId,
-        supportingDocs,
-        existingCritiques: priorCritiques,
-        trigger: beatTrigger(options.origin),
-        size: beatSize(options.origin),
-        aggressiveness: beatAggressiveness(options.origin),
-      }));
-      if (!beatResult.ok || beatResult.proposal.challenges.length === 0) {
-        throw new Error('Devil’s advocate returned no critique.');
-      }
-
-      const priorCritiqueTexts = new Set(
-        priorCritiques.map(critique => critique.critique.trim().toLowerCase()),
-      );
-      const nextChallenge = beatResult.proposal.challenges.find(challenge => (
-        !priorCritiqueTexts.has(challenge.critique.trim().toLowerCase())
-      ));
-      if (!nextChallenge) {
-        throw new Error('No new critique surfaced beyond the ones already shown.');
-      }
-
-      const critiqueResult = await boardController.createCritique({
-        ideaId,
-        critique: nextChallenge.critique,
-        evidenceAsk: nextChallenge.evidenceAsk,
-        actor: options.origin === 'ai'
-          ? { type: 'ai', source: 'beat', beat: 'critique', label: 'devilsAdvocate' }
-          : options.source === 'webmcp'
-          ? { type: 'tool', source: 'webmcp' }
-          : { type: 'user', source: 'canvas' },
-      });
-      const critique = critiqueResult.critique;
-      applyCommittedBoard(critiqueResult.document, critiqueResult.history);
-      handleHighlight([ideaId]);
-      if (options.origin === 'ai') revealCritique(critique.id);
-      return critique;
-    } finally {
-      setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: false }));
-    }
-  }
-
-  async function handleDismissCritique(
-    id: string,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    try {
-      const result = await boardController.dismissCritique({
-        critiqueId: id,
-        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
-      });
-      applyCommittedBoard(result.document, result.history);
-    } catch (err) {
-      console.error('[App] dismiss critique failed:', err);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Scout / suggestions
-  // ---------------------------------------------------------------------------
-
-  function ghostPanelFor(index: number): ScoutSuggestion['panel'] {
-    // Lay ghost panels along the right side, offset vertically by index so
-    // a fresh batch doesn't stack on top of each other.
-    return {
-      x: 520 + (index % 2) * 40,
-      y: 60 + index * 220,
-      width: 280,
-      height: 200,
-    };
-  }
-
-  async function runScout(options: {
-    origin?: RevealOrigin;
-    limitNew?: number;
-    source?: 'canvas' | 'webmcp' | 'beat';
-  } = {}): Promise<ScoutSuggestion[]> {
-    setScouting(true);
-    try {
-      const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
-      const discarded = ideas.filter(i => i.status === 'discarded');
-      const docsPerIdea = await Promise.all(
-        boardIdeas.map(idea => boardRepository.listDocsForIdea(idea.id).catch(() => [] as SupportingDoc[])),
-      );
-      const supportingDocs = docsPerIdea.flat().filter(doc => doc.status === 'ready');
-
-      const existing = await boardRepository.listSuggestions();
-      const alreadyProposedRawTexts = existing
-        .filter(s => s.status === 'pending' || s.status === 'admitted')
-        .map(s => s.rawText);
-      const dismissedRawTexts = existing.filter(s => s.status === 'dismissed').map(s => s.rawText);
-
-      const beatResult = await runBoardBeat(buildScoutBeatContext({
-        boardId,
-        boardTitle: DEFAULT_BOARD_TITLE,
-        ideas,
-        supportingDocs,
-        existingSuggestions: existing,
-        trigger: beatTrigger(options.origin),
-        size: beatSize(options.origin),
-        aggressiveness: beatAggressiveness(options.origin),
-      }));
-      const now = beatResult.meta.finishedAt;
-      setLastScoutRunAt(now);
-      if (!beatResult.ok || beatResult.proposal.suggestions.length === 0) return [];
-
-      const visibleSuggestions = pickVisibleSuggestions({
-        currentVisibleCount: suggestions.length,
-        alreadyProposedRawTexts,
-        dismissedRawTexts,
-        suggestions: beatResult.proposal.suggestions,
-      }).slice(0, options.limitNew ?? MAX_VISIBLE_SUGGESTIONS);
-      if (visibleSuggestions.length === 0) return [];
-
-      const allIds = new Set(ideas.map(i => i.id));
-      const created: ScoutSuggestion[] = [];
-      let lastCommit: Awaited<ReturnType<typeof boardController.createSuggestion>> | null = null;
-      for (let i = 0; i < visibleSuggestions.length; i++) {
-        const s = visibleSuggestions[i];
-        lastCommit = await boardController.createSuggestion({
-          rawText: s.rawText,
-          rationale: s.rationale,
-          source: s.source,
-          relatedIdeaIds: s.relatedIdeaIds?.filter(id => allIds.has(id)),
-          panel: ghostPanelFor(suggestions.length + i),
-          actor: options.origin === 'ai'
-            ? { type: 'ai', source: 'beat', beat: 'scout', label: 'outsideKnowledgeScout' }
-            : options.source === 'webmcp'
-            ? { type: 'tool', source: 'webmcp' }
-            : { type: 'user', source: 'canvas' },
-        });
-        created.push(lastCommit.suggestion);
-      }
-      if (lastCommit) {
-        applyCommittedBoard(lastCommit.document, lastCommit.history);
-      }
-      if (created.length > 0) setSuggestionsExpanded(false);
-      if (options.origin === 'ai' && created.length > 0) {
-        revealSuggestions(created.map(suggestion => suggestion.id));
-      }
-      return created;
-    } catch (err) {
-      console.error('[App] scout failed:', err);
-      return [];
-    } finally {
-      setScouting(false);
-    }
-  }
-
-  async function handleAdmitSuggestion(
-    id: string,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    setSuggestionBusy(prev => ({ ...prev, [id]: 'admit' }));
-    try {
-      const result = await boardController.admitSuggestion({
-        suggestionId: id,
-        actor: source === 'webmcp'
-          ? { type: 'tool', source: 'webmcp' }
-          : { type: 'user', source: 'canvas' },
-      });
-      applyCommittedBoard(result.document, result.history);
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] admit suggestion failed:', err);
-    } finally {
-      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
-    }
-  }
-
-  async function handleElaborateSuggestion(
-    id: string,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    setSuggestionBusy(prev => ({ ...prev, [id]: 'elaborate' }));
-    try {
-      const s = await getSuggestion(id);
-      if (!s) return;
-      const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
-      const task = buildElaboratorTask({ suggestion: s, boardIdeas });
-      const { result } = await runAdhocRole<SuggestionElaboratorOutput>(suggestionElaborator, task);
-      if (!result) return;
-      const parts = [result.elaboration];
-      if (result.subSuggestions.length > 0) {
-        parts.push('', '**Sub-parts:**', ...result.subSuggestions.map((x: string) => `- ${x}`));
-      }
-      if (result.implicationsIfAdmitted.length > 0) {
-        parts.push('', '**If admitted:**', ...result.implicationsIfAdmitted.map((x: string) => `- ${x}`));
-      }
-      const committed = await boardController.elaborateSuggestion({
-        suggestionId: id,
-        elaboration: parts.join('\n'),
-        actor: source === 'webmcp'
-          ? { type: 'tool', source: 'webmcp' }
-          : { type: 'user', source: 'canvas' },
-      });
-      applyCommittedBoard(committed.document, committed.history);
-    } catch (err) {
-      console.error('[App] elaborate suggestion failed:', err);
-    } finally {
-      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
-    }
-  }
-
-  async function handleDismissSuggestion(
-    id: string,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    setSuggestionBusy(prev => ({ ...prev, [id]: 'dismiss' }));
-    try {
-      const result = await boardController.dismissSuggestion({
-        suggestionId: id,
-        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
-      });
-      applyCommittedBoard(result.document, result.history);
-    } catch (err) {
-      console.error('[App] dismiss suggestion failed:', err);
-    } finally {
-      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
-    }
-  }
 
   const {
     facilitatorPaused,
@@ -883,10 +415,6 @@ export default function App(): React.ReactElement {
     runCritiqueIdea,
   });
 
-  const visibleCanvasSuggestions = suggestionsExpanded
-    ? suggestions
-    : suggestions.slice(0, Math.min(COLLAPSED_SUGGESTION_COUNT, suggestions.length));
-  const suggestionOverflowCount = Math.max(0, suggestions.length - visibleCanvasSuggestions.length);
   const critiqueFocusIdeaId = hoverIdeaId ?? selectedId ?? null;
   const editingIdeaId = textEntryActive ? selectedId : null;
   const suppressRevealAnimations = dragActive || textEntryActive;
@@ -1081,8 +609,8 @@ export default function App(): React.ReactElement {
             onAdmitSuggestion={handleAdmitSuggestion}
             onElaborateSuggestion={handleElaborateSuggestion}
             onDismissSuggestion={handleDismissSuggestion}
-            onExpandSuggestions={() => setSuggestionsExpanded(true)}
-            onCollapseSuggestions={() => setSuggestionsExpanded(false)}
+            onExpandSuggestions={expandSuggestions}
+            onCollapseSuggestions={collapseSuggestions}
           />
         </main>
 

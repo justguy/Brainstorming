@@ -1,0 +1,284 @@
+import { useEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
+import { DEFAULT_BOARD_TITLE, type BoardDocument } from '../../src/board/types';
+import type { BeatResult, ScoutBeatContext } from '../../src/beats/types';
+import { runAdhocRole } from '../../src/orchestrator/adhocRole';
+import {
+  suggestionElaborator,
+  buildElaboratorTask,
+  type SuggestionElaboratorOutput,
+} from '../../src/orchestrator/roles/suggestionElaborator';
+import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
+import { createBoardController } from '../../src/storage/boardController';
+import { getSuggestion } from '../../src/storage/suggestions';
+import type { Idea, ScoutSuggestion, SupportingDoc } from '../../src/types';
+import type { BoardRepository } from './boardRepository';
+import { buildScoutBeatContext } from './beatContext';
+import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDedup';
+
+const COLLAPSED_SUGGESTION_COUNT = 3;
+const REVEAL_WINDOW_MS = 1_800;
+
+type RevealOrigin = 'manual' | 'ai';
+type SuggestionBusyState = 'admit' | 'elaborate' | 'dismiss' | null;
+
+type RunBoardBeat = {
+  (context: ScoutBeatContext): Promise<BeatResult<'scout'>>;
+};
+
+interface UseBoardSuggestionActionsArgs {
+  boardId: string;
+  ideas: Idea[];
+  suggestions: ScoutSuggestion[];
+  boardRepository: Pick<BoardRepository, 'listDocsForIdea' | 'listSuggestions'>;
+  boardController: ReturnType<typeof createBoardController>;
+  applyCommittedBoard: (document: BoardDocument, history: BoardHistoryState) => void;
+  runBoardBeat: RunBoardBeat;
+  markActivity: (kind: 'edit' | 'group' | 'doc') => void;
+}
+
+export function useBoardSuggestionActions({
+  boardId,
+  ideas,
+  suggestions,
+  boardRepository,
+  boardController,
+  applyCommittedBoard,
+  runBoardBeat,
+  markActivity,
+}: UseBoardSuggestionActionsArgs) {
+  const [scouting, setScouting] = useState(false);
+  const [lastScoutRunAt, setLastScoutRunAt] = useState<number | null>(null);
+  const [suggestionBusy, setSuggestionBusy] = useState<Record<string, SuggestionBusyState>>({});
+  const [animatedSuggestionIds, setAnimatedSuggestionIds] = useState<string[]>([]);
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
+  const suggestionRevealTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => clearTimer(suggestionRevealTimerRef);
+  }, []);
+
+  useEffect(() => {
+    if (suggestions.length <= COLLAPSED_SUGGESTION_COUNT && suggestionsExpanded) {
+      setSuggestionsExpanded(false);
+    }
+  }, [suggestions.length, suggestionsExpanded]);
+
+  function revealSuggestions(suggestionIds: string[]): void {
+    clearTimer(suggestionRevealTimerRef);
+    setAnimatedSuggestionIds(suggestionIds);
+    suggestionRevealTimerRef.current = window.setTimeout(() => {
+      setAnimatedSuggestionIds([]);
+      suggestionRevealTimerRef.current = null;
+    }, REVEAL_WINDOW_MS);
+  }
+
+  async function runScout(options: {
+    origin?: RevealOrigin;
+    limitNew?: number;
+    source?: 'canvas' | 'webmcp' | 'beat';
+  } = {}): Promise<ScoutSuggestion[]> {
+    setScouting(true);
+    try {
+      const boardIdeas = ideas.filter(idea => idea.status !== 'archived' && idea.status !== 'discarded');
+      const docsPerIdea = await Promise.all(
+        boardIdeas.map(idea => boardRepository.listDocsForIdea(idea.id).catch(() => [] as SupportingDoc[])),
+      );
+      const supportingDocs = docsPerIdea.flat().filter(doc => doc.status === 'ready');
+      const existing = await boardRepository.listSuggestions();
+      const alreadyProposedRawTexts = existing
+        .filter(suggestion => suggestion.status === 'pending' || suggestion.status === 'admitted')
+        .map(suggestion => suggestion.rawText);
+      const dismissedRawTexts = existing
+        .filter(suggestion => suggestion.status === 'dismissed')
+        .map(suggestion => suggestion.rawText);
+
+      const beatResult = await runBoardBeat(buildScoutBeatContext({
+        boardId,
+        boardTitle: DEFAULT_BOARD_TITLE,
+        ideas,
+        supportingDocs,
+        existingSuggestions: existing,
+        trigger: beatTrigger(options.origin),
+        size: beatSize(options.origin),
+        aggressiveness: beatAggressiveness(options.origin),
+      }));
+      const now = beatResult.meta.finishedAt;
+      setLastScoutRunAt(now);
+      if (!beatResult.ok || beatResult.proposal.suggestions.length === 0) return [];
+
+      const visibleSuggestions = pickVisibleSuggestions({
+        currentVisibleCount: suggestions.length,
+        alreadyProposedRawTexts,
+        dismissedRawTexts,
+        suggestions: beatResult.proposal.suggestions,
+      }).slice(0, options.limitNew ?? MAX_VISIBLE_SUGGESTIONS);
+      if (visibleSuggestions.length === 0) return [];
+
+      const allIdeaIds = new Set(ideas.map(idea => idea.id));
+      const created: ScoutSuggestion[] = [];
+      let lastCommit: Awaited<ReturnType<typeof boardController.createSuggestion>> | null = null;
+      for (let index = 0; index < visibleSuggestions.length; index += 1) {
+        const suggestion = visibleSuggestions[index];
+        lastCommit = await boardController.createSuggestion({
+          rawText: suggestion.rawText,
+          rationale: suggestion.rationale,
+          source: suggestion.source,
+          relatedIdeaIds: suggestion.relatedIdeaIds?.filter(id => allIdeaIds.has(id)),
+          panel: ghostPanelFor(suggestions.length + index),
+          actor: suggestionActorFor(options),
+        });
+        created.push(lastCommit.suggestion);
+      }
+
+      if (lastCommit) {
+        applyCommittedBoard(lastCommit.document, lastCommit.history);
+      }
+      if (created.length > 0) {
+        setSuggestionsExpanded(false);
+      }
+      if (options.origin === 'ai' && created.length > 0) {
+        revealSuggestions(created.map(suggestion => suggestion.id));
+      }
+      return created;
+    } catch (err) {
+      console.error('[App] scout failed:', err);
+      return [];
+    } finally {
+      setScouting(false);
+    }
+  }
+
+  async function handleAdmitSuggestion(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
+    setSuggestionBusy(prev => ({ ...prev, [id]: 'admit' }));
+    try {
+      const result = await boardController.admitSuggestion({
+        suggestionId: id,
+        actor: source === 'webmcp'
+          ? { type: 'tool', source: 'webmcp' }
+          : { type: 'user', source: 'canvas' },
+      });
+      applyCommittedBoard(result.document, result.history);
+      markActivity('edit');
+    } catch (err) {
+      console.error('[App] admit suggestion failed:', err);
+    } finally {
+      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
+    }
+  }
+
+  async function handleElaborateSuggestion(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
+    setSuggestionBusy(prev => ({ ...prev, [id]: 'elaborate' }));
+    try {
+      const suggestion = await getSuggestion(id);
+      if (!suggestion) return;
+      const boardIdeas = ideas.filter(idea => idea.status !== 'archived' && idea.status !== 'discarded');
+      const task = buildElaboratorTask({ suggestion, boardIdeas });
+      const { result } = await runAdhocRole<SuggestionElaboratorOutput>(suggestionElaborator, task);
+      if (!result) return;
+
+      const parts = [result.elaboration];
+      if (result.subSuggestions.length > 0) {
+        parts.push('', '**Sub-parts:**', ...result.subSuggestions.map((value: string) => `- ${value}`));
+      }
+      if (result.implicationsIfAdmitted.length > 0) {
+        parts.push('', '**If admitted:**', ...result.implicationsIfAdmitted.map((value: string) => `- ${value}`));
+      }
+      const committed = await boardController.elaborateSuggestion({
+        suggestionId: id,
+        elaboration: parts.join('\n'),
+        actor: source === 'webmcp'
+          ? { type: 'tool', source: 'webmcp' }
+          : { type: 'user', source: 'canvas' },
+      });
+      applyCommittedBoard(committed.document, committed.history);
+    } catch (err) {
+      console.error('[App] elaborate suggestion failed:', err);
+    } finally {
+      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
+    }
+  }
+
+  async function handleDismissSuggestion(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
+    setSuggestionBusy(prev => ({ ...prev, [id]: 'dismiss' }));
+    try {
+      const result = await boardController.dismissSuggestion({
+        suggestionId: id,
+        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
+      });
+      applyCommittedBoard(result.document, result.history);
+    } catch (err) {
+      console.error('[App] dismiss suggestion failed:', err);
+    } finally {
+      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
+    }
+  }
+
+  const visibleCanvasSuggestions = suggestionsExpanded
+    ? suggestions
+    : suggestions.slice(0, Math.min(COLLAPSED_SUGGESTION_COUNT, suggestions.length));
+  const suggestionOverflowCount = Math.max(0, suggestions.length - visibleCanvasSuggestions.length);
+
+  return {
+    scouting,
+    lastScoutRunAt,
+    suggestionBusy,
+    animatedSuggestionIds,
+    suggestionsExpanded,
+    visibleCanvasSuggestions,
+    suggestionOverflowCount,
+    runScout,
+    handleAdmitSuggestion,
+    handleElaborateSuggestion,
+    handleDismissSuggestion,
+    expandSuggestions: () => setSuggestionsExpanded(true),
+    collapseSuggestions: () => setSuggestionsExpanded(false),
+  };
+}
+
+function clearTimer(ref: MutableRefObject<number | null>): void {
+  if (ref.current !== null) {
+    window.clearTimeout(ref.current);
+    ref.current = null;
+  }
+}
+
+function ghostPanelFor(index: number): ScoutSuggestion['panel'] {
+  return {
+    x: 520 + (index % 2) * 40,
+    y: 60 + index * 220,
+    width: 280,
+    height: 200,
+  };
+}
+
+function beatTrigger(origin?: RevealOrigin): 'automatic' | 'manual' {
+  return origin === 'ai' ? 'automatic' : 'manual';
+}
+
+function beatSize(origin?: RevealOrigin): 'small' | 'big' {
+  return origin === 'ai' ? 'small' : 'big';
+}
+
+function beatAggressiveness(origin?: RevealOrigin): 'gentle' | 'balanced' {
+  return origin === 'ai' ? 'gentle' : 'balanced';
+}
+
+function suggestionActorFor(options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat' }) {
+  if (options.origin === 'ai') {
+    return { type: 'ai' as const, source: 'beat' as const, beat: 'scout' as const, label: 'outsideKnowledgeScout' };
+  }
+  if (options.source === 'webmcp') {
+    return { type: 'tool' as const, source: 'webmcp' as const };
+  }
+  return { type: 'user' as const, source: 'canvas' as const };
+}
