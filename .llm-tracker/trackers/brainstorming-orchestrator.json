@@ -69,8 +69,8 @@
       }
     ],
     "scratchpad": "bo-025 through bo-028 are complete. The app now has board-scoped storage and journaled mutations, a typed five-beat runtime, and a board-first WebMCP surface with legacy phase-local tool registration removed. The next architecture task is bo-030: durable turns, tweaks, tombstones, and reversible deletes.",
-    "rev": 33,
-    "updatedAt": "2026-04-18T05:32:33.674Z"
+    "rev": 35,
+    "updatedAt": "2026-04-18T13:51:43.049Z"
   },
   "tasks": [
     {
