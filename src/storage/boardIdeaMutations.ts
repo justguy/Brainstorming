@@ -7,6 +7,7 @@ import { getBoardHistoryState } from './boardHistoryState';
 import type { BoardIdeaCommitResult } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { publishIdeaRows } from './ideaSync';
 import { syncTurnsForIdea } from './turns';
 
 export async function commitUpdateIdea(
@@ -80,6 +81,7 @@ export async function commitUpdateIdea(
   if (input.patch.turnLog) {
     await syncTurnsForIdea(boardId, ideaAfter.id, ideaAfter.turnLog, ideaAfter.lastTurnAt ?? ideaAfter.updatedAt);
   }
+  await publishIdeaRows([ideaAfter], boardId);
 
   return {
     idea: ideaAfter,

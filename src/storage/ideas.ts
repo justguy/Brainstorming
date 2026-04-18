@@ -2,6 +2,7 @@ import { createCapturedIdea, defaultBriefState, defaultPanelForIdea } from '../b
 import { DEFAULT_BOARD_ID } from '../board/types';
 import type { BoardId, Idea, LlmMessage, BriefState, Panel } from '../types';
 import { getDb } from './db';
+import { deleteIdeaRow, publishIdeaRow, startIdeaSync } from './ideaSync';
 import { ensureBoardStorageBridge } from './migrationBridge';
 import {
   appendTurnRecord,
@@ -52,6 +53,7 @@ async function fetchIdea(id: string): Promise<Idea> {
 /** Return all ideas for one board, sorted by updatedAt descending. */
 export async function listIdeas(boardId: BoardId = DEFAULT_BOARD_ID): Promise<Idea[]> {
   await ensureBoardStorageBridge(boardId);
+  startIdeaSync(boardId);
   const db = await getDb();
   const all = await db.getAllFromIndex('ideas', 'byBoardId', boardId);
   return all
@@ -64,6 +66,7 @@ export async function getIdea(id: string): Promise<Idea | undefined> {
   await ensureBoardStorageBridge();
   const db = await getDb();
   const row = await db.get('ideas', id);
+  if (row?.boardId) startIdeaSync(row.boardId);
   return row ? hydrateIdea(row) : undefined;
 }
 
@@ -80,9 +83,11 @@ export async function createIdea({
   boardId?: BoardId;
 }): Promise<Idea> {
   await ensureBoardStorageBridge(boardId);
+  startIdeaSync(boardId);
   const idea = createCapturedIdea({ rawText, tags, panel, boardId });
   const db = await getDb();
   await db.put('ideas', idea);
+  await publishIdeaRow(idea);
   return idea;
 }
 
@@ -91,18 +96,24 @@ export async function updateIdea(id: string, patch: Partial<Idea>): Promise<Idea
   const idea = await fetchIdea(id);
   const boardId = patch.boardId ?? idea.boardId ?? DEFAULT_BOARD_ID;
   const updated: Idea = { ...idea, ...patch, id, boardId, updatedAt: Date.now() };
+  startIdeaSync(boardId);
   const db = await getDb();
   await db.put('ideas', updated);
   if (patch.turnLog) {
     await syncTurnsForIdea(boardId, id, updated.turnLog, updated.lastTurnAt ?? updated.updatedAt);
   }
+  await publishIdeaRow(updated);
   return updated;
 }
 
 /** Delete an idea by id. */
 export async function deleteIdea(id: string): Promise<void> {
+  const idea = await getIdea(id);
   const db = await getDb();
   await db.delete('ideas', id);
+  if (idea) {
+    await deleteIdeaRow(idea.boardId ?? DEFAULT_BOARD_ID, id);
+  }
 }
 
 /**
@@ -151,6 +162,7 @@ export async function appendTurn(id: string, msg: LlmMessage): Promise<Idea> {
   const db = await getDb();
   await db.put('ideas', updated);
   await appendTurnRecord(updated.boardId ?? DEFAULT_BOARD_ID, id, msg, now);
+  await publishIdeaRow(updated);
   return updated;
 }
 
@@ -189,6 +201,7 @@ export async function updateBriefState(
   };
   const db = await getDb();
   await db.put('ideas', updated);
+  await publishIdeaRow(updated);
   return updated;
 }
 
@@ -201,6 +214,7 @@ export async function setReadiness(
   const updated: Idea = { ...idea, readiness, updatedAt: Date.now() };
   const db = await getDb();
   await db.put('ideas', updated);
+  await publishIdeaRow(updated);
   return updated;
 }
 

@@ -386,7 +386,7 @@ const getCanvasTool: ModelContextTool = {
 const getBoardTool: ModelContextTool = {
   name: 'get_board',
   description:
-    'Returns the current durable board document: board metadata, ideas, groups, supporting docs, suggestions, critiques, connections, and undo/redo history state. ' +
+    'Returns the current durable board document: board metadata, ideas, groups, supporting docs, suggestions, critiques, connections, beat runs, tweaks, and undo/redo history state. ' +
     'Use this as the board-first read surface before invoking beats or mutating board entities.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: true },
@@ -437,6 +437,8 @@ const getBoardTool: ModelContextTool = {
         updatedAt: critique.updatedAt,
       })),
       connections: document.connections,
+      beatRuns: document.beatRuns,
+      tweaks: document.tweaks,
     };
   },
 };

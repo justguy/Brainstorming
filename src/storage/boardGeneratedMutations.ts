@@ -12,6 +12,7 @@ import type {
 } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { publishIdeaRows } from './ideaSync';
 
 export async function commitCreateCritique(
   boardId: BoardId,
@@ -247,6 +248,7 @@ export async function commitAdmitSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  await publishIdeaRows([idea], boardId);
 
   return {
     idea,

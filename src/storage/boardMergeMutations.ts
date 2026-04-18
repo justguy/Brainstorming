@@ -8,6 +8,7 @@ import { createChangeSet, removeIdeaFromGroupRecord, writeGroupRecord } from './
 import { getBoardHistoryState } from './boardHistoryState';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { publishIdeaRows } from './ideaSync';
 
 export async function commitMergeIdeas(
   boardId: BoardId,
@@ -104,6 +105,7 @@ export async function commitMergeIdeas(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  await publishIdeaRows([mergedIdea, archivedDragged, archivedTarget], boardId);
 
   return {
     idea: mergedIdea,

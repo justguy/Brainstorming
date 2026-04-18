@@ -12,6 +12,7 @@ import { commitGroupIdeas, commitSetGroupTheme, commitUngroupIdea } from './boar
 import { commitUpdateIdea } from './boardIdeaMutations';
 import type { BoardCommitResult, BoardIdeaCommitResult } from './boardControllerTypes';
 import { getDb } from './db';
+import { publishIdeaRows } from './ideaSync';
 import { commitDismissCritique, commitDismissSuggestion } from './boardOverlayMutations';
 import { commitReplaceConnections } from './boardConnectionMutations';
 import { commitCreateDoc, commitDeleteDoc, commitUpdateDoc } from './boardDocMutations';
@@ -216,6 +217,7 @@ async function commitIdeaMutation(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  await publishIdeaRows([afterIdea], boardId);
 
   const document = await loadBoardDocument(boardId);
   return { document, changeSet, history: await getBoardHistoryState(boardId) };
@@ -273,6 +275,7 @@ async function commitCapturedIdea(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  await publishIdeaRows([afterIdea], boardId);
 
   const document = await loadBoardDocument(boardId);
   return { idea: afterIdea, document, changeSet, history: await getBoardHistoryState(boardId) };

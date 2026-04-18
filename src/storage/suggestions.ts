@@ -74,11 +74,6 @@ export async function updateSuggestion(id: string, patch: Partial<ScoutSuggestio
   return updated;
 }
 
-export async function deleteSuggestion(id: string): Promise<void> {
-  const db = await getDb();
-  await db.delete('suggestions', id);
-}
-
 /** Mark a suggestion admitted and link it to the new real Idea id. */
 export async function admitSuggestion(id: string, admittedIdeaId: string): Promise<ScoutSuggestion> {
   return updateSuggestion(id, { status: 'admitted', admittedIdeaId });

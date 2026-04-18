@@ -26,10 +26,9 @@
  *   'brainstorm:mergeIdeas'   → merge two ideas via LLM into a new one
  */
 
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import type { Idea, IdeaCritique, IdeaGroup, Connection, SupportingDoc, ScoutSuggestion } from '../../src/types';
-import type { ChangeActor } from '../../src/board/types';
-import { DEFAULT_BOARD_ID, DEFAULT_BOARD_TITLE } from '../../src/board/types';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import type { Idea, IdeaCritique, Connection, SupportingDoc, ScoutSuggestion } from '../../src/types';
+import { DEFAULT_BOARD_TITLE } from '../../src/board/types';
 import type {
   BeatContextMap,
   BeatName,
@@ -47,13 +46,9 @@ import {
 import {
   getSuggestion,
 } from '../../src/storage/suggestions';
-import { getSettings } from '../../src/storage/settings';
 import { advance } from '../../src/orchestrator/stateMachine';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
 import { runBeat } from '../../src/orchestrator/runBeat';
-import { docFactExtractor, buildDocFactExtractorTask, type DocFactExtractorOutput } from '../../src/orchestrator/roles/docFactExtractor';
-import { groupThemer, buildGroupThemerTask, type GroupThemerOutput } from '../../src/orchestrator/roles/groupThemer';
-import { ideaMerger, buildIdeaMergerTask, type IdeaMergerOutput } from '../../src/orchestrator/roles/ideaMerger';
 import Button from '../../src/ui/Button';
 import Workspace from '../../src/workspace/Workspace';
 import Canvas from '../../src/canvas/Canvas';
@@ -73,17 +68,10 @@ import {
   replaceGeneratedConnections,
   upsertConnection,
 } from './connectionState';
-import {
-  defaultBoardRepository,
-  mapStandaloneBoardSnapshot,
-  type StandaloneBoardSnapshot,
-} from './boardRepository';
 import { SoftModeHint } from './SoftModeHint';
+import { DevCompanionCard } from './DevCompanionCard';
 import {
-  dismissSoftModeHint,
-  inferSoftMode,
   recordActivity,
-  shouldShowSoftModeHint,
   type ActivityState,
 } from './softMode';
 import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDedup';
@@ -98,8 +86,9 @@ import {
   buildSummariseBeatContext,
 } from './beatContext';
 import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
-import { createBoardController } from '../../src/storage/boardController';
-import type { BoardCommitResult, BoardDocCommitResult } from '../../src/storage/boardControllerTypes';
+import { useBoardSync } from './useBoardSync';
+import { useCanvasIdeaMutations } from './useCanvasIdeaMutations';
+import { AUTO_IDLE_MS, useCompanionAutomation } from './useCompanionAutomation';
 
 // ---------------------------------------------------------------------------
 // Hash router
@@ -121,9 +110,6 @@ function useHashRoute(): [string, (hash: string) => void] {
   return [hash, navigate];
 }
 
-const AUTO_IDLE_MS = 1_500;
-const AUTO_SEQUENCE_GAP_MS = 850;
-const AUTO_CRITIQUE_COOLDOWN_MS = 45_000;
 const COLLAPSED_SUGGESTION_COUNT = 3;
 const HIGHLIGHT_FLASH_MS = 320;
 const REVEAL_WINDOW_MS = 1_800;
@@ -148,42 +134,39 @@ function connectionStrengthWeight(strength: Connection['strength']): number {
   }
 }
 
-type SupportingDocMutationController = {
-  createDoc(input: { ideaId: string; title: string; rawText: string; actor: ChangeActor }): Promise<BoardDocCommitResult>;
-  updateDoc(input: {
-    docId: string;
-    patch: Partial<SupportingDoc>;
-    actor: ChangeActor;
-    summary?: string;
-  }): Promise<BoardDocCommitResult>;
-  deleteDoc(input: { docId: string; actor: ChangeActor }): Promise<BoardCommitResult>;
-};
-
-type SupportingDocMutations = {
-  createDoc(input: { ideaId: string; title: string; rawText: string; actor: ChangeActor }): Promise<SupportingDoc>;
-  updateDoc(input: {
-    docId: string;
-    patch: Partial<SupportingDoc>;
-    actor: ChangeActor;
-    summary?: string;
-  }): Promise<SupportingDoc>;
-  deleteDoc(input: { docId: string; actor: ChangeActor }): Promise<void>;
-};
-
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
 
 export default function App(): React.ReactElement {
   const [hash, navigate] = useHashRoute();
-  const [boardId, setBoardId] = useState(DEFAULT_BOARD_ID);
-  const boardRepository = useMemo(() => defaultBoardRepository.forBoard(boardId), [boardId]);
-  const boardController = useMemo(() => createBoardController(boardId), [boardId]);
-  const supportingDocController = boardController as typeof boardController & SupportingDocMutationController;
-  const [ideas, setIdeas] = useState<Idea[]>([]);
-  const [groups, setGroups] = useState<IdeaGroup[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  const {
+    boardId,
+    boardRepository,
+    boardController,
+    ideas,
+    groups,
+    selectedId,
+    setSelectedId,
+    hasApiKey,
+    docCounts,
+    setDocCounts,
+    connections,
+    critiques,
+    suggestions,
+    historyState,
+    applyCommittedBoard,
+    handleIdeaUpdate,
+    loadBoard,
+    loadIdeas,
+    loadGroups,
+    loadDocCounts,
+    loadConnections,
+    loadSuggestions,
+    loadCritiques,
+    supportingDocMutations,
+    refineSupportingDoc,
+  } = useBoardSync();
   const [newIdeaText, setNewIdeaText] = useState('');
   const [newIdeaTags, setNewIdeaTags] = useState('');
   const [creating, setCreating] = useState(false);
@@ -191,14 +174,10 @@ export default function App(): React.ReactElement {
   const [advancingFromTool, setAdvancingFromTool] = useState(false);
   const [canvasBusy, setCanvasBusy] = useState<string | null>(null);
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
-  const [docCounts, setDocCounts] = useState<Record<string, number>>({});
-  const [connections, setConnections] = useState<Connection[]>([]);
   const [findingConnections, setFindingConnections] = useState(false);
   const [lastConnectionsRunAt, setLastConnectionsRunAt] = useState<number | null>(null);
   const [highlightIds, setHighlightIds] = useState<string[]>([]);
-  const [critiques, setCritiques] = useState<IdeaCritique[]>([]);
   const [critiqueBusyByIdea, setCritiqueBusyByIdea] = useState<Record<string, boolean>>({});
-  const [suggestions, setSuggestions] = useState<ScoutSuggestion[]>([]);
   const [scouting, setScouting] = useState(false);
   const [lastScoutRunAt, setLastScoutRunAt] = useState<number | null>(null);
   const [suggestionBusy, setSuggestionBusy] = useState<Record<string, 'admit' | 'elaborate' | 'dismiss' | null>>({});
@@ -209,8 +188,6 @@ export default function App(): React.ReactElement {
     recentDocs: [],
     lastDismissedAt: 0,
   }));
-  const [clockMs, setClockMs] = useState(() => Date.now());
-  const [facilitatorPaused, setFacilitatorPaused] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [textEntryActive, setTextEntryActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
@@ -218,25 +195,7 @@ export default function App(): React.ReactElement {
   const [animatedCritiqueIds, setAnimatedCritiqueIds] = useState<string[]>([]);
   const [animatedSuggestionIds, setAnimatedSuggestionIds] = useState<string[]>([]);
   const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
-  const [historyState, setHistoryState] = useState({
-    canUndo: false,
-    canRedo: false,
-    cursor: 0,
-    nextSeq: 1,
-  });
   const [activeBeatRun, setActiveBeatRun] = useState<BeatRunState | null>(null);
-  const [aiActions, setAiActions] = useState<Array<{
-    origin: 'ai';
-    kind: BeatName;
-    createdAt: number;
-    ideaId?: string;
-  }>>([]);
-  const autoCooldownRef = useRef({
-    lastConnectionsAt: 0,
-    lastScoutAt: 0,
-    lastAiActionAt: 0,
-    critiqueByIdea: {} as Record<string, number>,
-  });
   const connectionRevealTimerRef = useRef<number | null>(null);
   const critiqueRevealTimerRef = useRef<number | null>(null);
   const suggestionRevealTimerRef = useRef<number | null>(null);
@@ -251,143 +210,6 @@ export default function App(): React.ReactElement {
 
   // Register WebMCP tools (global + lifecycle)
   useBrainstormingTools(selectedLegacyToolIdea);
-
-  // ---------------------------------------------------------------------------
-  // Data loading
-  // ---------------------------------------------------------------------------
-
-  function applyBoardSnapshot(snapshot: StandaloneBoardSnapshot): void {
-    setBoardId(snapshot.board.id);
-    setIdeas(snapshot.ideas);
-    setGroups(snapshot.groups);
-    setConnections(snapshot.connections);
-    setCritiques(snapshot.critiques);
-    setSuggestions(snapshot.suggestions);
-    setDocCounts(snapshot.docCounts);
-  }
-
-  function applyCommittedBoard(
-    document: Awaited<ReturnType<typeof boardRepository.loadDocument>>,
-    history: typeof historyState,
-  ): void {
-    applyBoardSnapshot(mapStandaloneBoardSnapshot(document));
-    setHistoryState(history);
-    setSelectedId(prev => (prev && document.ideas.some(idea => idea.id === prev) ? prev : null));
-  }
-
-  const supportingDocMutations: SupportingDocMutations = {
-    async createDoc(input) {
-      const committed = await supportingDocController.createDoc(input);
-      applyCommittedBoard(committed.document, committed.history);
-      return committed.doc;
-    },
-    async updateDoc(input) {
-      const committed = await supportingDocController.updateDoc(input);
-      applyCommittedBoard(committed.document, committed.history);
-      return committed.doc;
-    },
-    async deleteDoc(input) {
-      const committed = await supportingDocController.deleteDoc(input);
-      applyCommittedBoard(committed.document, committed.history);
-    },
-  };
-
-  async function refineSupportingDoc(doc: SupportingDoc, actor: ChangeActor): Promise<SupportingDoc> {
-    try {
-      const task = buildDocFactExtractorTask(doc.title, doc.rawText);
-      const { result } = await runAdhocRole<DocFactExtractorOutput>(docFactExtractor, task);
-      if (!result) {
-        return supportingDocMutations.updateDoc({
-          docId: doc.id,
-          patch: {
-            status: 'failed',
-            error: 'Extractor returned no result. Try editing the text and re-saving.',
-          },
-          actor,
-        });
-      }
-      return supportingDocMutations.updateDoc({
-        docId: doc.id,
-        patch: {
-          status: 'ready',
-          summary: result.summary,
-          facts: result.facts,
-          error: undefined,
-        },
-        actor,
-      });
-    } catch (err) {
-      return supportingDocMutations.updateDoc({
-        docId: doc.id,
-        patch: {
-          status: 'failed',
-          error: err instanceof Error ? err.message : 'Extraction failed.',
-        },
-        actor,
-      });
-    }
-  }
-
-  async function loadBoard() {
-    try {
-      applyBoardSnapshot(await boardRepository.loadSnapshot());
-      setHistoryState(await boardController.getHistoryState());
-    } catch {
-      // non-fatal
-    }
-  }
-
-  async function loadIdeas() {
-    await loadBoard();
-  }
-
-  async function loadGroups() {
-    await loadBoard();
-  }
-
-  async function loadDocCounts(ideaIds: string[]): Promise<void> {
-    try {
-      const counts = Object.fromEntries(
-        await Promise.all(
-          ideaIds.map(async id => [id, await boardRepository.countDocsForIdea(id)] as const),
-        ),
-      );
-      setDocCounts(prev => ({ ...prev, ...counts }));
-    } catch {
-      // non-fatal
-    }
-  }
-
-  async function loadConnections() {
-    await loadBoard();
-  }
-
-  async function checkApiKey() {
-    try {
-      const s = await getSettings();
-      setHasApiKey(!!(s.credentials[s.activeProvider]));
-    } catch {
-      setHasApiKey(false);
-    }
-  }
-
-  async function loadSuggestions() {
-    await loadBoard();
-  }
-
-  async function loadCritiques() {
-    await loadBoard();
-  }
-
-  useEffect(() => {
-    loadBoard();
-    checkApiKey();
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setClockMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (captureOpen) {
@@ -489,17 +311,6 @@ export default function App(): React.ReactElement {
     }
   }
 
-  function recordAiAction(kind: Extract<BeatName, 'connect' | 'scout' | 'critique'>, ideaId?: string): void {
-    const action = {
-      origin: 'ai' as const,
-      kind,
-      createdAt: Date.now(),
-      ideaId,
-    };
-    autoCooldownRef.current.lastAiActionAt = action.createdAt;
-    setAiActions(prev => [action, ...prev].slice(0, 5));
-  }
-
   function clearRevealTimer(ref: React.MutableRefObject<number | null>): void {
     if (ref.current !== null) {
       window.clearTimeout(ref.current);
@@ -534,134 +345,24 @@ export default function App(): React.ReactElement {
     }, REVEAL_WINDOW_MS);
   }
 
-  // Keep doc counts in sync with the visible idea set.
-  useEffect(() => {
-    const ids = ideas.filter(i => i.status !== 'archived').map(i => i.id);
-    if (ids.length > 0) loadDocCounts(ids);
-  }, [ideas]);
-
   useEffect(() => {
     if (suggestions.length <= COLLAPSED_SUGGESTION_COUNT && suggestionsExpanded) {
       setSuggestionsExpanded(false);
     }
   }, [suggestions.length, suggestionsExpanded]);
-
-  // ---------------------------------------------------------------------------
-  // Canvas operations
-  // ---------------------------------------------------------------------------
-
-  async function handleMove(
-    ideaId: string,
-    x: number,
-    y: number,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    const result = await boardController.moveIdeaPanel({
-      ideaId,
-      x,
-      y,
-      actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
-    });
-    applyCommittedBoard(result.document, result.history);
-    markActivity('edit');
-  }
-
-  async function handleGroup(
-    ideaIdA: string,
-    ideaIdB: string,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    const a = ideas.find(i => i.id === ideaIdA);
-    const b = ideas.find(i => i.id === ideaIdB);
-    if (!a || !b) return;
-
-    setCanvasBusy('Naming group…');
-    try {
-      const grouped = await boardController.groupIdeas({
-        ideaIdA,
-        ideaIdB,
-        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
-      });
-      applyCommittedBoard(grouped.document, grouped.history);
-
-      const group = grouped.document.groups.find((entry: IdeaGroup) => entry.id === grouped.groupId);
-      if (group) {
-        const groupIdeas = group.ideaIds
-          .map(id => grouped.document.ideas.find(entry => entry.id === id))
-          .filter((x): x is Idea => !!x);
-        const task = buildGroupThemerTask(groupIdeas);
-        const { result: themeResult } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
-        if (themeResult) {
-          const themed = await boardController.setGroupTheme({
-            groupId: group.id,
-            theme: themeResult.theme,
-            sharedQuestion: themeResult.sharedQuestion,
-            actor: { type: 'ai', source: 'system', label: 'groupThemer' },
-          });
-          applyCommittedBoard(themed.document, themed.history);
-        }
-      }
-      markActivity('group');
-    } catch (err) {
-      console.error('[App] group failed:', err);
-    } finally {
-      setCanvasBusy(null);
-    }
-  }
-
-  async function handleUngroup(
-    ideaId: string,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    const idea = ideas.find(i => i.id === ideaId);
-    if (!idea?.panel?.groupId) return;
-    try {
-      const result = await boardController.ungroupIdea({
-        ideaId,
-        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
-      });
-      applyCommittedBoard(result.document, result.history);
-      markActivity('group');
-    } catch (err) {
-      console.error('[App] ungroup failed:', err);
-    }
-  }
-
-  async function handleMerge(
-    draggedId: string,
-    targetId: string,
-    source: 'canvas' | 'webmcp' = 'canvas',
-  ): Promise<void> {
-    const a = ideas.find(i => i.id === draggedId);
-    const b = ideas.find(i => i.id === targetId);
-    if (!a || !b) return;
-
-    setCanvasBusy('Merging ideas…');
-    try {
-      const task = buildIdeaMergerTask(a, b);
-      const { result } = await runAdhocRole<IdeaMergerOutput>(ideaMerger, task);
-      if (!result) {
-        console.warn('[App] merge LLM call returned no result — skipping merge.');
-        return;
-      }
-      const committed = await boardController.mergeIdeas({
-        draggedId,
-        targetId,
-        mergedRawText: result.mergedRawText,
-        mergedTags: result.mergedTags,
-        synthesisNotes: result.synthesisNotes,
-        tensions: result.tensions,
-        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
-      });
-      applyCommittedBoard(committed.document, committed.history);
-      setSelectedId(committed.idea.id);
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] merge failed:', err);
-    } finally {
-      setCanvasBusy(null);
-    }
-  }
+  const {
+    handleMove,
+    handleGroup,
+    handleUngroup,
+    handleMerge,
+  } = useCanvasIdeaMutations({
+    ideas,
+    boardController,
+    applyCommittedBoard,
+    setCanvasBusy,
+    setSelectedId,
+    markActivity,
+  });
 
   // ---------------------------------------------------------------------------
   // Tool event listeners
@@ -1415,10 +1116,6 @@ export default function App(): React.ReactElement {
     }
   }
 
-  function handleIdeaUpdate(updated: Idea) {
-    setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-  }
-
   // ---------------------------------------------------------------------------
   // Discard / restore (UI-side — tool-side paths live in webmcp-tools.ts)
   // ---------------------------------------------------------------------------
@@ -1777,10 +1474,10 @@ export default function App(): React.ReactElement {
       if (!result) return;
       const parts = [result.elaboration];
       if (result.subSuggestions.length > 0) {
-        parts.push('', '**Sub-parts:**', ...result.subSuggestions.map(x => `- ${x}`));
+        parts.push('', '**Sub-parts:**', ...result.subSuggestions.map((x: string) => `- ${x}`));
       }
       if (result.implicationsIfAdmitted.length > 0) {
-        parts.push('', '**If admitted:**', ...result.implicationsIfAdmitted.map(x => `- ${x}`));
+        parts.push('', '**If admitted:**', ...result.implicationsIfAdmitted.map((x: string) => `- ${x}`));
       }
       const committed = await boardController.elaborateSuggestion({
         suggestionId: id,
@@ -1815,126 +1512,36 @@ export default function App(): React.ReactElement {
     }
   }
 
-  const idleMs = Math.max(0, clockMs - activity.lastInteractionAt);
-  const softModeAssessment = inferSoftMode({
-    ideaCount: visibleIdeas.length,
-    editCount: activity.recentEdits.length,
-    groupingCount: activity.recentGroups.length,
-    idleMs,
-    docIdeasCount: Object.values(docCounts).filter(count => count > 0).length,
-    connectionCount: connections.length,
-    activeCritiqueCount: activeCritiques.length,
-  });
-  const interactionSuppressed = dragActive || textEntryActive;
-  const softModeBusy = scouting || findingConnections || Object.values(critiqueBusyByIdea).some(Boolean);
-  const showSoftModeHint = shouldShowSoftModeHint({
-    assessment: softModeAssessment,
-    idleMs,
-    lastDismissedAt: activity.lastDismissedAt,
-    now: clockMs,
-  }) && !softModeBusy && !interactionSuppressed;
-
-  async function handleSoftModeAction(): Promise<void> {
-    setActivity(prev => dismissSoftModeHint(recordActivity(prev, 'edit')));
-
-    if (softModeAssessment.inferredMode === 'explore') {
-      await runScout();
-      return;
-    }
-
-    if (softModeAssessment.inferredMode === 'structure') {
-      await runConnectionFinder();
-      return;
-    }
-
-    if (softModeAssessment.inferredMode === 'stress') {
-      const targetIdeaId = selectedBoardIdea?.id ?? visibleIdeas[0]?.id;
-      if (targetIdeaId) await runCritiqueIdea(targetIdeaId);
-    }
-  }
-
-  function softModeActionLabel(): string | undefined {
-    switch (softModeAssessment.inferredMode) {
-      case 'explore':
-        return 'Run scout';
-      case 'structure':
-        return 'Find links';
-      case 'stress':
-        return selectedBoardIdea || visibleIdeas[0] ? 'Stress-test idea' : undefined;
-      case 'converge':
-      default:
-        return undefined;
-    }
-  }
-
-  useEffect(() => {
-    if (facilitatorPaused || softModeBusy || interactionSuppressed || idleMs < AUTO_IDLE_MS) return;
-
-    let cancelled = false;
-
-    async function runObserver(): Promise<void> {
-      const now = Date.now();
-      const auto = autoCooldownRef.current;
-      if (now - auto.lastAiActionAt < AUTO_SEQUENCE_GAP_MS) return;
-
-      if (
-        visibleIdeas.length >= 3 &&
-        connections.length === 0 &&
-        now - auto.lastConnectionsAt >= 30_000
-      ) {
-        auto.lastConnectionsAt = now;
-        const found = await runConnectionFinder({ origin: 'ai', limitGenerated: 1 });
-        if (!cancelled && found.length > 0) recordAiAction('connect');
-        return;
-      }
-
-      const critiqueTarget = selectedBoardIdea ?? visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) > 0) ?? visibleIdeas[0];
-      if (critiqueTarget) {
-        const activeForIdea = activeCritiques.filter(critique => critique.ideaId === critiqueTarget.id);
-        const lastCritiqueAt = auto.critiqueByIdea[critiqueTarget.id] ?? 0;
-        const critiqueAllowed =
-          activeForIdea.length < 2 &&
-          now - lastCritiqueAt >= AUTO_CRITIQUE_COOLDOWN_MS;
-
-        if (critiqueAllowed) {
-          const critique = await runCritiqueIdea(critiqueTarget.id, { origin: 'ai' }).catch(() => null);
-          if (critique) {
-            auto.critiqueByIdea[critiqueTarget.id] = now;
-            if (!cancelled) recordAiAction('critique', critiqueTarget.id);
-            return;
-          }
-        }
-      }
-
-      const doclessIdea = visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) === 0);
-      if (
-        doclessIdea &&
-        suggestions.length === 0 &&
-        now - auto.lastScoutAt >= 45_000
-      ) {
-        auto.lastScoutAt = now;
-        const created = await runScout({ origin: 'ai', limitNew: 1 });
-        if (!cancelled && created.length > 0) recordAiAction('scout', doclessIdea.id);
-      }
-    }
-
-    void runObserver();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
+  const {
     facilitatorPaused,
-    softModeBusy,
-    interactionSuppressed,
     idleMs,
+    softModeAssessment,
+    interactionSuppressed,
+    softModeBusy,
+    showSoftModeHint,
+    companionActionLabel,
+    handleSoftModeAction,
+    toggleFacilitatorPause,
+    lastAiAction,
+    dismissHint,
+  } = useCompanionAutomation({
+    activity,
+    setActivity,
+    dragActive,
+    textEntryActive,
+    scouting,
+    findingConnections,
+    critiqueBusyByIdea,
     visibleIdeas,
-    connections.length,
-    suggestions.length,
+    connectionsCount: connections.length,
+    suggestionsCount: suggestions.length,
     docCounts,
     selectedBoardIdea,
     activeCritiques,
-  ]);
+    runScout,
+    runConnectionFinder,
+    runCritiqueIdea,
+  });
 
   const visibleCanvasSuggestions = suggestionsExpanded
     ? suggestions
@@ -1993,27 +1600,6 @@ export default function App(): React.ReactElement {
           </span>
           <button
             type="button"
-            onClick={() => setFacilitatorPaused(value => !value)}
-            className={`text-xs px-2 py-0.5 rounded-full border ${
-              facilitatorPaused
-                ? 'bg-gray-100 text-gray-600 border-gray-300'
-                : 'bg-amber-50 text-amber-800 border-amber-200'
-            }`}
-          >
-            {facilitatorPaused ? 'Facilitator paused' : 'Facilitator active'}
-          </button>
-          {activeBeatRun && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
-              {activeBeatRun.trigger === 'automatic' ? 'auto' : 'manual'}:{activeBeatRun.size}:{activeBeatRun.beat}
-            </span>
-          )}
-          {aiActions[0] && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-              ai:{aiActions[0].kind}
-            </span>
-          )}
-          <button
-            type="button"
             onClick={() => { void handleUndo(); }}
             disabled={!historyState.canUndo}
             className="text-sm text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 rounded px-2 py-1 disabled:opacity-40"
@@ -2056,6 +1642,21 @@ export default function App(): React.ReactElement {
 
       <div className="shrink-0 px-5 py-3">
         <div className="ml-auto flex w-full max-w-[360px] flex-col items-end gap-3">
+          <DevCompanionCard
+            hasApiKey={hasApiKey}
+            facilitatorPaused={facilitatorPaused}
+            activeBeatRun={activeBeatRun}
+            softModeAssessment={softModeAssessment}
+            interactionSuppressed={interactionSuppressed}
+            idleMs={idleMs}
+            autoIdleMs={AUTO_IDLE_MS}
+            lastAiAction={lastAiAction}
+            lastScoutRunAt={lastScoutRunAt}
+            lastConnectionsRunAt={lastConnectionsRunAt}
+            actionLabel={companionActionLabel}
+            onAction={companionActionLabel ? () => { void handleSoftModeAction(); } : undefined}
+            onTogglePause={toggleFacilitatorPause}
+          />
           <ConnectionsPanel
             connections={connections}
             busy={findingConnections}
@@ -2085,10 +1686,10 @@ export default function App(): React.ReactElement {
           {showSoftModeHint && (
             <SoftModeHint
               assessment={softModeAssessment}
-              actionLabel={softModeActionLabel()}
+              actionLabel={companionActionLabel}
               busy={softModeBusy}
-              onAction={softModeActionLabel() ? () => { void handleSoftModeAction(); } : undefined}
-              onDismiss={() => setActivity(prev => dismissSoftModeHint(prev))}
+              onAction={companionActionLabel ? () => { void handleSoftModeAction(); } : undefined}
+              onDismiss={dismissHint}
             />
           )}
         </div>

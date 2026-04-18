@@ -1,6 +1,7 @@
 import { DEFAULT_BOARD_ID, type BoardDocument } from '../board/types';
 import type { BoardId } from '../types';
 import { getDefaultBoard } from './boards';
+import { listBeatRuns } from './beatRuns';
 import { listConnections } from './connections';
 import { listCritiques } from './critiques';
 import { listDocs } from './docs';
@@ -15,13 +16,14 @@ export async function loadBoardDocument(boardId: BoardId = DEFAULT_BOARD_ID): Pr
     ? await ensureBoardStorageBridge()
     : await ensureBoardStorageBridge(boardId);
 
-  const [ideas, groups, docs, suggestions, critiques, connections, tweaks] = await Promise.all([
+  const [ideas, groups, docs, suggestions, critiques, connections, beatRuns, tweaks] = await Promise.all([
     listIdeas(board.id),
     listGroups(board.id),
     listDocs(board.id),
     listSuggestions(board.id),
     listCritiques(board.id),
     listConnections(board.id),
+    listBeatRuns(board.id),
     getBoardTweaks(board.id),
   ]);
 
@@ -33,6 +35,7 @@ export async function loadBoardDocument(boardId: BoardId = DEFAULT_BOARD_ID): Pr
     suggestions,
     critiques,
     connections,
+    beatRuns,
     tweaks,
   };
 }

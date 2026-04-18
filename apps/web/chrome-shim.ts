@@ -11,7 +11,7 @@
  *
  * LLM calls:
  *   chrome.runtime.sendMessage({ type: 'LLM_CALL', payload })
- *   → resolved by reading credentials from localStorage + calling provider directly.
+ *   → resolved by reading credentials from the shared settings store + calling provider directly.
  */
 
 const STORAGE_PREFIX = 'brainstorm:';
@@ -97,17 +97,8 @@ async function handleLlmCall(payload: {
   jsonSchema?: object;
   maxTokens?: number;
 }): Promise<unknown> {
-  // Read credentials from localStorage via the shim prefix
-  const settingsRaw = localStorage.getItem(STORAGE_PREFIX + 'settings');
-  let apiKey: string | undefined;
-  if (settingsRaw) {
-    try {
-      const settings = JSON.parse(settingsRaw);
-      apiKey = settings?.credentials?.[payload.providerId];
-    } catch {
-      // ignore
-    }
-  }
+  const { getCredential } = await import('../../src/storage/settings');
+  const apiKey = await getCredential(payload.providerId as import('../../src/types').ProviderId);
 
   if (!apiKey) {
     throw new Error(

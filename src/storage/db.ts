@@ -1,6 +1,13 @@
 import { openDB as idbOpenDB, type IDBPDatabase, type DBSchema } from 'idb';
 import type { Connection, Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion } from '../types';
-import type { BoardRecord, BoardTweaksRecord, ChangeSetRecord, IdeaTurnRecord } from '../board/types';
+import type {
+  BeatRunRecord,
+  BoardRecord,
+  BoardTweaksRecord,
+  ChangeSetRecord,
+  IdeaTurnRecord,
+  SettingsRecord,
+} from '../board/types';
 
 export interface Schema extends DBSchema {
   boards: {
@@ -80,6 +87,22 @@ export interface Schema extends DBSchema {
       byUpdatedAt: number;
     };
   };
+  beatRuns: {
+    key: string;
+    value: BeatRunRecord;
+    indexes: {
+      byBoardId: string;
+      byFinishedAt: number;
+      byFocusIdeaId: string;
+    };
+  };
+  settings: {
+    key: string;
+    value: SettingsRecord;
+    indexes: {
+      byUpdatedAt: number;
+    };
+  };
   changeSets: {
     key: string;
     value: ChangeSetRecord;
@@ -93,7 +116,7 @@ export interface Schema extends DBSchema {
 }
 
 const DB_NAME = 'brainstorming-orchestrator';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 let _dbPromise: Promise<IDBPDatabase<Schema>> | null = null;
 
@@ -194,6 +217,18 @@ export function getDb(): Promise<IDBPDatabase<Schema>> {
             store.createIndex('byBoardSeq', ['boardId', 'seq']);
             store.createIndex('byBoardStatus', ['boardId', 'status']);
             store.createIndex('byCommittedAt', 'committedAt');
+          }
+        }
+        if (oldVersion < 9) {
+          if (!db.objectStoreNames.contains('beatRuns')) {
+            const store = db.createObjectStore('beatRuns', { keyPath: 'id' });
+            store.createIndex('byBoardId', 'boardId');
+            store.createIndex('byFinishedAt', 'finishedAt');
+            store.createIndex('byFocusIdeaId', 'focusIdeaId');
+          }
+          if (!db.objectStoreNames.contains('settings')) {
+            const store = db.createObjectStore('settings', { keyPath: 'id' });
+            store.createIndex('byUpdatedAt', 'updatedAt');
           }
         }
       },

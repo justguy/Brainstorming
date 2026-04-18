@@ -6,9 +6,10 @@ import type {
   IdeaGroup,
   LlmMessage,
   ScoutSuggestion,
+  Settings,
   SupportingDoc,
 } from '../types';
-import type { BeatName } from '../beats/types';
+import type { BeatName, BeatSize, BeatTrigger } from '../beats/types';
 
 export const DEFAULT_BOARD_ID: BoardId = 'local-board';
 export const DEFAULT_BOARD_TITLE = 'Main Board';
@@ -42,6 +43,30 @@ export interface BoardTweaksRecord {
   updatedAt: number;
 }
 
+export interface BeatRunRecord {
+  id: string;
+  boardId: BoardId;
+  beat: BeatName;
+  roleId: string;
+  usedFallback: boolean;
+  startedAt: number;
+  finishedAt: number;
+  trigger: BeatTrigger;
+  size: BeatSize;
+  focusIdeaId?: string;
+  ok: boolean;
+  reason?: string;
+  proposal: unknown;
+}
+
+export interface SettingsRecord {
+  id: string;
+  value: Settings;
+  createdAt: number;
+  updatedAt: number;
+  migratedFrom?: 'chrome.storage.local' | 'localStorage';
+}
+
 export interface BoardDocument {
   board: BoardRecord;
   ideas: Idea[];
@@ -50,6 +75,7 @@ export interface BoardDocument {
   suggestions: ScoutSuggestion[];
   critiques: IdeaCritique[];
   connections: Connection[];
+  beatRuns: BeatRunRecord[];
   tweaks: BoardTweaksRecord | null;
 }
 

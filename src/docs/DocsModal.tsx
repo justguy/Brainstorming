@@ -26,6 +26,12 @@ import {
   buildDocFactExtractorTask,
   type DocFactExtractorOutput,
 } from '../orchestrator/roles/docFactExtractor';
+import {
+  authorizeLocalDocsDirectory,
+  getLocalDocSearchState,
+  searchLocalDocs,
+  type LocalDocSearchHit,
+} from './localDocSearch';
 import Button from '../ui/Button';
 
 interface SupportingDocMutations {
@@ -64,6 +70,12 @@ export default function DocsModal({
   const [formTitle, setFormTitle] = useState('');
   const [formText, setFormText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [localDocState, setLocalDocState] = useState(() => getLocalDocSearchState());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchHits, setSearchHits] = useState<LocalDocSearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [attachingHitId, setAttachingHitId] = useState<string | null>(null);
 
   async function reload(): Promise<void> {
     if (!open) return;
@@ -88,6 +100,10 @@ export default function DocsModal({
       reload();
       setFormTitle('');
       setFormText('');
+      setSearchQuery('');
+      setSearchHits([]);
+      setSearchError(null);
+      setLocalDocState(getLocalDocSearchState());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ideaId, boardId]);
@@ -184,6 +200,53 @@ export default function DocsModal({
       broadcastChange();
     } catch (err) {
       console.error('[DocsModal] delete failed:', err);
+    }
+  }
+
+  async function handleAuthorizeLocalDocs(): Promise<void> {
+    try {
+      setLocalDocState(await authorizeLocalDocsDirectory());
+      setSearchError(null);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Failed to authorize local docs folder.');
+      setLocalDocState(getLocalDocSearchState());
+    }
+  }
+
+  async function handleSearchLocalDocs(): Promise<void> {
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    setSearching(true);
+    try {
+      const hits = await searchLocalDocs(query);
+      setSearchHits(hits);
+      setSearchError(null);
+    } catch (err) {
+      setSearchHits([]);
+      setSearchError(err instanceof Error ? err.message : 'Search failed.');
+      setLocalDocState(getLocalDocSearchState());
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function handleAttachLocalHit(hit: LocalDocSearchHit): Promise<void> {
+    setAttachingHitId(hit.id);
+    try {
+      const doc = await docMutations.createDoc({
+        ideaId,
+        title: hit.title,
+        rawText: hit.rawText,
+        actor: { type: 'user', source: 'canvas' },
+      });
+      await reload();
+      broadcastChange();
+      void refineDoc(doc, { type: 'user', source: 'canvas' });
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Failed to attach local doc hit.');
+    } finally {
+      setAttachingHitId(null);
     }
   }
 
@@ -289,6 +352,95 @@ export default function DocsModal({
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="border-t border-gray-200 pt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Search local docs
+                </h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  Grant a folder for this session, search PRDs or notes, then attach a hit as a supporting doc.
+                </p>
+              </div>
+              {localDocState.supported && (
+                <Button variant="secondary" size="sm" onClick={handleAuthorizeLocalDocs}>
+                  {localDocState.requiresReauthorize
+                    ? 'Re-authorize folder'
+                    : localDocState.authorized
+                    ? 'Change folder'
+                    : 'Choose folder'}
+                </Button>
+              )}
+            </div>
+
+            {!localDocState.supported && (
+              <p className="mt-3 text-xs text-amber-700">
+                Local doc search needs the File System Access API, which is unavailable in this browser context.
+              </p>
+            )}
+
+            {localDocState.supported && (
+              <div className="mt-3 space-y-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  {localDocState.authorized
+                    ? `Folder ready: ${localDocState.folderName ?? 'selected folder'}`
+                    : localDocState.requiresReauthorize
+                    ? `Previous folder "${localDocState.folderName}" needs re-authorization for this session.`
+                    : 'No local docs folder selected yet.'}
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Search terms, project name, API surface, spec phrase…"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    aria-label="Local docs search query"
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSearchLocalDocs}
+                    disabled={!searchQuery.trim() || !localDocState.authorized || searching}
+                  >
+                    {searching ? 'Searching…' : 'Search'}
+                  </Button>
+                </div>
+
+                {searchError && (
+                  <p className="text-xs text-red-700">{searchError}</p>
+                )}
+
+                {searchHits.length > 0 && (
+                  <ul className="space-y-2">
+                    {searchHits.map(hit => (
+                      <li key={hit.id} className="rounded-md border border-slate-200 bg-white px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{hit.title}</p>
+                            <p className="mt-0.5 truncate text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                              {hit.path}
+                            </p>
+                          </div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => { void handleAttachLocalHit(hit); }}
+                            disabled={attachingHitId === hit.id}
+                          >
+                            {attachingHitId === hit.id ? 'Attaching…' : 'Attach'}
+                          </Button>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-slate-600">{hit.snippet}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Paste form */}

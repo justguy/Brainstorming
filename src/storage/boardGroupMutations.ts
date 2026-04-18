@@ -17,6 +17,7 @@ import { getBoardHistoryState } from './boardHistoryState';
 import type { BoardCommitResult, BoardGroupCommitResult } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { publishIdeaRows } from './ideaSync';
 
 export async function commitGroupIdeas(
   boardId: BoardId,
@@ -123,6 +124,7 @@ export async function commitGroupIdeas(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  await publishIdeaRows([afterIdeaA, afterIdeaB], boardId);
 
   const document = await loadBoardDocument(boardId);
   return { document, history: await getBoardHistoryState(boardId), changeSet, groupId: targetGroupId };
@@ -192,6 +194,7 @@ export async function commitUngroupIdea(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  await publishIdeaRows([afterIdea], boardId);
 
   const document = await loadBoardDocument(boardId);
   return { document, history: await getBoardHistoryState(boardId), changeSet };

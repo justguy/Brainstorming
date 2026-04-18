@@ -12,6 +12,7 @@ import type {
 import type { RunRoleResult } from './adhocRole';
 import { runAdhocRole } from './adhocRole';
 import { beatRegistry } from './beatRegistry';
+import { recordBeatRun } from '../storage/beatRuns';
 
 type BeatRunner = typeof runAdhocRole;
 
@@ -42,33 +43,39 @@ async function executeBeat<T extends BeatName>(
   const startedAt = Date.now();
   const task = entry.buildTask(context as never);
   if (!task) {
-    return {
+    const result = {
       ok: false,
       beat: context.beat,
       meta: buildBeatMeta(context, { usedFallback: false }, entry.role.id, startedAt),
       proposal: null,
       reason: 'not_applicable',
     } as BeatResult<T>;
+    await recordBeatRun(context.boardId, result);
+    return result;
   }
 
   const roleResult = await runner(entry.role, task);
   const meta = buildBeatMeta(context, roleResult, entry.role.id, startedAt);
   if (!roleResult.result) {
-    return {
+    const result = {
       ok: false,
       beat: context.beat,
       meta,
       proposal: null,
       reason: 'no_result',
     } as BeatResult<T>;
+    await recordBeatRun(context.boardId, result);
+    return result;
   }
 
-  return {
+  const result = {
     ok: true,
     beat: context.beat,
     meta,
     proposal: entry.mapProposal(context as never, roleResult.result),
   } as BeatResult<T>;
+  await recordBeatRun(context.boardId, result);
+  return result;
 }
 
 export function runBeat(context: ScoutBeatContext, runner?: BeatRunner): Promise<BeatResult<'scout'>>;
