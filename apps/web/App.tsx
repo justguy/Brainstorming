@@ -103,6 +103,7 @@ import {
 import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDedup';
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
+import { CaptureIdeaPopover } from './CaptureIdeaPopover';
 
 // ---------------------------------------------------------------------------
 // Hash router
@@ -201,7 +202,6 @@ export default function App(): React.ReactElement {
     createdAt: number;
     ideaId?: string;
   }>>([]);
-  const newIdeaRef = useRef<HTMLTextAreaElement>(null);
   const autoCooldownRef = useRef({
     lastConnectionsAt: 0,
     lastScoutAt: 0,
@@ -298,11 +298,30 @@ export default function App(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    if (captureOpen) {
+      setTextEntryActive(true);
+      return;
+    }
+    setTextEntryActive(isTextEntryTarget(document.activeElement));
+  }, [captureOpen]);
+
+  useEffect(() => {
+    if (captureOpen) return;
     const syncTextEntryState = (target: EventTarget | null) => {
       setTextEntryActive(isTextEntryTarget(target ?? document.activeElement));
     };
-    const handlePointerDown = () => touchInteraction();
+    const handlePointerDown = (event: PointerEvent) => {
+      if (isTextEntryTarget(event.target)) {
+        syncTextEntryState(event.target);
+        return;
+      }
+      touchInteraction();
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isTextEntryTarget(event.target)) {
+        syncTextEntryState(event.target);
+        return;
+      }
       touchInteraction();
       syncTextEntryState(event.target);
     };
@@ -313,8 +332,10 @@ export default function App(): React.ReactElement {
       }
     };
     const handleFocusIn = (event: FocusEvent) => {
-      touchInteraction();
       syncTextEntryState(event.target);
+      if (!isTextEntryTarget(event.target)) {
+        touchInteraction();
+      }
     };
     const handleFocusOut = () => {
       window.setTimeout(() => syncTextEntryState(document.activeElement), 0);
@@ -333,7 +354,7 @@ export default function App(): React.ReactElement {
       window.removeEventListener('focusin', handleFocusIn, true);
       window.removeEventListener('focusout', handleFocusOut, true);
     };
-  }, []);
+  }, [captureOpen]);
 
   function markActivity(kind: 'edit' | 'group' | 'doc'): void {
     setActivity(prev => recordActivity(prev, kind));
@@ -1504,6 +1525,46 @@ export default function App(): React.ReactElement {
         </div>
       )}
 
+      <div className="shrink-0 px-5 py-3">
+        <div className="ml-auto flex w-full max-w-[360px] flex-col items-end gap-3">
+          <ConnectionsPanel
+            connections={connections}
+            busy={findingConnections}
+            lastRunAt={lastConnectionsRunAt}
+            onRun={runConnectionFinder}
+            onHighlight={handleHighlight}
+          />
+
+          <button
+            type="button"
+            onClick={() => { void runScout(); }}
+            disabled={scouting}
+            className="flex w-full items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm shadow hover:shadow-md focus:outline-none focus:ring-4 focus:ring-teal-200 disabled:opacity-60"
+            aria-label={scouting ? 'Scout running' : 'Ask the scout to suggest ideas'}
+            title={
+              lastScoutRunAt
+                ? `Last scout run ${formatSince(lastScoutRunAt)}. Click to refresh.`
+                : 'Ask the scout to propose ideas adjacent to the board.'
+            }
+          >
+            <span>🔭</span>
+            <span className="font-semibold text-teal-700">
+              {scouting ? 'Scouting…' : suggestions.length > 0 ? `Scout (${suggestions.length})` : 'Scout'}
+            </span>
+          </button>
+
+          {showSoftModeHint && (
+            <SoftModeHint
+              assessment={softModeAssessment}
+              actionLabel={softModeActionLabel()}
+              busy={softModeBusy}
+              onAction={softModeActionLabel() ? () => { void handleSoftModeAction(); } : undefined}
+              onDismiss={() => setActivity(prev => dismissSoftModeHint(prev))}
+            />
+          )}
+        </div>
+      </div>
+
       <div className="relative flex flex-1 overflow-hidden">
         {/* Canvas fills the full area */}
         <main className="flex-1 overflow-hidden" aria-label="Canvas">
@@ -1562,107 +1623,17 @@ export default function App(): React.ReactElement {
           onPreview={id => setSelectedId(id)}
         />
 
-        {/* Connections panel (top-right) */}
-        <ConnectionsPanel
-          connections={connections}
-          busy={findingConnections}
-          lastRunAt={lastConnectionsRunAt}
-          onRun={runConnectionFinder}
-          onHighlight={handleHighlight}
+        <CaptureIdeaPopover
+          open={captureOpen}
+          creating={creating}
+          text={newIdeaText}
+          tags={newIdeaTags}
+          onToggle={() => setCaptureOpen(value => !value)}
+          onTextChange={setNewIdeaText}
+          onTagsChange={setNewIdeaTags}
+          onClose={() => setCaptureOpen(false)}
+          onSubmit={handleCapture}
         />
-
-        {/* Scout trigger (below Connections) */}
-        <button
-          type="button"
-          onClick={() => { void runScout(); }}
-          disabled={scouting}
-          className="absolute top-16 right-5 z-20 flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-full shadow hover:shadow-md focus:outline-none focus:ring-4 focus:ring-teal-200 text-sm disabled:opacity-60"
-          aria-label={scouting ? 'Scout running' : 'Ask the scout to suggest ideas'}
-          title={
-            lastScoutRunAt
-              ? `Last scout run ${formatSince(lastScoutRunAt)}. Click to refresh.`
-              : 'Ask the scout to propose ideas adjacent to the board.'
-          }
-        >
-          <span>🔭</span>
-          <span className="font-semibold text-teal-700">
-            {scouting ? 'Scouting…' : suggestions.length > 0 ? `Scout (${suggestions.length})` : 'Scout'}
-          </span>
-        </button>
-
-        {showSoftModeHint && (
-          <SoftModeHint
-            assessment={softModeAssessment}
-            actionLabel={softModeActionLabel()}
-            busy={softModeBusy}
-            onAction={softModeActionLabel() ? () => { void handleSoftModeAction(); } : undefined}
-            onDismiss={() => setActivity(prev => dismissSoftModeHint(prev))}
-          />
-        )}
-
-        {/* Floating capture button */}
-        <button
-          type="button"
-          aria-label="Capture new idea"
-          onClick={() => {
-            setCaptureOpen(v => !v);
-            setTimeout(() => newIdeaRef.current?.focus(), 60);
-          }}
-          className="absolute bottom-5 right-5 z-20 h-12 w-12 rounded-full bg-violet-600 text-white text-2xl leading-none shadow-lg hover:bg-violet-700 focus:outline-none focus:ring-4 focus:ring-violet-300"
-        >
-          +
-        </button>
-
-        {/* Floating capture popover */}
-        {captureOpen && (
-          <div className="absolute bottom-20 right-5 z-30 w-[320px] rounded-lg border border-gray-200 bg-white shadow-xl p-4 space-y-2">
-            <div className="flex items-start justify-between">
-              <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Capture idea
-              </h2>
-              <button
-                type="button"
-                onClick={() => setCaptureOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-sm leading-none"
-                aria-label="Close capture"
-              >
-                ✕
-              </button>
-            </div>
-            <textarea
-              ref={newIdeaRef}
-              value={newIdeaText}
-              onChange={e => setNewIdeaText(e.target.value)}
-              placeholder="Describe your idea…"
-              rows={3}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
-              aria-label="New idea description"
-              onKeyDown={e => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  handleCapture();
-                }
-              }}
-            />
-            <input
-              type="text"
-              value={newIdeaTags}
-              onChange={e => setNewIdeaTags(e.target.value)}
-              placeholder="Tags (comma-separated, optional)"
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
-              aria-label="Tags"
-            />
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleCapture}
-              disabled={creating || !newIdeaText.trim()}
-              className="w-full"
-            >
-              {creating ? 'Capturing…' : 'Drop on canvas'}
-            </Button>
-          </div>
-        )}
 
         {/* Supporting docs modal */}
         {docsIdeaId && (() => {

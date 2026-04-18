@@ -7,7 +7,7 @@
         "id": "facilitator",
         "label": "Facilitator Mode",
         "description": "Phases 1-4 from PHASED_IMPL: visible connections, critique, timing, signal control.",
-        "collapsed": true
+        "collapsed": false
       },
       {
         "id": "observability",
@@ -54,8 +54,8 @@
       }
     ],
     "scratchpad": "Facilitator Mode and the UI/UX Polish Driver are shipped. Collaborative sync is now the current executable workstream from ROADMAP.md §4; stretch backlog remains queued behind that storage/sync track.",
-    "rev": 9,
-    "updatedAt": "2026-04-17T23:31:56.572Z"
+    "rev": 10,
+    "updatedAt": "2026-04-17T23:40:29.732Z"
   },
   "tasks": [
     {

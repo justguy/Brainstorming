@@ -25,7 +25,7 @@ export function SoftModeHint({
 }: SoftModeHintProps): React.ReactElement {
   return (
     <section
-      className={`absolute right-5 bottom-24 z-20 w-[320px] rounded-2xl border shadow-lg backdrop-blur transition-all duration-300 ${MODE_TONE[assessment.inferredMode]}`}
+      className={`pointer-events-auto w-full max-w-[360px] rounded-2xl border shadow-lg backdrop-blur transition-all duration-300 ${MODE_TONE[assessment.inferredMode]}`}
       aria-label="Soft mode suggestion"
     >
       <div className="flex items-start justify-between gap-3 px-4 py-3">

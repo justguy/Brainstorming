@@ -50,10 +50,10 @@ export default function ConnectionsPanel({
   const count = connections.length;
 
   return (
-    <div className="absolute top-5 right-5 z-20">
+    <div className="pointer-events-auto relative flex w-full max-w-[360px] flex-col items-end">
       {open && (
         <div
-          className="mt-2 w-[360px] max-h-[70vh] overflow-hidden bg-white rounded-lg border border-gray-200 shadow-xl flex flex-col"
+          className="mb-2 w-full max-h-[70vh] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl flex flex-col"
           role="region"
           aria-label="Connections"
         >
@@ -140,7 +140,7 @@ export default function ConnectionsPanel({
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-full shadow hover:shadow-md focus:outline-none focus:ring-4 focus:ring-violet-300 text-sm"
+        className="flex w-full items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm shadow hover:shadow-md focus:outline-none focus:ring-4 focus:ring-violet-300"
         aria-label={open ? 'Close connections panel' : `Open connections panel (${count} items)`}
       >
         <span>🔗</span>
