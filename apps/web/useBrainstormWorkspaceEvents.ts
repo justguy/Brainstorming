@@ -36,7 +36,11 @@ export function useBrainstormWorkspaceEvents({
       window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail }));
     }
 
-    const handleIdeasChanged = () => {
+    const handleIdeasChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ boardId?: string }>;
+      if (customEvent.detail?.boardId && customEvent.detail.boardId !== boardId) {
+        return;
+      }
       void loadIdeas();
     };
 

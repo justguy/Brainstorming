@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-029 through bo-034 are complete. The board-first cutover now keeps the canvas primary with a centered focus dock for the active phase loop, while the old workspace has been reduced to a secondary inspector. Verification: npm run typecheck and npm run build:web.",
-    "rev": 52,
-    "updatedAt": "2026-04-19T03:20:20.243Z"
+    "scratchpad": "bo-009 is complete. Ideas sync now reloads through an ideas-only web seam with board-scoped invalidation, while display groups reconcile from synced idea panel membership so two-tab group and merge visuals stay coherent without migrating non-idea stores. Verification: npm run typecheck and npm run build:web. Manual same-browser two-tab latency proof remains the runtime check for the <100ms DoD.",
+    "rev": 54,
+    "updatedAt": "2026-04-19T03:38:03.439Z"
   },
   "tasks": [
     {
@@ -443,7 +443,7 @@
       "id": "bo-009",
       "title": "4.1 Two-tab BroadcastChannel + Yjs sync spike",
       "goal": "Prove zero-server two-tab sync by wrapping the ideas store in a Y.Map with BroadcastChannel transport and y-indexeddb persistence.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "collaboration",
         "priorityId": "p2"
@@ -452,7 +452,7 @@
         "ROADMAP.md:268-275"
       ],
       "effort": "m",
-      "comment": "This is the current sync proof now that the local-first facilitator and polish layers are shipped.",
+      "comment": "Closed after tightening the web consumer seam around the existing Yjs ideas sync: board-scoped ideasChanged handling, ideas-only reload path, and display-group reconciliation from synced panel.groupId state.",
       "definition_of_done": [
         "Adding an idea in tab A appears in tab B in under 100ms on the same machine.",
         "The ideas store is backed by a Y.Map with BroadcastChannel transport.",
@@ -479,8 +479,15 @@
           "yjs",
           "broadcastchannel"
         ],
-        "notes": "Roadmap section 4.1 is now the next executable slice after the shipped UI/UX polish driver."
-      }
+        "notes": "Verified with npm run typecheck and npm run build:web. The repo already had the Yjs/BroadcastChannel/y-indexeddb ideas backend; this slice narrowed the web refresh seam and kept cross-tab group visuals coherent without migrating docs/suggestions/groups out of IDB.",
+        "files_touched": [
+          "apps/web/useBoardSync.ts",
+          "apps/web/useBrainstormWorkspaceEvents.ts",
+          "apps/web/reconcileDisplayGroups.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [

@@ -28,6 +28,7 @@ import {
   mapStandaloneBoardSnapshot,
   type StandaloneBoardSnapshot,
 } from './boardRepository';
+import { reconcileDisplayGroups } from './reconcileDisplayGroups';
 
 type SupportingDocMutationController = {
   createDoc(input: { ideaId: string; title: string; rawText: string; actor: ChangeActor }): Promise<BoardDocCommitResult>;
@@ -50,7 +51,6 @@ type SupportingDocMutations = {
   }): Promise<SupportingDoc>;
   deleteDoc(input: { docId: string; actor: ChangeActor }): Promise<void>;
 };
-
 export function useBoardSync() {
   const [boardId, setBoardId] = useState(DEFAULT_BOARD_ID);
   const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
@@ -81,7 +81,7 @@ export function useBoardSync() {
     setBoardId(snapshot.board.id);
     setBoardTitle(snapshot.board.title);
     setIdeas(snapshot.ideas);
-    setGroups(snapshot.groups);
+    setGroups(reconcileDisplayGroups(snapshot.ideas, snapshot.groups));
     setDocs(snapshot.docs);
     setConnections(snapshot.connections);
     setCritiques(snapshot.critiques);
@@ -197,6 +197,26 @@ export function useBoardSync() {
       applyBoardSnapshot(snapshot);
       setHistoryState(nextHistory);
       setChangeSets(nextChangeSets);
+      setSelectedId(prev => (prev && snapshot.ideas.some(idea => idea.id === prev) ? prev : null));
+    } catch {
+      // non-fatal
+    }
+  }
+
+  async function loadIdeas(): Promise<void> {
+    try {
+      const nextIdeas = await boardRepository.listIdeas();
+      setIdeas(nextIdeas);
+      setGroups(prev => reconcileDisplayGroups(nextIdeas, prev));
+      setSelectedId(prev => (prev && nextIdeas.some(idea => idea.id === prev) ? prev : null));
+    } catch {
+      // non-fatal
+    }
+  }
+
+  async function loadGroups(): Promise<void> {
+    try {
+      setGroups(reconcileDisplayGroups(ideas, await boardRepository.listGroups()));
     } catch {
       // non-fatal
     }
@@ -268,8 +288,8 @@ export function useBoardSync() {
     scratchBeatReviewItem,
     handleIdeaUpdate,
     loadBoard,
-    loadIdeas: loadBoard,
-    loadGroups: loadBoard,
+    loadIdeas,
+    loadGroups,
     loadDocCounts,
     loadConnections: loadBoard,
     loadSuggestions: loadBoard,
