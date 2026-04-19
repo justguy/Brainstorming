@@ -25,6 +25,7 @@ import { BoardHistoryPanel } from './BoardHistoryPanel';
 import { createBoardHistoryEntries } from './historyTimeline';
 import { runManualBoardBeat, selectBoardBeatReviewSurface } from './boardBeatReviewSurface';
 import { useBoardTheme } from './useBoardTheme';
+import { useFacilitatorSync } from './useFacilitatorSync';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 
@@ -51,6 +52,7 @@ export default function App(): React.ReactElement {
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
+  const persistedFacilitatorPaused = Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]);
 
   const visibleIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
   const discardedIdeas = ideas.filter(i => i.status === 'discarded');
@@ -111,6 +113,7 @@ export default function App(): React.ReactElement {
   useBrainstormWorkspaceEvents({
     boardId, ideas, boardController, applyCommittedBoard, loadIdeas, setSelectedId, handleMove, handleGroup, handleUngroup, handleMerge,
   });
+  const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
 
   const { boardBeatReviewSession, boardBeatReviewItems } = selectBoardBeatReviewSurface({ beatReviewSessions, beatReviewItems, activeBeatReviewSession });
 
@@ -124,7 +127,7 @@ export default function App(): React.ReactElement {
     dragActive,
     textEntryActive,
     activeBeatRun,
-    persistedFacilitatorPaused: Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]),
+    persistedFacilitatorPaused,
     persistFacilitatorPaused: async paused => {
       await updateBoardTweaks(
         { [DEV_COMPANION_PAUSED_TWEAK_KEY]: paused },
@@ -132,6 +135,12 @@ export default function App(): React.ReactElement {
         paused ? 'Paused dev companion automation' : 'Resumed dev companion automation',
       );
     },
+    sharedFacilitatorPaused: facilitatorSync.sharedPause,
+    isAiHost: facilitatorSync.isAiHost,
+    syncBoardChangeAt: facilitatorSync.lastBoardActivityAt,
+    sharedAiAction: facilitatorSync.lastAiAction,
+    setSharedFacilitatorPause: facilitatorSync.setSharedPause,
+    recordSharedAiAction: facilitatorSync.recordAiAction,
     scouting,
     findingConnections,
     critiqueBusyByIdea,

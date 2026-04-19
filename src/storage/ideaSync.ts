@@ -1,20 +1,33 @@
 import { IndexeddbPersistence } from 'y-indexeddb';
 import * as Y from 'yjs';
+import type { ChangeActor } from '../board/types';
 import { DEFAULT_BOARD_ID } from '../board/types';
 import type { BoardId, Idea } from '../types';
 import { getDb } from './db';
 
-const REMOTE_SYNC_ORIGIN = 'brainstorm-yjs-remote';
+export const HUMAN_SYNC_ORIGIN = 'brainstorm-yjs-local';
+export const AI_SYNC_ORIGIN = 'brainstorm-yjs-ai';
+export const BOOTSTRAP_SYNC_ORIGIN = 'brainstorm-yjs-bootstrap';
+export const FACILITATOR_SYNC_ORIGIN = 'brainstorm-yjs-facilitator';
+export const REMOTE_SYNC_ORIGIN = 'brainstorm-yjs-remote';
+
+export interface IdeaSyncUpdateEvent {
+  boardId: BoardId;
+  origin: string;
+  updatedAt: number;
+}
 
 interface IdeaSyncController {
   boardId: BoardId;
   doc: Y.Doc;
   ideasMap: Y.Map<Idea>;
+  facilitatorMap: Y.Map<unknown>;
   channel: BroadcastChannel;
   persistence: IndexeddbPersistence;
   readyPromise: Promise<void>;
   initialized: boolean;
   syncQueue: Promise<void>;
+  updateListeners: Set<(event: IdeaSyncUpdateEvent) => void>;
 }
 
 const controllers = new Map<BoardId, IdeaSyncController>();
@@ -30,6 +43,7 @@ export async function publishIdeaRow(idea: Idea): Promise<void> {
 export async function publishIdeaRows(
   ideas: Idea[],
   boardId: BoardId = DEFAULT_BOARD_ID,
+  options: { actor?: ChangeActor; syncOrigin?: string } = {},
 ): Promise<void> {
   if (ideas.length === 0) return;
   const controller = getIdeaSyncController(boardId);
@@ -39,7 +53,7 @@ export async function publishIdeaRows(
     for (const idea of ideas) {
       controller.ideasMap.set(idea.id, idea);
     }
-  }, 'brainstorm-yjs-local');
+  }, options.syncOrigin ?? syncOriginForActor(options.actor));
 }
 
 export async function deleteIdeaRow(boardId: BoardId = DEFAULT_BOARD_ID, ideaId: string): Promise<void> {
@@ -58,28 +72,33 @@ function getIdeaSyncController(boardId: BoardId): IdeaSyncController | null {
 
   const doc = new Y.Doc();
   const ideasMap = doc.getMap<Idea>('ideas');
+  const facilitatorMap = doc.getMap<unknown>('facilitator');
   const channel = new BroadcastChannel(`brainstorm-sync:${boardId}`);
   const persistence = new IndexeddbPersistence(`brainstorming-orchestrator:yjs:${boardId}`, doc);
   const controller: IdeaSyncController = {
     boardId,
     doc,
     ideasMap,
+    facilitatorMap,
     channel,
     persistence,
     readyPromise: Promise.resolve(),
     initialized: false,
     syncQueue: Promise.resolve(),
+    updateListeners: new Set(),
   };
 
   channel.onmessage = event => {
-    const update = normalizeUpdate(event.data);
-    if (!update) return;
-    Y.applyUpdate(doc, update, REMOTE_SYNC_ORIGIN);
+    const message = normalizeUpdateMessage(event.data);
+    if (!message) return;
+    Y.applyUpdate(doc, message.update, message.origin);
   };
 
   doc.on('update', (update, origin) => {
-    if (origin === REMOTE_SYNC_ORIGIN) return;
-    channel.postMessage(update);
+    const normalizedOrigin = typeof origin === 'string' ? origin : HUMAN_SYNC_ORIGIN;
+    if (normalizedOrigin === REMOTE_SYNC_ORIGIN) return;
+    channel.postMessage({ update, origin: normalizedOrigin });
+    notifyUpdateListeners(controller, normalizedOrigin);
   });
 
   ideasMap.observe(() => {
@@ -142,7 +161,7 @@ async function reconcileInitialState(controller: IdeaSyncController): Promise<vo
           controller.ideasMap.set(idea.id, idea);
         }
       }
-    }, 'brainstorm-yjs-bootstrap');
+    }, BOOTSTRAP_SYNC_ORIGIN);
   }
 
   if (wroteLocal) {
@@ -202,6 +221,67 @@ function normalizeUpdate(value: unknown): Uint8Array | null {
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
   if (Array.isArray(value)) return Uint8Array.from(value);
   return null;
+}
+
+function normalizeUpdateMessage(
+  value: unknown,
+): { update: Uint8Array; origin: string } | null {
+  const direct = normalizeUpdate(value);
+  if (direct) return { update: direct, origin: REMOTE_SYNC_ORIGIN };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const update = normalizeUpdate((value as { update?: unknown }).update);
+  if (!update) return null;
+  const rawOrigin = (value as { origin?: unknown }).origin;
+  return {
+    update,
+    origin: typeof rawOrigin === 'string' ? rawOrigin : REMOTE_SYNC_ORIGIN,
+  };
+}
+
+function notifyUpdateListeners(controller: IdeaSyncController, origin: string): void {
+  if (controller.updateListeners.size === 0) return;
+  const event: IdeaSyncUpdateEvent = {
+    boardId: controller.boardId,
+    origin,
+    updatedAt: Date.now(),
+  };
+  controller.updateListeners.forEach(listener => listener(event));
+}
+
+function syncOriginForActor(actor?: ChangeActor): string {
+  return actor?.type === 'ai' ? AI_SYNC_ORIGIN : HUMAN_SYNC_ORIGIN;
+}
+
+export function observeIdeaSyncUpdates(
+  boardId: BoardId = DEFAULT_BOARD_ID,
+  listener: (event: IdeaSyncUpdateEvent) => void,
+): () => void {
+  const controller = getIdeaSyncController(boardId);
+  if (!controller) return () => {};
+  controller.updateListeners.add(listener);
+  return () => {
+    controller.updateListeners.delete(listener);
+  };
+}
+
+export function getIdeaSyncDoc(boardId: BoardId = DEFAULT_BOARD_ID): Y.Doc | null {
+  return getIdeaSyncController(boardId)?.doc ?? null;
+}
+
+export function getIdeaSyncFacilitatorMap(boardId: BoardId = DEFAULT_BOARD_ID): Y.Map<unknown> | null {
+  return getIdeaSyncController(boardId)?.facilitatorMap ?? null;
+}
+
+export function transactIdeaSync(
+  boardId: BoardId,
+  apply: (doc: Y.Doc, facilitatorMap: Y.Map<unknown>) => void,
+  origin = HUMAN_SYNC_ORIGIN,
+): void {
+  const controller = getIdeaSyncController(boardId);
+  if (!controller) return;
+  controller.doc.transact(() => {
+    apply(controller.doc, controller.facilitatorMap);
+  }, origin);
 }
 
 function supportsIdeaSync(): boolean {

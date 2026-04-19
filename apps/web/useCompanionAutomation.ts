@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { BeatName, BeatRunState } from '../../src/beats/types';
+import type { FacilitatorAiAction } from '../../src/storage/facilitatorSync';
 import type { Connection, Idea, IdeaCritique } from '../../src/types';
+import {
+  actionLabelFor,
+  applySharedAiAction,
+  latestMeaningfulActivity,
+  recordAiAction,
+  type AutoCooldownState,
+  type RecentAiAction,
+} from './companionAutomationShared';
 import {
   dismissSoftModeHint,
   inferSoftMode,
   recordActivity,
   shouldShowSoftModeHint,
-  type ActivityKind,
   type ActivityState,
 } from './softMode';
 
@@ -17,13 +25,6 @@ const AUTO_CRITIQUE_COOLDOWN_MS = 45_000;
 export const AUTO_IDLE_MS = 1_500;
 
 type RevealOrigin = 'manual' | 'ai';
-type MeaningfulActivity = { kind: ActivityKind | null; at: number };
-
-interface RecentAiAction {
-  kind: Extract<BeatName, 'connect' | 'scout' | 'critique'>;
-  createdAt: number;
-  ideaId?: string;
-}
 
 interface UseCompanionAutomationArgs {
   activity: ActivityState;
@@ -33,6 +34,12 @@ interface UseCompanionAutomationArgs {
   activeBeatRun: BeatRunState | null;
   persistedFacilitatorPaused: boolean;
   persistFacilitatorPaused: (paused: boolean) => Promise<void>;
+  sharedFacilitatorPaused: boolean;
+  isAiHost: boolean;
+  syncBoardChangeAt: number;
+  sharedAiAction: FacilitatorAiAction | null;
+  setSharedFacilitatorPause: (paused: boolean) => void;
+  recordSharedAiAction: (action: Omit<FacilitatorAiAction, 'at'> & { at?: number }) => void;
   scouting: boolean;
   findingConnections: boolean;
   critiqueBusyByIdea: Record<string, boolean>;
@@ -66,6 +73,12 @@ export function useCompanionAutomation({
   activeBeatRun,
   persistedFacilitatorPaused,
   persistFacilitatorPaused,
+  sharedFacilitatorPaused,
+  isAiHost,
+  syncBoardChangeAt,
+  sharedAiAction,
+  setSharedFacilitatorPause,
+  recordSharedAiAction,
   scouting,
   findingConnections,
   critiqueBusyByIdea,
@@ -82,7 +95,7 @@ export function useCompanionAutomation({
   const [clockMs, setClockMs] = useState(() => Date.now());
   const [facilitatorPaused, setFacilitatorPaused] = useState(persistedFacilitatorPaused);
   const [aiActions, setAiActions] = useState<RecentAiAction[]>([]);
-  const autoCooldownRef = useRef({
+  const autoCooldownRef = useRef<AutoCooldownState>({
     lastConnectionsAt: 0,
     lastScoutAt: 0,
     lastAiActionAt: 0,
@@ -101,8 +114,10 @@ export function useCompanionAutomation({
 
   const idleMs = Math.max(0, clockMs - activity.lastInteractionAt);
   const lastMeaningfulActivity = latestMeaningfulActivity(activity);
-  const idleSinceBoardChangeMs = lastMeaningfulActivity.at > 0
-    ? Math.max(0, clockMs - lastMeaningfulActivity.at)
+  const effectiveFacilitatorPaused = facilitatorPaused || sharedFacilitatorPaused;
+  const latestBoardChangeAt = Math.max(lastMeaningfulActivity.at, syncBoardChangeAt);
+  const idleSinceBoardChangeMs = latestBoardChangeAt > 0
+    ? Math.max(0, clockMs - latestBoardChangeAt)
     : 0;
   const softModeAssessment = inferSoftMode({
     ideaCount: visibleIdeas.length,
@@ -115,7 +130,7 @@ export function useCompanionAutomation({
   });
   const interactionSuppressed = dragActive || textEntryActive;
   const softModeBusy = scouting || findingConnections || Object.values(critiqueBusyByIdea).some(Boolean);
-  const pendingBoardChange = lastMeaningfulActivity.at > autoCooldownRef.current.lastObservedBoardChangeAt;
+  const pendingBoardChange = latestBoardChangeAt > autoCooldownRef.current.lastObservedBoardChangeAt;
   const autoRunReady = pendingBoardChange && idleSinceBoardChangeMs >= AUTO_IDLE_MS;
   const showSoftModeHint = shouldShowSoftModeHint({
     assessment: softModeAssessment,
@@ -126,10 +141,10 @@ export function useCompanionAutomation({
 
   async function handleSoftModeAction(): Promise<void> {
     setActivity(prev => dismissSoftModeHint(recordActivity(prev, 'edit')));
-    if (lastMeaningfulActivity.at > 0) {
+    if (latestBoardChangeAt > 0) {
       autoCooldownRef.current.lastObservedBoardChangeAt = Math.max(
         autoCooldownRef.current.lastObservedBoardChangeAt,
-        lastMeaningfulActivity.at,
+        latestBoardChangeAt,
       );
     }
 
@@ -152,16 +167,21 @@ export function useCompanionAutomation({
   const companionActionLabel = actionLabelFor(softModeAssessment.inferredMode, !!(selectedBoardIdea || visibleIdeas[0]));
 
   useEffect(() => {
-    if (!activeBeatRun || lastMeaningfulActivity.at === 0) return;
+    if (!activeBeatRun || latestBoardChangeAt === 0) return;
     autoCooldownRef.current.lastObservedBoardChangeAt = Math.max(
       autoCooldownRef.current.lastObservedBoardChangeAt,
-      lastMeaningfulActivity.at,
+      latestBoardChangeAt,
     );
-  }, [activeBeatRun, lastMeaningfulActivity.at]);
+  }, [activeBeatRun, latestBoardChangeAt]);
+
+  useEffect(() => {
+    applySharedAiAction(autoCooldownRef, sharedAiAction);
+  }, [sharedAiAction]);
 
   useEffect(() => {
     if (
-      facilitatorPaused ||
+      effectiveFacilitatorPaused ||
+      !isAiHost ||
       softModeBusy ||
       interactionSuppressed ||
       !pendingBoardChange ||
@@ -174,13 +194,14 @@ export function useCompanionAutomation({
       const now = Date.now();
       const auto = autoCooldownRef.current;
       if (now - auto.lastAiActionAt < AUTO_SEQUENCE_GAP_MS) return;
-      auto.lastObservedBoardChangeAt = lastMeaningfulActivity.at;
+      auto.lastObservedBoardChangeAt = latestBoardChangeAt;
 
       if (visibleIdeas.length >= 3 && connectionsCount === 0 && now - auto.lastConnectionsAt >= 30_000) {
         auto.lastConnectionsAt = now;
         const found = await runConnectionFinder({ origin: 'ai', limitGenerated: 1 });
         if (!cancelled && found.length > 0) {
-          recordAiAction(autoCooldownRef, setAiActions, 'connect');
+          recordAiAction(autoCooldownRef, setAiActions, 'connect', undefined, now);
+          recordSharedAiAction({ kind: 'connect', at: now });
         }
         return;
       }
@@ -194,9 +215,9 @@ export function useCompanionAutomation({
         if (critiqueAllowed) {
           const critique = await runCritiqueIdea(critiqueTarget.id, { origin: 'ai' }).catch(() => null);
           if (critique) {
-            auto.critiqueByIdea[critiqueTarget.id] = now;
             if (!cancelled) {
-              recordAiAction(autoCooldownRef, setAiActions, 'critique', critiqueTarget.id);
+              recordAiAction(autoCooldownRef, setAiActions, 'critique', critiqueTarget.id, now);
+              recordSharedAiAction({ kind: 'critique', ideaId: critiqueTarget.id, at: now });
             }
             return;
           }
@@ -208,7 +229,8 @@ export function useCompanionAutomation({
         auto.lastScoutAt = now;
         const created = await runScout({ origin: 'ai', limitNew: 1 });
         if (!cancelled && created.length > 0) {
-          recordAiAction(autoCooldownRef, setAiActions, 'scout', doclessIdea.id);
+          recordAiAction(autoCooldownRef, setAiActions, 'scout', doclessIdea.id, now);
+          recordSharedAiAction({ kind: 'scout', ideaId: doclessIdea.id, at: now });
         }
       }
     }
@@ -219,12 +241,13 @@ export function useCompanionAutomation({
       cancelled = true;
     };
   }, [
-    facilitatorPaused,
+    effectiveFacilitatorPaused,
+    isAiHost,
     softModeBusy,
     interactionSuppressed,
     pendingBoardChange,
     idleSinceBoardChangeMs,
-    lastMeaningfulActivity.at,
+    latestBoardChangeAt,
     visibleIdeas,
     connectionsCount,
     suggestionsCount,
@@ -234,10 +257,11 @@ export function useCompanionAutomation({
     runConnectionFinder,
     runCritiqueIdea,
     runScout,
+    recordSharedAiAction,
   ]);
 
   return {
-    facilitatorPaused,
+    facilitatorPaused: effectiveFacilitatorPaused,
     idleMs,
     softModeAssessment,
     interactionSuppressed,
@@ -250,62 +274,17 @@ export function useCompanionAutomation({
     companionActionLabel,
     handleSoftModeAction,
     toggleFacilitatorPause: async () => {
-      const next = !facilitatorPaused;
+      const previousLocalPause = facilitatorPaused;
+      const next = !effectiveFacilitatorPaused;
       setFacilitatorPaused(next);
       try {
         await persistFacilitatorPaused(next);
+        setSharedFacilitatorPause(next);
       } catch {
-        setFacilitatorPaused(!next);
+        setFacilitatorPaused(previousLocalPause);
       }
     },
     lastAiAction: aiActions[0],
     dismissHint: () => setActivity(prev => dismissSoftModeHint(prev)),
   };
-}
-
-function actionLabelFor(mode: ReturnType<typeof inferSoftMode>['inferredMode'], hasCritiqueTarget: boolean): string | undefined {
-  switch (mode) {
-    case 'explore':
-      return 'Run scout';
-    case 'structure':
-      return 'Find links';
-    case 'stress':
-      return hasCritiqueTarget ? 'Stress-test idea' : undefined;
-    case 'converge':
-    default:
-      return undefined;
-  }
-}
-
-function recordAiAction(
-  autoCooldownRef: MutableRefObject<{
-    lastConnectionsAt: number;
-    lastScoutAt: number;
-    lastAiActionAt: number;
-    lastObservedBoardChangeAt: number;
-    critiqueByIdea: Record<string, number>;
-  }>,
-  setAiActions: Dispatch<SetStateAction<RecentAiAction[]>>,
-  kind: RecentAiAction['kind'],
-  ideaId?: string,
-): void {
-  const action: RecentAiAction = {
-    kind,
-    createdAt: Date.now(),
-    ideaId,
-  };
-  autoCooldownRef.current.lastAiActionAt = action.createdAt;
-  setAiActions(prev => [action, ...prev].slice(0, 5));
-}
-
-function latestMeaningfulActivity(activity: ActivityState): MeaningfulActivity {
-  const latestEntries: MeaningfulActivity[] = [
-    { kind: 'edit', at: activity.recentEdits.at(-1) ?? 0 },
-    { kind: 'group', at: activity.recentGroups.at(-1) ?? 0 },
-    { kind: 'doc', at: activity.recentDocs.at(-1) ?? 0 },
-  ];
-  return latestEntries.reduce<MeaningfulActivity>(
-    (latest, entry) => (entry.at > latest.at ? entry : latest),
-    { kind: null, at: 0 },
-  );
 }
