@@ -47,7 +47,7 @@ export function recordAiAction(
 
 export function applySharedAiAction(
   autoCooldownRef: MutableRefObject<AutoCooldownState>,
-  action: FacilitatorAiAction | null,
+  action: Pick<FacilitatorAiAction, 'kind' | 'at' | 'ideaId'> | null,
 ): void {
   if (!action) return;
   autoCooldownRef.current.lastAiActionAt = Math.max(autoCooldownRef.current.lastAiActionAt, action.at);

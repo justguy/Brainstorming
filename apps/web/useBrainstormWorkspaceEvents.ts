@@ -10,6 +10,7 @@ interface UseBrainstormWorkspaceEventsArgs {
   ideas: Idea[];
   boardController: ReturnType<typeof createBoardController>;
   applyCommittedBoard: (document: BoardDocument, history: BoardHistoryState) => void;
+  loadBoard: () => Promise<void>;
   loadIdeas: () => Promise<void>;
   setSelectedId: Dispatch<SetStateAction<string | null>>;
   handleMove: (ideaId: string, x: number, y: number, source?: 'canvas' | 'webmcp') => Promise<void>;
@@ -23,6 +24,7 @@ export function useBrainstormWorkspaceEvents({
   ideas,
   boardController,
   applyCommittedBoard,
+  loadBoard,
   loadIdeas,
   setSelectedId,
   handleMove,
@@ -41,7 +43,7 @@ export function useBrainstormWorkspaceEvents({
       if (customEvent.detail?.boardId && customEvent.detail.boardId !== boardId) {
         return;
       }
-      void loadIdeas();
+      void loadBoard();
     };
 
     const handleMoveEvent = async (event: Event) => {
@@ -135,5 +137,5 @@ export function useBrainstormWorkspaceEvents({
     return () => {
       listeners.forEach(([name, listener]) => window.removeEventListener(name, listener));
     };
-  }, [boardId, ideas]);
+  }, [boardId, ideas, loadBoard]);
 }

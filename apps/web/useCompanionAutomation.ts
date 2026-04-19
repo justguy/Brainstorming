@@ -39,7 +39,7 @@ interface UseCompanionAutomationArgs {
   syncBoardChangeAt: number;
   sharedAiAction: FacilitatorAiAction | null;
   setSharedFacilitatorPause: (paused: boolean) => void;
-  recordSharedAiAction: (action: Omit<FacilitatorAiAction, 'at'> & { at?: number }) => void;
+  recordSharedAiAction: (action: Omit<FacilitatorAiAction, 'at' | 'id'> & { at?: number; id?: string }) => void;
   scouting: boolean;
   findingConnections: boolean;
   critiqueBusyByIdea: Record<string, boolean>;

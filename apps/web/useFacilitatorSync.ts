@@ -40,7 +40,7 @@ export function useFacilitatorSync(boardId: BoardId, localPaused: boolean) {
   return {
     ...snapshot,
     setSharedPause: (paused: boolean) => setSharedFacilitatorPause(boardId, paused),
-    recordAiAction: (action: Omit<FacilitatorAiAction, 'at'> & { at?: number }) => {
+    recordAiAction: (action: Omit<FacilitatorAiAction, 'at' | 'id'> & { at?: number; id?: string }) => {
       recordFacilitatorAiAction(boardId, action);
     },
   };

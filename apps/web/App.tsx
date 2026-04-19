@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Idea } from '../../src/types';
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
@@ -37,7 +37,7 @@ export default function App(): React.ReactElement {
     docCounts, setDocCounts, connections, critiques, suggestions, beatReviewSessions, beatReviewItems, tweaks,
     historyState, changeSets, applyCommittedBoard, updateBoardTweaks, createBeatReviewSession, keepBeatReviewItem,
     scratchBeatReviewItem,
-    handleIdeaUpdate, loadIdeas, loadDocCounts, loadCritiques, supportingDocMutations, refineSupportingDoc,
+    handleIdeaUpdate, loadBoard, loadIdeas, loadDocCounts, loadCritiques, supportingDocMutations, refineSupportingDoc,
   } = useBoardSync();
   const [newIdeaText, setNewIdeaText] = useState('');
   const [newIdeaTags, setNewIdeaTags] = useState('');
@@ -50,6 +50,7 @@ export default function App(): React.ReactElement {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
+  const lastSharedAiActionIdRef = useRef<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
   const persistedFacilitatorPaused = Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]);
@@ -111,9 +112,18 @@ export default function App(): React.ReactElement {
     handleAdmitSuggestion, handleElaborateSuggestion, handleDismissSuggestion,
   });
   useBrainstormWorkspaceEvents({
-    boardId, ideas, boardController, applyCommittedBoard, loadIdeas, setSelectedId, handleMove, handleGroup, handleUngroup, handleMerge,
+    boardId, ideas, boardController, applyCommittedBoard, loadBoard, loadIdeas, setSelectedId, handleMove, handleGroup, handleUngroup, handleMerge,
   });
   const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
+
+  useEffect(() => {
+    const sharedAiAction = facilitatorSync.lastAiAction;
+    if (!sharedAiAction) return;
+    if (lastSharedAiActionIdRef.current === sharedAiAction.id) return;
+    lastSharedAiActionIdRef.current = sharedAiAction.id;
+    if (facilitatorSync.isAiHost) return;
+    void loadBoard();
+  }, [facilitatorSync.isAiHost, facilitatorSync.lastAiAction, loadBoard]);
 
   const { boardBeatReviewSession, boardBeatReviewItems } = selectBoardBeatReviewSurface({ beatReviewSessions, beatReviewItems, activeBeatReviewSession });
 

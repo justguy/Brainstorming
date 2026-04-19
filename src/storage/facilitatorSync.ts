@@ -22,6 +22,7 @@ export interface FacilitatorPeerState {
 }
 
 export interface FacilitatorAiAction {
+  id: string;
   kind: 'connect' | 'critique' | 'scout';
   at: number;
   ideaId?: string;
@@ -89,11 +90,12 @@ export function setSharedFacilitatorPause(boardId: BoardId, paused: boolean): vo
 
 export function recordFacilitatorAiAction(
   boardId: BoardId,
-  action: Omit<FacilitatorAiAction, 'at'> & { at?: number },
+  action: Omit<FacilitatorAiAction, 'at' | 'id'> & { at?: number; id?: string },
 ): void {
   transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
     facilitatorMap.set(LAST_AI_ACTION_KEY, {
       ...action,
+      id: action.id ?? crypto.randomUUID(),
       at: action.at ?? Date.now(),
     } satisfies FacilitatorAiAction);
   }, AI_SYNC_ORIGIN);
@@ -182,9 +184,11 @@ function readFreshPeers(
 function readAiAction(value: unknown): FacilitatorAiAction | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const action = value as Partial<FacilitatorAiAction>;
+  if (typeof action.id !== 'string' || action.id.length === 0) return null;
   if (typeof action.at !== 'number') return null;
   if (action.kind !== 'connect' && action.kind !== 'critique' && action.kind !== 'scout') return null;
   return {
+    id: action.id,
     kind: action.kind,
     at: action.at,
     ...(typeof action.ideaId === 'string' ? { ideaId: action.ideaId } : {}),
