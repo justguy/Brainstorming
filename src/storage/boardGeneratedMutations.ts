@@ -78,6 +78,7 @@ export async function commitCreateSuggestion(
     rawText: string;
     rationale: string;
     source: string;
+    sourceIdeaIds?: string[];
     relatedIdeaIds?: string[];
     panel?: ScoutSuggestion['panel'];
     actor: ChangeActor;
@@ -100,6 +101,7 @@ export async function commitCreateSuggestion(
     rationale: input.rationale,
     source: input.source,
     status: 'pending',
+    sourceIdeaIds: input.sourceIdeaIds,
     relatedIdeaIds: input.relatedIdeaIds,
     panel: input.panel,
     createdAt: now,

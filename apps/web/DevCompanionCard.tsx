@@ -46,9 +46,9 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
       : `${Math.round(idleProgress * 100)}% primed`;
 
   return (
-    <section className="w-full overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,rgba(248,250,252,0.96),rgba(255,247,237,0.95))] p-4 shadow-[0_24px_60px_-38px_rgba(15,23,42,0.45)]">
+    <section className="bo-card-surface w-full overflow-hidden rounded-[28px] p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0" aria-live="polite" aria-atomic="true">
           <div className="flex items-center gap-2">
             <span className={`inline-flex h-2.5 w-2.5 rounded-full ${mode.dotClass}`} aria-hidden="true" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -159,7 +159,7 @@ function companionMode(props: DevCompanionCardProps): {
       status: 'needs provider',
       headline: 'Waiting for provider setup',
       detail: 'Add an API key in Options and the companion can start drafting, connecting, and critiquing in place.',
-      dotClass: 'bg-amber-400 animate-pulse',
+      dotClass: 'bg-amber-400 bo-status-pulse',
       pillClass: 'border-amber-200 bg-amber-50 text-amber-800',
       progressClass: 'bg-gradient-to-r from-amber-300 to-amber-500',
     };
@@ -183,7 +183,7 @@ function companionMode(props: DevCompanionCardProps): {
       detail: props.activeBeatRun.trigger === 'automatic'
         ? 'The companion is running an idle-triggered beat and keeping the board live while it works.'
         : 'The companion is responding to an explicit ask and will surface the result inline on the board.',
-      dotClass: 'bg-sky-500 animate-pulse',
+      dotClass: 'bg-sky-500 bo-status-pulse',
       pillClass: 'border-sky-200 bg-sky-50 text-sky-700',
       progressClass: 'bg-gradient-to-r from-sky-400 via-cyan-400 to-teal-400',
     };
@@ -207,7 +207,7 @@ function companionMode(props: DevCompanionCardProps): {
       detail: props.autoRunReady
         ? 'The last board change has settled. The companion can launch the next automatic beat without interrupting your flow.'
         : `The latest board change is still settling. The companion waits ${formatDuration(props.autoRunCountdownMs)} of clean idle before nudging the board.`,
-      dotClass: props.autoRunReady ? 'bg-cyan-500 animate-pulse' : 'bg-emerald-500',
+      dotClass: props.autoRunReady ? 'bg-cyan-500 bo-status-pulse' : 'bg-emerald-500',
       pillClass: props.autoRunReady
         ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
         : 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -222,7 +222,7 @@ function companionMode(props: DevCompanionCardProps): {
       status: 'drafting',
       headline: 'Finishing the current pass',
       detail: 'The companion is already resolving a beat result. The board stays editable while the draft settles.',
-      dotClass: 'bg-sky-500 animate-pulse',
+      dotClass: 'bg-sky-500 bo-status-pulse',
       pillClass: 'border-sky-200 bg-sky-50 text-sky-700',
       progressClass: 'bg-gradient-to-r from-sky-400 via-cyan-400 to-teal-400',
     };

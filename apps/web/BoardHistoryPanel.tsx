@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useId } from 'react';
 import type { BoardHistoryEntry } from './historyTimeline';
+import { useOverlaySurface } from './useOverlaySurface';
 
 interface BoardHistoryPanelProps {
   entries: BoardHistoryEntry[];
@@ -18,8 +19,20 @@ export function BoardHistoryPanel({
   canRedo,
   onClose,
 }: BoardHistoryPanelProps): React.ReactElement {
+  const headingId = useId();
+  const summaryId = useId();
+  const { closeButtonRef, surfaceRef } = useOverlaySurface<HTMLElement>(onClose);
+
   return (
-    <section className="pointer-events-auto absolute right-6 top-6 z-20 w-[min(420px,calc(100%-3rem))] max-w-full rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur">
+    <section
+      ref={surfaceRef}
+      className="bo-elevated-panel pointer-events-auto absolute right-6 top-6 z-20 w-[min(420px,calc(100%-3rem))] max-w-full rounded-[26px] backdrop-blur"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={headingId}
+      aria-describedby={summaryId}
+      tabIndex={-1}
+    >
       <div className="border-b border-slate-200 px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
@@ -37,12 +50,16 @@ export function BoardHistoryPanel({
                 {canRedo ? 'Redo ready' : 'Latest state'}
               </span>
             </div>
-            <p className="text-sm leading-snug text-slate-600">
+            <h2 id={headingId} className="text-sm font-semibold text-slate-900">
+              Change history
+            </h2>
+            <p id={summaryId} className="text-sm leading-snug text-slate-600">
               Every patch set stays readable here, including actor, beat context, and affected board entities.
             </p>
           </div>
 
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             className="rounded-full px-2.5 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
@@ -115,8 +132,8 @@ export function BoardHistoryPanel({
           ))}
 
           {entries.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-sm text-slate-500">
-              No durable change sets yet.
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-6 text-sm text-slate-500">
+              No durable change sets yet. The first edit or AI action will appear here as a readable patch set.
             </div>
           )}
         </div>

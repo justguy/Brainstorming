@@ -24,7 +24,7 @@ export function BoardBeatsCard({
   const isSummariseRunning = activeBeat === 'summarise';
 
   return (
-    <section className="w-full rounded-[24px] border border-slate-200 bg-[linear-gradient(145deg,rgba(248,250,252,0.98),rgba(255,255,255,0.96))] p-4 shadow-[0_20px_48px_-36px_rgba(15,23,42,0.35)]">
+    <section className="bo-card-surface w-full rounded-[24px] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">

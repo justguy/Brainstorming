@@ -138,6 +138,7 @@ export interface ScoutSuggestion {
   rationale: string;                    // why the scout thinks this is worth considering
   source: string;                       // e.g. "analogy: healthcare triage", "contrarian take", "adjacent field: ops"
   status: ScoutSuggestionStatus;
+  sourceIdeaIds?: string[];             // exact source pair for cross-pollinated suggestions when applicable
   relatedIdeaIds?: string[];            // ids of board ideas the scout leaned on
   elaboration?: string;                 // fleshed-out version if the user asked for elaboration
   admittedIdeaId?: string;              // if admitted, the id of the promoted real Idea
@@ -235,11 +236,14 @@ export interface ProviderCredentials {
   anthropic?: string;
 }
 
+export type BoardThemeMode = 'whiteboard' | 'sketch';
+
 export interface Settings {
   credentials: ProviderCredentials;
   activeProvider: ProviderId;
   activeModel: string;                // e.g. 'gemini-2.5-pro', 'gpt-4o', 'claude-sonnet-4-6'
   density: Density;
+  boardTheme: BoardThemeMode;
 }
 
 // --- ct-mcp payload that every micro-agent call is built from ---

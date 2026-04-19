@@ -112,6 +112,7 @@ export function createBoardController(boardId: BoardId) {
       rawText: string;
       rationale: string;
       source: string;
+      sourceIdeaIds?: string[];
       relatedIdeaIds?: string[];
       panel?: import('../types').ScoutSuggestion['panel'];
       actor: ChangeActor;

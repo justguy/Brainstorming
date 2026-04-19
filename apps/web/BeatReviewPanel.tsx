@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import type { BeatReviewItemRecord, BeatReviewSessionRecord } from '../../src/board/types';
 import { BeatReviewPanelCard } from './BeatReviewPanelCard';
+import { useOverlaySurface } from './useOverlaySurface';
 
 interface BeatReviewPanelProps {
   session: BeatReviewSessionRecord;
@@ -26,9 +27,20 @@ export function BeatReviewPanel({
   onClose,
 }: BeatReviewPanelProps): React.ReactElement {
   const pendingCount = items.filter(item => item.status === 'pending').length;
+  const headingId = useId();
+  const summaryId = useId();
+  const { closeButtonRef, surfaceRef } = useOverlaySurface<HTMLElement>(onClose);
 
   return (
-    <section className="pointer-events-auto absolute left-6 top-6 z-20 w-[min(720px,calc(100%-7rem))] max-w-full rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,250,252,0.96))] shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur">
+    <section
+      ref={surfaceRef}
+      className="bo-elevated-panel pointer-events-auto absolute left-6 top-6 z-20 w-[min(720px,calc(100%-7rem))] max-w-full rounded-[28px] backdrop-blur"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={headingId}
+      aria-describedby={summaryId}
+      tabIndex={-1}
+    >
       <div className="border-b border-slate-200 px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
@@ -43,11 +55,12 @@ export function BeatReviewPanel({
                 {pendingCount} pending
               </span>
             </div>
-            <h2 className="text-lg font-semibold text-slate-900">{session.title}</h2>
-            <p className="max-w-2xl text-sm leading-snug text-slate-600">{session.summary}</p>
+            <h2 id={headingId} className="text-lg font-semibold text-slate-900">{session.title}</h2>
+            <p id={summaryId} className="max-w-2xl text-sm leading-snug text-slate-600">{session.summary}</p>
           </div>
 
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             className="rounded-full px-2.5 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
@@ -87,6 +100,12 @@ export function BeatReviewPanel({
             onScratch={onScratch}
           />
         ))}
+
+        {pendingCount === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-4 text-sm text-slate-600">
+            This review is settled. Kept changes stay on the board; scratched candidates remain reversible through history.
+          </div>
+        )}
       </div>
     </section>
   );

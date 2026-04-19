@@ -28,6 +28,7 @@ import { listDocsForIdea, getDoc } from '../../src/storage/docs';
 import type { LegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
 import { defaultBoardRepository } from './boardRepository';
 import { createBoardController } from '../../src/storage/boardController';
+import { createCrossPollinateTool } from './webmcpCrossPollinateTool';
 import {
   createAttachLocalDocCandidateTool,
   searchLocalDocsTool,
@@ -667,6 +668,20 @@ const scoutIdeasTool: ModelContextTool = {
   },
 };
 
+const crossPollinateTool = createCrossPollinateTool(() => dispatchAndWaitForDetail<{
+  ok?: boolean;
+  error?: string;
+  suggestion?: {
+    id: string;
+    rawText: string;
+    rationale: string;
+    source: string;
+    sourceIdeaIds: string[];
+    relatedIdeaIds: string[];
+    status: string;
+  } | null;
+}>('brainstorm:crossPollinate'));
+
 const runBeatTool: ModelContextTool = {
   name: 'run_beat',
   description:
@@ -740,6 +755,7 @@ const listSuggestionsTool: ModelContextTool = {
         source: s.source,
         status: s.status,
         relatedIdeaIds: s.relatedIdeaIds ?? [],
+        sourceIdeaIds: s.sourceIdeaIds ?? [],
         elaboration: s.elaboration,
         admittedIdeaId: s.admittedIdeaId,
         createdAt: s.createdAt,
@@ -1660,12 +1676,13 @@ export function useBrainstormingTools(_selectedIdea: LegacyToolIdea | null): voi
       safeRegisterTool(mc, listCritiquesTool, opts);
       safeRegisterTool(mc, dismissCritiqueTool, opts);
       safeRegisterTool(mc, scoutIdeasTool, opts);
+      safeRegisterTool(mc, crossPollinateTool, opts);
       safeRegisterTool(mc, runBeatTool, opts);
       safeRegisterTool(mc, listSuggestionsTool, opts);
       safeRegisterTool(mc, admitSuggestionTool, opts);
       safeRegisterTool(mc, elaborateSuggestionTool, opts);
       safeRegisterTool(mc, dismissSuggestionTool, opts);
-      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, get_board, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, search_local_docs, attach_local_doc_candidate, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, run_beat, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
+      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, get_board, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, search_local_docs, attach_local_doc_candidate, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, cross_pollinate, run_beat, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
     }
 
     return () => {

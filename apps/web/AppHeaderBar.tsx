@@ -1,4 +1,5 @@
 import React from 'react';
+import type { BoardThemeMode } from '../../src/types';
 
 export interface AppHeaderBarHistoryState {
   canUndo: boolean;
@@ -9,30 +10,34 @@ export interface AppHeaderBarHistoryState {
 
 export interface AppHeaderBarProps {
   advancingFromTool: boolean;
+  boardTheme: BoardThemeMode;
   canvasBusy: string | null;
   historyState: AppHeaderBarHistoryState;
   historyOpen: boolean;
   onUndo: () => void | Promise<void>;
   onRedo: () => void | Promise<void>;
   onToggleHistory: () => void;
+  onSetBoardTheme: (theme: BoardThemeMode) => void | Promise<void>;
   onOpenOptions: () => void;
 }
 
 export function AppHeaderBar({
   advancingFromTool,
+  boardTheme,
   canvasBusy,
   historyState,
   historyOpen,
   onUndo,
   onRedo,
   onToggleHistory,
+  onSetBoardTheme,
   onOpenOptions,
 }: AppHeaderBarProps): React.ReactElement {
   const webMcpAvailable = typeof window !== 'undefined' && Boolean(window.navigator.modelContext);
   const totalChanges = Math.max(0, historyState.nextSeq - 1);
 
   return (
-    <header className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-white">
+    <header className="bo-topbar shrink-0 flex items-center justify-between px-5 py-3">
       <div className="flex items-center gap-3">
         <span className="text-base font-semibold text-gray-900">Brainstorming Orchestrator</span>
         {advancingFromTool && (
@@ -48,6 +53,23 @@ export function AppHeaderBar({
       </div>
 
       <div className="flex items-center gap-3">
+        <div className="bo-theme-toggle flex items-center gap-1 rounded-full p-1" role="group" aria-label="Board theme">
+          {(['whiteboard', 'sketch'] as const).map(theme => (
+            <button
+              key={theme}
+              type="button"
+              onClick={() => {
+                void onSetBoardTheme(theme);
+              }}
+              className="bo-theme-button rounded-full px-3 py-1 text-xs font-semibold capitalize"
+              data-active={boardTheme === theme}
+              aria-pressed={boardTheme === theme}
+            >
+              {theme}
+            </button>
+          ))}
+        </div>
+
         <span
           className={`text-xs px-2 py-0.5 rounded-full ${
             webMcpAvailable

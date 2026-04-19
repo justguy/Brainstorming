@@ -39,6 +39,7 @@ interface UseBrainstormSuggestionEventsArgs {
     limitNew?: number;
     source?: 'canvas' | 'webmcp' | 'beat';
   }) => Promise<ScoutSuggestion[]>;
+  runCrossPollinate: (source?: 'canvas' | 'webmcp' | 'beat') => Promise<ScoutSuggestion | null>;
   runBoardBeat: RunBoardBeat;
   presentBeatReview: (
     result: BeatResult<'cluster'> | BeatResult<'summarise'>,
@@ -59,6 +60,7 @@ export function useBrainstormSuggestionEvents({
   runConnectionFinder,
   runCritiqueIdea,
   runScout,
+  runCrossPollinate,
   runBoardBeat,
   presentBeatReview,
   handleAdmitSuggestion,
@@ -82,6 +84,38 @@ export function useBrainstormSuggestionEvents({
         console.error('[App] scout_ideas failed:', err);
       }
       emitToolCompletion(requestId, { count });
+    };
+
+    const handleCrossPollinateEvent = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ requestId?: string }>;
+      const { requestId } = customEvent.detail ?? {};
+      let detail: Record<string, unknown>;
+      try {
+        const created = await runCrossPollinate('webmcp');
+        detail = created
+          ? {
+              ok: true,
+              suggestion: {
+                id: created.id,
+                rawText: created.rawText,
+                rationale: created.rationale,
+                source: created.source,
+                sourceIdeaIds: created.sourceIdeaIds ?? [],
+                relatedIdeaIds: created.relatedIdeaIds ?? [],
+                status: created.status,
+              },
+            }
+          : {
+              ok: true,
+              suggestion: null,
+            };
+      } catch (err) {
+        detail = {
+          ok: false,
+          error: err instanceof Error ? err.message : 'cross_pollinate failed',
+        };
+      }
+      emitToolCompletion(requestId, detail);
     };
 
     const handleRunBeatEvent = async (event: Event) => {
@@ -214,6 +248,7 @@ export function useBrainstormSuggestionEvents({
 
     const listeners: Array<[string, EventListener]> = [
       ['brainstorm:scout', handleScoutEvent as EventListener],
+      ['brainstorm:crossPollinate', handleCrossPollinateEvent as EventListener],
       ['brainstorm:runBeat', handleRunBeatEvent as EventListener],
       ['brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener],
       ['brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener],

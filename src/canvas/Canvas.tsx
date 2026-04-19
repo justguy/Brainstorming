@@ -232,9 +232,8 @@ export default function Canvas({
 
   return (
     <div
-      className="relative w-full h-full overflow-auto bg-[radial-gradient(circle,#e5e7eb_1px,transparent_1px)] bg-white"
+      className="bo-canvas relative h-full w-full overflow-auto"
       style={{
-        backgroundSize: '24px 24px',
         minHeight: '100%',
       }}
       aria-label="Idea canvas"
@@ -326,10 +325,18 @@ export default function Canvas({
       })}
 
       {ideas.length === 0 && (!suggestions || suggestions.length === 0) && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-sm text-gray-400">
-            No ideas yet. Capture your first idea to see it on the canvas.
-          </p>
+        <div className="absolute inset-0 flex items-center justify-center p-6">
+          <div className="bo-empty-state max-w-md rounded-[28px] border px-6 py-6 text-center shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Empty board
+            </p>
+            <h2 className="mt-3 text-lg font-semibold text-slate-900">
+              Start with a rough thought.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Capture an idea and the canvas becomes the source of truth for inline beats, critique, and reversible history.
+            </p>
+          </div>
         </div>
       )}
     </div>

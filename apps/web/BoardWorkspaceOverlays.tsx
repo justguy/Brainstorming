@@ -84,7 +84,7 @@ export function BoardWorkspaceOverlays({
 
       {selectedBoardIdea && (
         <aside
-          className="pointer-events-auto absolute bottom-[5.25rem] left-1/2 z-30 flex max-h-[calc(100vh-8rem)] w-[min(34rem,calc(100%-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white/95 shadow-2xl backdrop-blur sm:bottom-6"
+          className="bo-focus-dock pointer-events-auto absolute bottom-[5.25rem] left-1/2 z-30 flex max-h-[calc(100vh-8rem)] w-[min(34rem,calc(100%-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-[28px] backdrop-blur sm:bottom-6"
           aria-label="Board focus dock"
         >
           <div className="shrink-0 flex items-start justify-between gap-3 px-4 py-3 border-b border-gray-100">
@@ -160,7 +160,7 @@ export function BoardWorkspaceOverlays({
             aria-hidden="true"
           />
           <aside
-            className="absolute inset-x-0 top-0 bottom-0 z-50 flex flex-col bg-white shadow-2xl border-l border-gray-200 sm:inset-y-4 sm:right-4 sm:left-auto sm:w-[min(48rem,calc(100%-2rem))] sm:rounded-2xl"
+            className="bo-inspector-surface absolute inset-x-0 bottom-0 top-0 z-50 flex flex-col border-l sm:inset-y-4 sm:left-auto sm:right-4 sm:w-[min(48rem,calc(100%-2rem))] sm:rounded-2xl"
             aria-label="Inspector"
           >
             <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">

@@ -27,7 +27,7 @@ export function BoardAppView({
   reviewPanel,
 }: BoardAppViewProps): React.ReactElement {
   return (
-    <div className="flex flex-col h-screen bg-white overflow-hidden">
+    <div className="bo-board-shell flex h-screen flex-col overflow-hidden">
       <AppHeaderBar {...header} />
       {showApiKeyBanner && <AppApiKeyBanner onOpenOptions={onOpenOptions} />}
       <AppCompanionRail {...companionRail} />

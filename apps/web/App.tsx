@@ -24,11 +24,13 @@ import { BeatReviewPanel } from './BeatReviewPanel';
 import { BoardHistoryPanel } from './BoardHistoryPanel';
 import { createBoardHistoryEntries } from './historyTimeline';
 import { runManualBoardBeat, selectBoardBeatReviewSurface } from './boardBeatReviewSurface';
+import { useBoardTheme } from './useBoardTheme';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 
 export default function App(): React.ReactElement {
   const [hash, navigate] = useHashRoute();
+  const { boardTheme, setBoardTheme } = useBoardTheme();
   const {
     boardId, boardTitle, boardRepository, boardController, ideas, groups, docs, selectedId, setSelectedId, hasApiKey,
     docCounts, setDocCounts, connections, critiques, suggestions, beatReviewSessions, beatReviewItems, tweaks,
@@ -77,7 +79,7 @@ export default function App(): React.ReactElement {
   });
   const {
     scouting, lastScoutRunAt, suggestionBusy, animatedSuggestionIds, suggestionsExpanded,
-    visibleCanvasSuggestions, suggestionOverflowCount, runScout, handleAdmitSuggestion,
+    visibleCanvasSuggestions, suggestionOverflowCount, runScout, runCrossPollinate, handleAdmitSuggestion,
     handleElaborateSuggestion, handleDismissSuggestion, expandSuggestions, collapseSuggestions,
   } = useBoardSuggestionActions({
     boardId, ideas, suggestions, boardRepository, boardController, applyCommittedBoard, runBoardBeat, markActivity,
@@ -102,7 +104,7 @@ export default function App(): React.ReactElement {
     boardId, ideas, boardController, applyCommittedBoard, loadIdeas, setSelectedId, setAdvancingFromTool, setCreating,
   });
   useBrainstormSuggestionEvents({
-    boardId, boardTitle, ideas, groups, connections, suggestions, runConnectionFinder, runCritiqueIdea, runScout, runBoardBeat,
+    boardId, boardTitle, ideas, groups, connections, suggestions, runConnectionFinder, runCritiqueIdea, runScout, runCrossPollinate, runBoardBeat,
     presentBeatReview,
     handleAdmitSuggestion, handleElaborateSuggestion, handleDismissSuggestion,
   });
@@ -156,12 +158,14 @@ export default function App(): React.ReactElement {
     <BoardAppView
       header={{
         advancingFromTool,
+        boardTheme,
         canvasBusy,
         historyState,
         historyOpen,
         onUndo: handleUndo,
         onRedo: handleRedo,
         onToggleHistory: () => setHistoryOpen(value => !value),
+        onSetBoardTheme: setBoardTheme,
         onOpenOptions: openOptions,
       }}
       showApiKeyBanner={hasApiKey === false}

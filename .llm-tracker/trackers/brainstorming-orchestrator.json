@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-013 is complete. Local-doc search now has both the in-app File System Access flow in DocsModal and an explicit WebMCP candidate flow via search_local_docs plus attach_local_doc_candidate, while keeping re-authorize visible instead of hidden. Verification: npm run typecheck and npm run build:web. I did not run a manual browser File System Access smoke test.",
-    "rev": 56,
-    "updatedAt": "2026-04-19T05:18:19.324Z"
+    "scratchpad": "bo-037 is complete. The board now has persisted whiteboard/sketch theme mode, reduced-motion handling for visible beat animations, keyboard-focusable history/review overlays with Escape close, and more intentional empty/thinking/kept/scratched board states. Verification: npm run typecheck and npm run build:web. I did not run a manual browser pass across both themes or reduced-motion.",
+    "rev": 61,
+    "updatedAt": "2026-04-19T05:49:42.562Z"
   },
   "tasks": [
     {
@@ -496,7 +496,7 @@
       "id": "bo-010",
       "title": "4.2 Full CRDT port for board stores",
       "goal": "Replace direct IDB writes across board stores with Y.Doc-backed mutations and ship a one-shot migration path from existing local data.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "collaboration",
         "priorityId": "p2"
@@ -543,7 +543,7 @@
       "id": "bo-011",
       "title": "4.3 WebRTC cross-machine sync with SDP-only broker",
       "goal": "Extend collaborative sync across machines by swapping BroadcastChannel transport for y-webrtc and adding the minimal SDP-broker room flow.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "collaboration",
         "priorityId": "p2"
@@ -681,7 +681,7 @@
       "id": "bo-014",
       "title": "Stretch: cross_pollinate role and tool",
       "goal": "Introduce a dedicated cross_pollinate role that finds two distinct ideas and proposes a third merged concept with clearer intent than scout_ideas.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "facilitator",
         "priorityId": "p2"
@@ -690,7 +690,7 @@
         "ROADMAP.md:300-300"
       ],
       "effort": "m",
-      "comment": "This is partially covered by scout_ideas today, but splitting the role would sharpen synthesis-specific prompting and UI.",
+      "comment": "Completed the dedicated cross_pollinate role and tool slice with explicit source-idea attribution on persisted suggestions.",
       "definition_of_done": [
         "A dedicated cross_pollinate role exists with structured output.",
         "A WebMCP tool exposes the role on the standalone board surface.",
@@ -718,8 +718,24 @@
           "synthesis",
           "role"
         ],
-        "notes": "This is a dedicated synthesis verb beyond the current scout behavior."
-      }
+        "notes": "The role now returns a strict two-idea source pair, the WebMCP surface exposes cross_pollinate separately from scout_ideas, and persisted suggestions carry sourceIdeaIds for explicit attribution.",
+        "files_touched": [
+          "src/orchestrator/roles/crossPollinate.ts",
+          "apps/web/crossPollinateSuggestion.ts",
+          "apps/web/webmcpCrossPollinateTool.ts",
+          "apps/web/useBoardSuggestionActions.ts",
+          "apps/web/useBrainstormSuggestionEvents.ts",
+          "apps/web/webmcp-tools.ts",
+          "apps/web/App.tsx",
+          "apps/web/suggestionActionHelpers.ts",
+          "src/storage/boardController.ts",
+          "src/storage/boardGeneratedMutations.ts",
+          "src/storage/suggestions.ts",
+          "src/types.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [],
@@ -1840,7 +1856,7 @@
       "id": "bo-037",
       "title": "Design UI: final integration-guide fidelity and accessibility pass",
       "goal": "Align the shipped experience with the guide's intended visual language, reveal choreography, accessibility, theme behavior, and empty or loading states once the board-first interaction model is in place.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p2"
@@ -1850,7 +1866,7 @@
         "Design/Integration Guide.html:616-639"
       ],
       "effort": "m",
-      "comment": "This is the final fit-and-finish pass after the architecture and interaction model are in place.",
+      "comment": "Completed the final guide-fidelity pass with persisted theme switching, reduced-motion support, dialog-style history/review overlays, and more intentional board-first empty plus review states.",
       "definition_of_done": [
         "Theme and motion behavior align with the guide across sketch and whiteboard modes.",
         "Keyboard, focus, and screen-reader behaviors cover the new inline AI and history surfaces.",
@@ -1877,8 +1893,27 @@
           "accessibility",
           "polish"
         ],
-        "notes": "Final guide-alignment pass after the board-first interaction model lands."
-      }
+        "notes": "This pass added persisted whiteboard/sketch theme state, board-surface theming via body data attributes, reduced-motion handling for visible beat animations, and keyboard/screen-reader treatment for review/history overlays.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/AppHeaderBar.tsx",
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/BoardAppView.tsx",
+          "apps/web/BoardBeatsCard.tsx",
+          "apps/web/BeatReviewPanel.tsx",
+          "apps/web/BeatReviewPanelCard.tsx",
+          "apps/web/BoardHistoryPanel.tsx",
+          "apps/web/BoardWorkspaceOverlays.tsx",
+          "apps/web/useBoardTheme.ts",
+          "apps/web/useOverlaySurface.ts",
+          "src/canvas/Canvas.tsx",
+          "src/storage/settings.ts",
+          "src/styles.css",
+          "src/types.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     }
   ]
 }

@@ -14,12 +14,18 @@ import { getSuggestion } from '../../src/storage/suggestions';
 import type { Idea, ScoutSuggestion, SupportingDoc } from '../../src/types';
 import type { BoardRepository } from './boardRepository';
 import { buildScoutBeatContext } from './beatContext';
+import { runCrossPollinateSuggestion } from './crossPollinateSuggestion';
 import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDedup';
+import {
+  ghostPanelFor,
+  suggestionActorFor,
+  type RevealOrigin,
+  type SuggestionMutationSource,
+} from './suggestionActionHelpers';
 
 const COLLAPSED_SUGGESTION_COUNT = 3;
 const REVEAL_WINDOW_MS = 1_800;
 
-type RevealOrigin = 'manual' | 'ai';
 type SuggestionBusyState = 'admit' | 'elaborate' | 'dismiss' | null;
 
 type RunBoardBeat = {
@@ -76,7 +82,7 @@ export function useBoardSuggestionActions({
   async function runScout(options: {
     origin?: RevealOrigin;
     limitNew?: number;
-    source?: 'canvas' | 'webmcp' | 'beat';
+    source?: SuggestionMutationSource;
   } = {}): Promise<ScoutSuggestion[]> {
     setScouting(true);
     try {
@@ -146,6 +152,25 @@ export function useBoardSuggestionActions({
       return [];
     } finally {
       setScouting(false);
+    }
+  }
+
+  async function runCrossPollinate(
+    source: SuggestionMutationSource = 'canvas',
+  ): Promise<ScoutSuggestion | null> {
+    try {
+      const existingSuggestions = await boardRepository.listSuggestions();
+      return await runCrossPollinateSuggestion({
+        ideas,
+        currentSuggestions: suggestions,
+        existingSuggestions,
+        createSuggestion: boardController.createSuggestion,
+        applyCommittedBoard,
+        source,
+      });
+    } catch (err) {
+      console.error('[App] cross_pollinate failed:', err);
+      return null;
     }
   }
 
@@ -237,6 +262,7 @@ export function useBoardSuggestionActions({
     visibleCanvasSuggestions,
     suggestionOverflowCount,
     runScout,
+    runCrossPollinate,
     handleAdmitSuggestion,
     handleElaborateSuggestion,
     handleDismissSuggestion,
@@ -252,15 +278,6 @@ function clearTimer(ref: MutableRefObject<number | null>): void {
   }
 }
 
-function ghostPanelFor(index: number): ScoutSuggestion['panel'] {
-  return {
-    x: 520 + (index % 2) * 40,
-    y: 60 + index * 220,
-    width: 280,
-    height: 200,
-  };
-}
-
 function beatTrigger(origin?: RevealOrigin): 'automatic' | 'manual' {
   return origin === 'ai' ? 'automatic' : 'manual';
 }
@@ -271,14 +288,4 @@ function beatSize(origin?: RevealOrigin): 'small' | 'big' {
 
 function beatAggressiveness(origin?: RevealOrigin): 'gentle' | 'balanced' {
   return origin === 'ai' ? 'gentle' : 'balanced';
-}
-
-function suggestionActorFor(options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat' }) {
-  if (options.origin === 'ai') {
-    return { type: 'ai' as const, source: 'beat' as const, beat: 'scout' as const, label: 'outsideKnowledgeScout' };
-  }
-  if (options.source === 'webmcp') {
-    return { type: 'tool' as const, source: 'webmcp' as const };
-  }
-  return { type: 'user' as const, source: 'canvas' as const };
 }

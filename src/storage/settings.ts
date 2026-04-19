@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: Settings = {
   activeProvider: 'gemini',
   activeModel: 'gemini-2.5-pro',
   density: 'standard',
+  boardTheme: 'whiteboard',
 };
 
 function mergeSettings(stored?: Partial<Settings>): Settings {

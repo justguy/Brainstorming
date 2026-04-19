@@ -40,6 +40,7 @@ export interface CreateSuggestionInput {
   rawText: string;
   rationale: string;
   source: string;
+  sourceIdeaIds?: string[];
   relatedIdeaIds?: string[];
   panel?: ScoutSuggestion['panel'];
 }
@@ -55,6 +56,7 @@ export async function createSuggestion(input: CreateSuggestionInput): Promise<Sc
     rationale: input.rationale,
     source: input.source,
     status: 'pending',
+    sourceIdeaIds: input.sourceIdeaIds,
     relatedIdeaIds: input.relatedIdeaIds,
     panel: input.panel,
     createdAt: now,

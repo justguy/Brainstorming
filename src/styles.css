@@ -4,11 +4,105 @@
 
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #eff4fb;
+  color: #0f172a;
 }
 
 .bo-motion-ease {
   transition-duration: 240ms;
   transition-timing-function: ease-out;
+}
+
+.bo-status-pulse {
+  animation: bo-status-pulse 1.8s ease-in-out infinite;
+}
+
+.bo-board-shell {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.95), transparent 48%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+}
+
+.bo-topbar,
+.bo-elevated-panel,
+.bo-card-surface,
+.bo-focus-dock,
+.bo-inspector-surface {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 252, 0.95));
+  box-shadow: 0 24px 72px -44px rgba(15, 23, 42, 0.45);
+}
+
+.bo-canvas {
+  background-color: #ffffff;
+  background-image: radial-gradient(circle, rgba(148, 163, 184, 0.38) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bo-empty-state {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.bo-theme-toggle {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.bo-theme-button {
+  color: #64748b;
+  transition: background-color 180ms ease-out, color 180ms ease-out, box-shadow 180ms ease-out;
+}
+
+.bo-theme-button[data-active='true'] {
+  background: #0f172a;
+  color: #f8fafc;
+  box-shadow: 0 8px 24px -18px rgba(15, 23, 42, 0.7);
+}
+
+body[data-board-theme='sketch'] {
+  background: #efe7d8;
+  color: #241a14;
+}
+
+body[data-board-theme='sketch'] .bo-board-shell {
+  background:
+    radial-gradient(circle at top left, rgba(255, 250, 240, 0.82), transparent 44%),
+    linear-gradient(180deg, #f6efe1 0%, #ecdfc7 100%);
+}
+
+body[data-board-theme='sketch'] .bo-topbar,
+body[data-board-theme='sketch'] .bo-elevated-panel,
+body[data-board-theme='sketch'] .bo-card-surface,
+body[data-board-theme='sketch'] .bo-focus-dock,
+body[data-board-theme='sketch'] .bo-inspector-surface {
+  border-color: rgba(120, 94, 60, 0.24);
+  background: linear-gradient(180deg, rgba(255, 249, 238, 0.97), rgba(245, 234, 214, 0.95));
+  box-shadow: 0 30px 80px -48px rgba(72, 45, 24, 0.55);
+}
+
+body[data-board-theme='sketch'] .bo-canvas {
+  background-color: #fbf4e6;
+  background-image:
+    linear-gradient(rgba(166, 126, 76, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(166, 126, 76, 0.12) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+body[data-board-theme='sketch'] .bo-empty-state {
+  border-color: rgba(148, 115, 74, 0.26);
+  background: rgba(255, 250, 242, 0.9);
+}
+
+body[data-board-theme='sketch'] .bo-theme-toggle {
+  border-color: rgba(120, 94, 60, 0.24);
+  background: rgba(255, 248, 236, 0.86);
+}
+
+body[data-board-theme='sketch'] .bo-theme-button[data-active='true'] {
+  background: #7c4f2f;
+  color: #fff9f2;
+  box-shadow: 0 8px 24px -18px rgba(124, 79, 47, 0.82);
 }
 
 .bo-connection-draw {
@@ -79,5 +173,29 @@ body {
     box-shadow:
       0 0 0 0 rgba(129, 140, 248, 0),
       0 18px 36px -26px rgba(15, 23, 42, 0.32);
+  }
+}
+
+@keyframes bo-status-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bo-motion-ease,
+  .bo-theme-button,
+  .bo-connection-draw,
+  .bo-critique-enter,
+  .bo-suggestion-enter,
+  .bo-highlight-flash,
+  .bo-status-pulse {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
   }
 }

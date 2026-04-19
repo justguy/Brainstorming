@@ -127,7 +127,7 @@ export function AppCompanionRail({
             void runScout();
           }}
           disabled={scouting}
-          className="flex w-full items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm shadow hover:shadow-md focus:outline-none focus:ring-4 focus:ring-teal-200 disabled:opacity-60"
+          className="bo-card-surface flex w-full items-center justify-between gap-3 rounded-[24px] px-4 py-3 text-left focus:outline-none focus:ring-4 focus:ring-teal-200 disabled:opacity-60"
           aria-label={scouting ? 'Scout running' : 'Ask the scout to suggest ideas'}
           title={
             lastScoutRunAt
@@ -135,9 +135,16 @@ export function AppCompanionRail({
               : 'Ask the scout to propose ideas adjacent to the board.'
           }
         >
-          <span>🔭</span>
-          <span className="font-semibold text-teal-700">
-            {scouting ? 'Scouting…' : suggestions.length > 0 ? `Scout (${suggestions.length})` : 'Scout'}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">
+              Scout beat
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">
+              {scouting ? 'Surfacing adjacent ideas…' : suggestions.length > 0 ? `Review ${suggestions.length} ghost suggestion${suggestions.length === 1 ? '' : 's'}` : 'Ask for a fresh nudge'}
+            </p>
+          </div>
+          <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-700">
+            {lastScoutRunAt ? formatSince(lastScoutRunAt) : 'manual'}
           </span>
         </button>
 
