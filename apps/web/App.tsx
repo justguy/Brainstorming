@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Idea } from '../../src/types';
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
+import Workspace, { WorkspacePhaseFlow } from '../../src/workspace/Workspace';
 import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
 import { useBrainstormAnalysisEvents } from './useBrainstormAnalysisEvents';
 import { useBrainstormLifecycleEvents } from './useBrainstormLifecycleEvents';
@@ -42,6 +43,7 @@ export default function App(): React.ReactElement {
   const [canvasBusy, setCanvasBusy] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
@@ -52,6 +54,12 @@ export default function App(): React.ReactElement {
   const selectedBoardIdea = ideas.find(i => i.id === selectedId) ?? null;
   const selectedLegacyToolIdea = createLegacyToolIdea(selectedBoardIdea);
   const activeCritiques = critiques.filter(critique => critique.status === 'active');
+
+  useEffect(() => {
+    if (!selectedBoardIdea) {
+      setInspectorOpen(false);
+    }
+  }, [selectedBoardIdea]);
 
   useBrainstormingTools(selectedLegacyToolIdea);
 
@@ -215,7 +223,10 @@ export default function App(): React.ReactElement {
         suggestionOverflowCount, suggestionsExpanded, suggestionBusy,
         onDismissCritique: handleDismissCritique,
         onConnectionClick: handleHighlight, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
-        onOpen: id => setSelectedId(id),
+        onOpen: id => {
+          setInspectorOpen(false);
+          setSelectedId(id);
+        },
         onOpenDocs: id => setDocsIdeaId(id),
         onGroup: handleGroup, onUngroup: handleUngroup, onMerge: handleMerge, onDiscard: handleDiscard, onAdmitSuggestion: handleAdmitSuggestion,
         onElaborateSuggestion: handleElaborateSuggestion,
@@ -224,14 +235,40 @@ export default function App(): React.ReactElement {
       }}
       workspaceOverlays={{
         ideas, discardedIdeas, selectedBoardIdea, docsIdeaId, boardId, docCounts, supportingDocMutations,
+        isInspectorOpen: inspectorOpen,
         capturePopover: {
           open: captureOpen, creating, text: newIdeaText, tags: newIdeaTags, onToggle: () => setCaptureOpen(value => !value),
           onTextChange: setNewIdeaText, onTagsChange: setNewIdeaTags, onClose: () => setCaptureOpen(false),
           onSubmit: handleCapture,
         },
-        onRestoreDiscardedIdea: handleRestore, onPreviewDiscardedIdea: id => setSelectedId(id), onCloseDocs: () => setDocsIdeaId(null),
+        selectedIdeaDockContent: selectedBoardIdea ? (
+          <WorkspacePhaseFlow
+            idea={selectedBoardIdea}
+            onUpdate={handleIdeaUpdate}
+            source="canvas"
+          />
+        ) : null,
+        inspectorContent: selectedBoardIdea ? (
+          <Workspace
+            idea={selectedBoardIdea}
+            onUpdate={handleIdeaUpdate}
+            docCount={docCounts[selectedBoardIdea.id] ?? 0}
+            onOpenDocs={id => setDocsIdeaId(id)}
+          />
+        ) : null,
+        onRestoreDiscardedIdea: handleRestore,
+        onPreviewDiscardedIdea: id => {
+          setSelectedId(id);
+          setInspectorOpen(true);
+        },
+        onCloseDocs: () => setDocsIdeaId(null),
         onDocsChanged: (id, count) => setDocCounts(prev => ({ ...prev, [id]: count })),
-        onCloseWorkspace: () => setSelectedId(null), onWorkspaceUpdate: handleIdeaUpdate, onWorkspaceOpenDocs: id => setDocsIdeaId(id),
+        onOpenInspector: () => setInspectorOpen(true),
+        onCloseInspector: () => setInspectorOpen(false),
+        onCloseSelectedIdea: () => {
+          setInspectorOpen(false);
+          setSelectedId(null);
+        },
       }}
     />
   );

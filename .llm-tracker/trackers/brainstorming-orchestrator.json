@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-029, bo-030, and bo-031 are complete. The app-shell extraction was already landed; this branch adds durable tweak persistence, web-safe settings migration, and companion watching/primed/drafting states. Verification: npm run typecheck and npm run build:web.",
-    "rev": 46,
-    "updatedAt": "2026-04-19T02:07:19.571Z"
+    "scratchpad": "bo-029 through bo-034 are complete. The board-first cutover now keeps the canvas primary with a centered focus dock for the active phase loop, while the old workspace has been reduced to a secondary inspector. Verification: npm run typecheck and npm run build:web.",
+    "rev": 48,
+    "updatedAt": "2026-04-19T02:30:48.101Z"
   },
   "tasks": [
     {
@@ -1663,7 +1663,7 @@
       "id": "bo-034",
       "title": "Design UI: board-first layout cutover and inline AI surfaces",
       "goal": "Make the canvas the primary product surface, move workspace detail into a secondary inspector role, and replace the remaining workspace-first interaction path with inline board-native AI affordances.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p1"
@@ -1671,10 +1671,13 @@
       "references": [
         "Design/Integration Guide.html:307-315",
         "Design/Integration Guide.html:621-639",
-        "apps/web/App.tsx:1673-1703"
+        "apps/web/App.tsx:1-263",
+        "apps/web/BoardWorkspaceOverlays.tsx:1-193",
+        "src/workspace/WorkspaceInspector.tsx:1-218",
+        "src/workspace/WorkspaceActiveFlow.tsx:1-253"
       ],
       "effort": "l",
-      "comment": "The current right-side workspace slideover still carries too much of the product interaction model.",
+      "comment": "Completed the board-first layout cutover: selecting an idea now opens a centered board-focus dock that hosts the live phase loop and inline tool context; the old workspace is now an explicit secondary inspector; the shell keeps review, history, capture, and docs compatible with the board-first flow. Verification: `npm run typecheck` and `npm run build:web` pass.",
       "definition_of_done": [
         "Primary brainstorm flow happens on the board with inline AI artifacts and review surfaces.",
         "Workspace or drawer surfaces are secondary inspectors, not the place where the main loop lives.",
@@ -1701,8 +1704,18 @@
           "layout",
           "inline-ai"
         ],
-        "notes": "Delivers the board-first cutover called for by the guide."
-      }
+        "notes": "Board selection now drives a board-native focus dock, while the inspector is explicit and secondary.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/BoardWorkspaceOverlays.tsx",
+          "src/workspace/Workspace.tsx",
+          "src/workspace/WorkspaceInspector.tsx",
+          "src/workspace/WorkspaceActiveFlow.tsx",
+          "src/workspace/WorkspaceToolContextPanel.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
