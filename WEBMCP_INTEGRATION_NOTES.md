@@ -44,6 +44,7 @@ The extension **reads** WebMCP tools that live on whatever site the user is curr
 - **Scheme restrictions.** `chrome.scripting` cannot inject into `chrome://`, `chrome-extension://`, `about:`, or the new-tab page. We short-circuit those in `queryActiveTabTools()` and return `null` so the UI gracefully says "No detected tools."
 - **Cross-origin `execute()` results.** Tool outputs have to survive structured-clone across worlds. We wrap errors in a `{ __error: string }` sentinel rather than throwing, because thrown exceptions in the MAIN-world callback don't propagate cleanly.
 - **User-consent UX.** Reading tool metadata from an arbitrary tab is low-risk, but *invoking* a tool executes JS in that page's world. The side panel requires an explicit consent click before invocation is enabled.
+- **Phase-transition writeback stays behind a stronger second consent.** The workspace live-tool panel now drafts a best-effort payload when a selected idea changes phase or next step and surfaces that draft for user review. The actual external write still goes through `invokeActiveTabTool()` only after an explicit confirm click, so W1 remains opt-in even when the brainstorm flow suggests a Linear / Jira / PRD writeback.
 
 ---
 
