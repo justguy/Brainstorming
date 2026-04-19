@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  BeatReviewClusterHintCandidateRecord,
+  BeatReviewIdeaInsightCandidateRecord,
+  BeatReviewIdeaSpawnCandidateRecord,
   BeatReviewItemRecord,
   BeatReviewSessionRecord,
   ChangeActor,
@@ -92,11 +95,10 @@ export function useBeatReviewActions({
     setBusyByItem(prev => ({ ...prev, [itemId]: 'keep' }));
     try {
       const actor = { type: 'user' as const, source: 'canvas' as const, label: 'beatReview' };
-      const kept = await keepBeatReviewItem(itemId, actor);
-      const item = kept.item;
-      if (item.candidate.kind === 'cluster_hint') {
-        await applyClusterHint(item, actor);
-      }
+      const item = beatReviewItems.find(candidate => candidate.id === itemId);
+      if (!item) return;
+      await applyReviewCandidate(item, actor);
+      await keepBeatReviewItem(itemId, actor);
     } finally {
       setBusyByItem(prev => ({ ...prev, [itemId]: null }));
     }
@@ -143,8 +145,24 @@ export function useBeatReviewActions({
     setActiveSessionId(null);
   }
 
-  async function applyClusterHint(item: BeatReviewItemRecord, actor: ChangeActor): Promise<void> {
-    const candidate = item.candidate.payload as { ideaIds?: string[]; theme?: string; sharedQuestion?: string };
+  async function applyReviewCandidate(item: BeatReviewItemRecord, actor: ChangeActor): Promise<void> {
+    switch (item.candidate.kind) {
+      case 'cluster_hint':
+        await applyClusterHint(item as BeatReviewItemRecord & { candidate: BeatReviewClusterHintCandidateRecord }, actor);
+        return;
+      case 'idea_insight':
+        await applyIdeaInsight(item as BeatReviewItemRecord & { candidate: BeatReviewIdeaInsightCandidateRecord }, actor);
+        return;
+      case 'idea_spawn':
+        await applyIdeaSpawn(item as BeatReviewItemRecord & { candidate: BeatReviewIdeaSpawnCandidateRecord }, actor);
+    }
+  }
+
+  async function applyClusterHint(
+    item: BeatReviewItemRecord & { candidate: BeatReviewClusterHintCandidateRecord },
+    actor: ChangeActor,
+  ): Promise<void> {
+    const candidate = item.candidate.payload;
     const ideaIds = candidate.ideaIds ?? item.candidate.affectedIdeaIds;
     if (ideaIds.length < 2) return;
 
@@ -171,6 +189,51 @@ export function useBeatReviewActions({
     applyCommittedBoard(themed.document, themed.history);
   }
 
+  async function applyIdeaInsight(
+    item: BeatReviewItemRecord & { candidate: BeatReviewIdeaInsightCandidateRecord },
+    actor: ChangeActor,
+  ): Promise<void> {
+    const candidate = item.candidate.payload;
+    let workingIdeas = ideas;
+
+    for (const ideaId of candidate.targetIdeaIds) {
+      const idea = workingIdeas.find(entry => entry.id === ideaId);
+      if (!idea) continue;
+
+      const nextInsight = { ...candidate.insight, id: crypto.randomUUID() };
+      const existingInsights = idea.insights ?? [];
+      const alreadyPresent = existingInsights.some(existing => (
+        existing.text === nextInsight.text
+          && existing.beatRunId === nextInsight.beatRunId
+          && sameSourceRefs(existing.sourceRefs, nextInsight.sourceRefs)
+      ));
+      if (alreadyPresent) continue;
+
+      const committed = await boardController.updateIdea({
+        ideaId,
+        patch: { insights: [...existingInsights, nextInsight] },
+        actor,
+        summary: `Attached takeaway insight to idea ${ideaId}`,
+      });
+      applyCommittedBoard(committed.document, committed.history);
+      workingIdeas = committed.document.ideas;
+    }
+  }
+
+  async function applyIdeaSpawn(
+    item: BeatReviewItemRecord & { candidate: BeatReviewIdeaSpawnCandidateRecord },
+    actor: ChangeActor,
+  ): Promise<void> {
+    const candidate = item.candidate.payload;
+    const committed = await boardController.captureIdea({
+      rawText: candidate.rawText,
+      tags: candidate.tags,
+      insights: candidate.insights.map(insight => ({ ...insight, id: crypto.randomUUID() })),
+      actor,
+    });
+    applyCommittedBoard(committed.document, committed.history);
+  }
+
   return {
     activeSession,
     activeItems,
@@ -195,4 +258,9 @@ function sharedGroupId(ideas: Idea[], ideaIds: string[]): string | null {
     .filter((groupId): groupId is string => Boolean(groupId));
   if (groupIds.length !== ideaIds.length) return null;
   return groupIds.every(groupId => groupId === groupIds[0]) ? groupIds[0] : null;
+}
+
+function sameSourceRefs(left: BeatReviewItemRecord['candidate']['sources'], right: BeatReviewItemRecord['candidate']['sources']): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((ref, index) => ref.kind === right[index]?.kind && ref.id === right[index]?.id);
 }

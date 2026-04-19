@@ -32,7 +32,11 @@ export function BeatReviewPanelCard({
               {item.status}
             </span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-              {candidate.kind === 'summary' ? 'one-line takeaway' : candidate.kind.replace(/_/g, ' ')}
+              {candidate.kind === 'idea_insight'
+                ? 'idea insight'
+                : candidate.kind === 'idea_spawn'
+                  ? 'takeaway idea'
+                  : candidate.kind.replace(/_/g, ' ')}
             </span>
             {candidate.confidence && (
               <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
@@ -40,9 +44,7 @@ export function BeatReviewPanelCard({
               </span>
             )}
           </div>
-          <h3 className="text-sm font-semibold text-slate-900">
-            {candidate.kind === 'summary' ? 'One-line takeaway' : candidate.label}
-          </h3>
+          <h3 className="text-sm font-semibold text-slate-900">{candidate.label}</h3>
         </div>
         {busy && <span className="text-[11px] italic text-slate-500">{busy === 'keep' ? 'Keeping…' : 'Scratching…'}</span>}
       </div>
@@ -60,10 +62,17 @@ export function BeatReviewPanelCard({
               Theme: {candidate.label}
             </p>
           </>
+        ) : candidate.kind === 'idea_spawn' ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-700">
+              New takeaway idea
+            </p>
+            <p className="mt-1 text-sm leading-snug text-slate-700">{candidate.summary}</p>
+          </div>
         ) : (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">
-              Board takeaway
+              Linked insight
             </p>
             <p className="mt-1 text-sm leading-snug text-slate-700">{candidate.summary}</p>
           </div>

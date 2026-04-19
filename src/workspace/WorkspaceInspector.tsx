@@ -172,6 +172,30 @@ export function WorkspaceInspector({
         </div>
       )}
 
+      {(idea.insights?.length ?? 0) > 0 && (
+        <div className="shrink-0 border-b border-emerald-100 bg-emerald-50/70 px-5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+            Linked insights
+          </p>
+          <div className="mt-2 space-y-2">
+            {idea.insights?.slice(-2).reverse().map(insight => (
+              <div key={insight.id} className="rounded-xl border border-emerald-100 bg-white/80 px-3 py-2">
+                <p className="text-sm leading-snug text-gray-800">{insight.text}</p>
+                {insight.sourceRefs.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {insight.sourceRefs.map(ref => (
+                      <span key={`${insight.id}-${ref.kind}-${ref.id}`} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800">
+                        {ref.kind}: {ref.label ?? ref.id}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 space-y-1 overflow-y-auto px-5 py-4">
         {phaseAdapter.sections.map(section => (
           <div

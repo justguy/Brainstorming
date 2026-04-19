@@ -35,6 +35,7 @@ export function createCapturedIdea(input: {
   boardId?: BoardId;
   createdAt?: number;
   id?: string;
+  insights?: Idea['insights'];
 }): Idea {
   const createdAt = input.createdAt ?? Date.now();
   const idea: Idea = {
@@ -51,6 +52,7 @@ export function createCapturedIdea(input: {
     clarifications: [],
     turnLog: [],
     readiness: 'red',
+    insights: input.insights ?? [],
   };
 
   idea.panel = input.panel ?? defaultPanelForIdea(idea);

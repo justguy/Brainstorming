@@ -1,5 +1,6 @@
 import type { ActiveTabToolContext } from './webmcp/types';
 export type { ActiveTabToolContext } from './webmcp/types';
+import type { BeatSourceRef } from './beats/types';
 
 export type IdeaStatus = 'captured' | 'in_progress' | 'blocked' | 'ready_for_handoff' | 'archived' | 'discarded';
 // Phase may be an integer (main phase 0-8) or a decimal (micro step, e.g. 0.5, 2.5, 4.5).
@@ -216,6 +217,16 @@ export interface Idea {
   providerUsed?: ProviderId;
   panel?: Panel;                       // floating-canvas position + group membership
   mergedFrom?: string[];               // if this idea was merged, the ids of the originals
+  insights?: IdeaInsight[];
+}
+
+export interface IdeaInsight {
+  id: string;
+  text: string;
+  sourceRefs: BeatSourceRef[];
+  relatedGroupIds?: string[];
+  beatRunId?: string;
+  createdAt: number;
 }
 
 export interface ProviderCredentials {

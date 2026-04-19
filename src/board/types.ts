@@ -2,6 +2,7 @@ import type {
   BoardId,
   Connection,
   Idea,
+  IdeaInsight,
   IdeaCritique,
   IdeaGroup,
   LlmMessage,
@@ -9,7 +10,14 @@ import type {
   Settings,
   SupportingDoc,
 } from '../types';
-import type { BeatConfidence, BeatName, BeatSize, BeatSourceRef, BeatTrigger } from '../beats/types';
+import type {
+  BeatClusterHint,
+  BeatConfidence,
+  BeatName,
+  BeatSize,
+  BeatSourceRef,
+  BeatTrigger,
+} from '../beats/types';
 
 export const DEFAULT_BOARD_ID: BoardId = 'local-board';
 export const DEFAULT_BOARD_TITLE = 'Main Board';
@@ -119,8 +127,7 @@ export interface BeatReviewSessionRecord {
   provenance?: BeatReviewRunProvenance;
 }
 
-export interface BeatReviewCandidateRecord {
-  kind: string;
+interface BeatReviewCandidateBaseRecord {
   label: string;
   summary: string;
   detail?: string;
@@ -134,6 +141,34 @@ export interface BeatReviewCandidateRecord {
   position?: number;
   rawProposal?: unknown;
 }
+
+export interface BeatReviewClusterHintCandidateRecord extends BeatReviewCandidateBaseRecord {
+  kind: 'cluster_hint';
+  payload: BeatClusterHint;
+}
+
+export interface BeatReviewIdeaInsightCandidateRecord extends BeatReviewCandidateBaseRecord {
+  kind: 'idea_insight';
+  payload: {
+    summary: string;
+    targetIdeaIds: string[];
+    insight: IdeaInsight;
+  };
+}
+
+export interface BeatReviewIdeaSpawnCandidateRecord extends BeatReviewCandidateBaseRecord {
+  kind: 'idea_spawn';
+  payload: {
+    rawText: string;
+    tags: string[];
+    insights: IdeaInsight[];
+  };
+}
+
+export type BeatReviewCandidateRecord =
+  | BeatReviewClusterHintCandidateRecord
+  | BeatReviewIdeaInsightCandidateRecord
+  | BeatReviewIdeaSpawnCandidateRecord;
 
 export interface BeatReviewItemRecord {
   id: string;

@@ -125,23 +125,31 @@ export function BoardBeatsCard({
             <div className="mt-3 space-y-2">
               {boardBeatReviewItems.slice(0, 2).map(item => (
                 <div key={item.id} className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-                  {item.candidate.kind === 'summary' ? (
-                    <>
-                      <span className="font-semibold text-slate-800">Takeaway: </span>
-                      {item.candidate.summary}
-                      {item.candidate.affectedRefs?.some(ref => ref.kind === 'group') && (
-                        <span className="mt-1 block text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                          Anchored to {item.candidate.affectedRefs.filter(ref => ref.kind === 'group').length} group
-                          {item.candidate.affectedRefs.filter(ref => ref.kind === 'group').length === 1 ? '' : 's'}
-                        </span>
-                      )}
-                    </>
-                  ) : (
+                  {item.candidate.kind === 'cluster_hint' ? (
                     <>
                       <span className="font-semibold text-slate-800">Theme: </span>
                       {item.candidate.label}
                       <span className="mt-1 block text-slate-500">
                         Shared question: {item.candidate.summary}
+                      </span>
+                    </>
+                  ) : item.candidate.kind === 'idea_spawn' ? (
+                    <>
+                      <span className="font-semibold text-slate-800">New idea: </span>
+                      {item.candidate.summary}
+                      {item.candidate.affectedRefs?.length ? (
+                        <span className="mt-1 block text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                          Linked to {item.candidate.affectedRefs.length} source
+                          {item.candidate.affectedRefs.length === 1 ? '' : 's'}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-slate-800">Insight: </span>
+                      {item.candidate.label}
+                      <span className="mt-1 block text-slate-500">
+                        {item.candidate.summary}
                       </span>
                     </>
                   )}

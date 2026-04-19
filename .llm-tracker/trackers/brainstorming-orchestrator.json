@@ -69,8 +69,8 @@
       }
     ],
     "scratchpad": "bo-029 through bo-034 are complete. The board-first cutover now keeps the canvas primary with a centered focus dock for the active phase loop, while the old workspace has been reduced to a secondary inspector. Verification: npm run typecheck and npm run build:web.",
-    "rev": 50,
-    "updatedAt": "2026-04-19T02:58:39.433Z"
+    "rev": 52,
+    "updatedAt": "2026-04-19T03:20:20.243Z"
   },
   "tasks": [
     {
@@ -1774,7 +1774,7 @@
       "id": "bo-036",
       "title": "Design UI: source-linked metadata edits and structural idea operations",
       "goal": "Let kept beat candidates append metadata to existing ideas, attach sources, create entirely new ideas, rewrite idea structure, or modify existing relationships while preserving provenance and reversibility.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p1"
@@ -1784,7 +1784,7 @@
         "Design/Integration Guide.html:553-603"
       ],
       "effort": "m",
-      "comment": "Accepted beat output must be able to enrich existing ideas, not only create detached suggestion cards.",
+      "comment": "Completed source-linked metadata and structural review operations: summary review now yields structured `idea_insight` and `idea_spawn` candidates, keep actions dispatch through board-controller mutations instead of no-op bookkeeping, and ideas now carry durable `insights` metadata with linked source refs surfaced in the canvas/inspector. Cluster hints continue to handle reversible structural edits through the same review path. Verification: `npm run typecheck` and `npm run build:web` pass.",
       "definition_of_done": [
         "Accepted candidates can create new ideas, enrich existing idea metadata, attach sources, or modify structure through the board controller.",
         "Every structural edit retains provenance and remains reversible through the patch journal.",
@@ -1814,7 +1814,9 @@
           "structural-edits"
         ],
         "notes": "Implements the user's requirement that kept beats can enrich, create, or restructure board ideas."
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [

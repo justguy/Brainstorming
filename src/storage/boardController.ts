@@ -31,7 +31,7 @@ import {
 export function createBoardController(boardId: BoardId) {
   return {
     boardId,
-    captureIdea(input: { rawText: string; tags: string[]; actor: ChangeActor }) {
+    captureIdea(input: { rawText: string; tags: string[]; actor: ChangeActor; insights?: Idea['insights'] }) {
       return commitCapturedIdea(boardId, input);
     },
     moveIdeaPanel(input: { ideaId: string; x: number; y: number; actor: ChangeActor }) {
@@ -245,7 +245,7 @@ async function commitIdeaMutation(
 
 async function commitCapturedIdea(
   boardId: BoardId,
-  input: { rawText: string; tags: string[]; actor: ChangeActor },
+  input: { rawText: string; tags: string[]; actor: ChangeActor; insights?: Idea['insights'] },
 ): Promise<BoardIdeaCommitResult> {
   await ensureBoard(boardId);
   const db = await getDb();
@@ -263,6 +263,7 @@ async function commitCapturedIdea(
     rawText: input.rawText,
     tags: input.tags,
     createdAt: now,
+    insights: input.insights,
   });
   const ideaPatches = createEntityPatches('ideas', afterIdea.id, undefined, afterIdea);
   const nextBoard = {

@@ -157,6 +157,7 @@ export default function IdeaPanel({
     : tone === 'muted'
     ? 'border-gray-200 shadow-sm'
     : 'border-gray-200 shadow-md hover:shadow-lg';
+  const insightCount = idea.insights?.length ?? 0;
 
   return (
     <div
@@ -220,6 +221,11 @@ export default function IdeaPanel({
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <Badge color={idea.readiness}>{idea.readiness}</Badge>
           <span className="text-xs text-gray-500">Step {idea.phase}/8</span>
+          {insightCount > 0 && (
+            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+              Insight {insightCount}
+            </span>
+          )}
         </div>
 
         {idea.tags.length > 0 && (

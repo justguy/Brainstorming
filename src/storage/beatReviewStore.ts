@@ -122,30 +122,70 @@ function mapCandidates(result: ReviewableBeatResult): BeatReviewCandidateRecord[
     }));
   }
 
-  return result.proposal.summaries.map(summary => ({
-    kind: 'summary',
-    label: truncateLabel(summary.summary, 72),
-    summary: summary.summary,
-    detail: buildSummaryDetail(summary.relatedIdeaIds, summary.relatedGroupIds ?? []),
-    confidence: summary.confidence,
-    affectedIdeaIds: [...summary.relatedIdeaIds],
-    affectedStructureIds: [...(summary.relatedGroupIds ?? [])],
-    sources: [...summary.sources],
-    affectedRefs: [
+  return result.proposal.summaries.flatMap(summary => {
+    const sourceRefs = [...summary.sources];
+    const affectedRefs = [
       ...summary.relatedIdeaIds.map(id => ({
         kind: 'idea' as const,
         id,
-        label: sourceLabel(summary.sources, 'idea', id),
+        label: sourceLabel(sourceRefs, 'idea', id),
       })),
       ...(summary.relatedGroupIds ?? []).map(id => ({
         kind: 'group' as const,
         id,
-        label: sourceLabel(summary.sources, 'group', id),
+        label: sourceLabel(sourceRefs, 'group', id),
       })),
-    ],
-    rawProposal: summary,
-    payload: summary,
-  }));
+    ];
+    const insight = {
+      id: crypto.randomUUID(),
+      text: summary.summary,
+      sourceRefs,
+      relatedGroupIds: summary.relatedGroupIds,
+      beatRunId: result.meta.runId,
+      createdAt: result.meta.finishedAt,
+    };
+
+    const candidates: BeatReviewCandidateRecord[] = [];
+    if (summary.relatedIdeaIds.length > 0) {
+      candidates.push({
+        kind: 'idea_insight',
+        label: `Attach takeaway to ${summary.relatedIdeaIds.length} idea${summary.relatedIdeaIds.length === 1 ? '' : 's'}`,
+        summary: summary.summary,
+        detail: buildSummaryDetail(summary.relatedIdeaIds, summary.relatedGroupIds ?? []),
+        confidence: summary.confidence,
+        affectedIdeaIds: [...summary.relatedIdeaIds],
+        affectedStructureIds: [...(summary.relatedGroupIds ?? [])],
+        sources: sourceRefs,
+        affectedRefs,
+        rawProposal: summary,
+        payload: {
+          summary: summary.summary,
+          targetIdeaIds: [...summary.relatedIdeaIds],
+          insight,
+        },
+      });
+    }
+
+    candidates.push({
+      kind: 'idea_spawn',
+      label: 'Create takeaway idea',
+      summary: summary.summary,
+      detail: 'Create a new sticky that preserves the takeaway with linked source refs.',
+      confidence: summary.confidence,
+      affectedIdeaIds: [...summary.relatedIdeaIds],
+      affectedStructureIds: [...(summary.relatedGroupIds ?? [])],
+      sources: sourceRefs,
+      affectedRefs,
+      rawProposal: summary,
+      payload: {
+        rawText: summary.summary,
+        tags: ['ai-takeaway'],
+        insights: [insight],
+      },
+    });
+
+    return candidates;
+  });
 }
 
 function sourceLabel(
