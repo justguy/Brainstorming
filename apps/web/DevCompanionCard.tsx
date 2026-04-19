@@ -1,6 +1,6 @@
 import React from 'react';
 import type { BeatName, BeatRunState } from '../../src/beats/types';
-import type { SoftModeAssessment } from './softMode';
+import type { ActivityKind, SoftModeAssessment } from './softMode';
 
 interface RecentAiAction {
   kind: BeatName;
@@ -19,6 +19,11 @@ interface DevCompanionCardProps {
   lastAiAction?: RecentAiAction;
   lastScoutRunAt: number | null;
   lastConnectionsRunAt: number | null;
+  softModeBusy: boolean;
+  lastMeaningfulActivity: { kind: ActivityKind | null; at: number };
+  pendingBoardChange: boolean;
+  autoRunReady: boolean;
+  autoRunCountdownMs: number;
   actionLabel?: string;
   onAction?: () => void;
   onTogglePause: () => void;
@@ -26,10 +31,19 @@ interface DevCompanionCardProps {
 
 export function DevCompanionCard(props: DevCompanionCardProps): React.ReactElement {
   const mode = companionMode(props);
-  const idleProgress = Math.min(1, props.idleMs / props.autoIdleMs);
+  const idleProgress = props.pendingBoardChange
+    ? Math.min(1, (props.autoIdleMs - props.autoRunCountdownMs) / props.autoIdleMs)
+    : Math.min(1, props.idleMs / props.autoIdleMs);
   const statusLabel = mode.status;
   const headline = mode.headline;
   const detail = mode.detail;
+  const triggerLabel = props.activeBeatRun
+    ? beatLabel(props.activeBeatRun.beat)
+    : props.pendingBoardChange
+      ? props.autoRunReady
+        ? 'ready now'
+        : `${formatDuration(props.autoRunCountdownMs)} to nudge`
+      : `${Math.round(idleProgress * 100)}% primed`;
 
   return (
     <section className="w-full overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,rgba(248,250,252,0.96),rgba(255,247,237,0.95))] p-4 shadow-[0_24px_60px_-38px_rgba(15,23,42,0.45)]">
@@ -53,7 +67,7 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
         <div>
           <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500">
             <span>{props.activeBeatRun ? 'Beat activity' : 'Idle trigger'}</span>
-            <span>{props.activeBeatRun ? beatLabel(props.activeBeatRun.beat) : `${Math.round(idleProgress * 100)}% primed`}</span>
+            <span>{triggerLabel}</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-white/80 ring-1 ring-slate-200">
             <div
@@ -69,6 +83,14 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
           <InfoPill label="Last scout" value={formatSince(props.lastScoutRunAt)} />
           <InfoPill label="Last links" value={formatSince(props.lastConnectionsRunAt)} />
         </div>
+
+        {props.lastMeaningfulActivity.kind && (
+          <div className="rounded-2xl bg-white/75 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+            Last board change: <span className="font-medium text-slate-800">{activityLabel(props.lastMeaningfulActivity.kind)}</span>{' '}
+            {formatSince(props.lastMeaningfulActivity.at)}.
+            {props.pendingBoardChange && !props.activeBeatRun && ` Auto beats are ${props.autoRunReady ? 'primed' : 'waiting for idle'}.`}
+          </div>
+        )}
 
         {props.lastAiAction && (
           <div className="rounded-2xl bg-white/75 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
@@ -178,6 +200,34 @@ function companionMode(props: DevCompanionCardProps): {
     };
   }
 
+  if (props.pendingBoardChange) {
+    return {
+      status: props.autoRunReady ? 'primed' : 'watching',
+      headline: props.autoRunReady ? readyHeadline(props.softModeAssessment.inferredMode) : 'Watching the latest board change',
+      detail: props.autoRunReady
+        ? 'The last board change has settled. The companion can launch the next automatic beat without interrupting your flow.'
+        : `The latest board change is still settling. The companion waits ${formatDuration(props.autoRunCountdownMs)} of clean idle before nudging the board.`,
+      dotClass: props.autoRunReady ? 'bg-cyan-500 animate-pulse' : 'bg-emerald-500',
+      pillClass: props.autoRunReady
+        ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
+        : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      progressClass: props.autoRunReady
+        ? 'bg-gradient-to-r from-cyan-400 to-sky-500'
+        : 'bg-gradient-to-r from-emerald-300 to-lime-400',
+    };
+  }
+
+  if (props.softModeBusy) {
+    return {
+      status: 'drafting',
+      headline: 'Finishing the current pass',
+      detail: 'The companion is already resolving a beat result. The board stays editable while the draft settles.',
+      dotClass: 'bg-sky-500 animate-pulse',
+      pillClass: 'border-sky-200 bg-sky-50 text-sky-700',
+      progressClass: 'bg-gradient-to-r from-sky-400 via-cyan-400 to-teal-400',
+    };
+  }
+
   return {
     status: 'watching',
     headline: idleHeadline(props.softModeAssessment.inferredMode),
@@ -216,10 +266,40 @@ function idleHeadline(mode: SoftModeAssessment['inferredMode']): string {
   }
 }
 
+function readyHeadline(mode: SoftModeAssessment['inferredMode']): string {
+  switch (mode) {
+    case 'explore':
+      return 'Ready to draft adjacent ideas';
+    case 'structure':
+      return 'Ready to trace sharper links';
+    case 'stress':
+      return 'Ready to stress-test the focus idea';
+    case 'converge':
+      return 'Ready to distill a takeaway';
+  }
+}
+
+function activityLabel(kind: ActivityKind): string {
+  switch (kind) {
+    case 'edit':
+      return 'edit';
+    case 'group':
+      return 'group change';
+    case 'doc':
+      return 'doc update';
+  }
+}
+
 function formatSince(timestamp: number | null): string {
   if (!timestamp) return 'not yet';
   const delta = Math.max(0, Date.now() - timestamp);
   if (delta < 60_000) return `${Math.round(delta / 1000)}s ago`;
   if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
   return `${Math.round(delta / 3_600_000)}h ago`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms <= 1_000) return 'about 1s';
+  if (ms < 60_000) return `about ${Math.ceil(ms / 1_000)}s`;
+  return `about ${Math.ceil(ms / 60_000)}m`;
 }

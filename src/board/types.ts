@@ -9,7 +9,7 @@ import type {
   Settings,
   SupportingDoc,
 } from '../types';
-import type { BeatName, BeatSize, BeatTrigger } from '../beats/types';
+import type { BeatConfidence, BeatName, BeatSize, BeatSourceRef, BeatTrigger } from '../beats/types';
 
 export const DEFAULT_BOARD_ID: BoardId = 'local-board';
 export const DEFAULT_BOARD_TITLE = 'Main Board';
@@ -59,6 +59,100 @@ export interface BeatRunRecord {
   proposal: unknown;
 }
 
+export type BeatReviewSessionStatus = 'open' | 'resolved';
+export type BeatReviewItemStatus = 'pending' | 'kept' | 'scratched';
+
+export interface BeatReviewAffectedRef {
+  kind: BeatSourceRef['kind'] | 'group' | 'suggestion' | 'structure';
+  id: string;
+  label?: string;
+}
+
+export interface BeatReviewDecisionRecord {
+  status: BeatReviewItemStatus;
+  decidedAt: number;
+  actor: 'user' | 'ai' | 'tool' | 'system';
+  note?: string;
+}
+
+export interface BeatReviewRunProvenance {
+  beatRunId: string;
+  beat: BeatName;
+  roleId: string;
+  usedFallback: boolean;
+  trigger: BeatTrigger;
+  size: BeatSize;
+  startedAt: number;
+  finishedAt: number;
+  focusIdeaId?: string;
+}
+
+export interface BeatReviewTombstone {
+  scratchedAt: number;
+  note?: string;
+}
+
+export interface BeatReviewSessionRecord {
+  id: string;
+  boardId: BoardId;
+  beatRunId: string;
+  beat: BeatName;
+  roleId: string;
+  usedFallback: boolean;
+  trigger: BeatTrigger;
+  size: BeatSize;
+  focusIdeaId?: string;
+  title: string;
+  summary: string;
+  status: BeatReviewSessionStatus;
+  itemIds: string[];
+  startedAt: number;
+  finishedAt: number;
+  createdAt: number;
+  updatedAt: number;
+  resolvedAt?: number;
+  pendingCount?: number;
+  keptCount?: number;
+  scratchedCount?: number;
+  proposalKeys?: string[];
+  rawProposal?: unknown;
+  provenance?: BeatReviewRunProvenance;
+}
+
+export interface BeatReviewCandidateRecord {
+  kind: string;
+  label: string;
+  summary: string;
+  detail?: string;
+  confidence?: BeatConfidence;
+  affectedIdeaIds: string[];
+  affectedStructureIds?: string[];
+  sources: BeatSourceRef[];
+  payload: unknown;
+  affectedRefs?: BeatReviewAffectedRef[];
+  collectionKey?: string;
+  position?: number;
+  rawProposal?: unknown;
+}
+
+export interface BeatReviewItemRecord {
+  id: string;
+  boardId: BoardId;
+  sessionId: string;
+  beatRunId: string;
+  beat: BeatName;
+  status: BeatReviewItemStatus;
+  candidate: BeatReviewCandidateRecord;
+  createdAt: number;
+  updatedAt: number;
+  reviewedAt?: number;
+  provenance?: BeatReviewRunProvenance;
+  decisionHistory?: BeatReviewDecisionRecord[];
+  keptAt?: number;
+  scratchedAt?: number;
+  tombstone?: BeatReviewTombstone;
+}
+
 export interface SettingsRecord {
   id: string;
   value: Settings;
@@ -76,6 +170,8 @@ export interface BoardDocument {
   critiques: IdeaCritique[];
   connections: Connection[];
   beatRuns: BeatRunRecord[];
+  beatReviewSessions: BeatReviewSessionRecord[];
+  beatReviewItems: BeatReviewItemRecord[];
   tweaks: BoardTweaksRecord | null;
 }
 
@@ -87,6 +183,8 @@ export type BoardStoreName =
   | 'suggestions'
   | 'critiques'
   | 'connections'
+  | 'beatReviewSessions'
+  | 'beatReviewItems'
   | 'tweaks';
 
 export type BoardPatchOp =
@@ -112,6 +210,7 @@ export type ChangeSetKind =
   | 'move_idea'
   | 'discard_idea'
   | 'restore_idea'
+  | 'update_tweaks'
   | 'update_idea'
   | 'merge_ideas'
   | 'group_ideas'
@@ -126,6 +225,9 @@ export type ChangeSetKind =
   | 'update_doc'
   | 'delete_doc'
   | 'replace_connections'
+  | 'create_beat_review_session'
+  | 'keep_beat_review_item'
+  | 'scratch_beat_review_item'
   | 'dismiss_suggestion';
 
 export type ChangeSetStatus = 'committed' | 'undone' | 'superseded';

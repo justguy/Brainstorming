@@ -39,6 +39,10 @@ interface UseBrainstormSuggestionEventsArgs {
     source?: 'canvas' | 'webmcp' | 'beat';
   }) => Promise<ScoutSuggestion[]>;
   runBoardBeat: RunBoardBeat;
+  presentBeatReview: (
+    result: BeatResult<'cluster'> | BeatResult<'summarise'>,
+    source?: 'canvas' | 'webmcp' | 'beat',
+  ) => Promise<{ sessionId: string; itemCount: number } | null>;
   handleAdmitSuggestion: (id: string, source?: 'canvas' | 'webmcp') => Promise<void>;
   handleElaborateSuggestion: (id: string, source?: 'canvas' | 'webmcp') => Promise<void>;
   handleDismissSuggestion: (id: string, source?: 'canvas' | 'webmcp') => Promise<void>;
@@ -53,6 +57,7 @@ export function useBrainstormSuggestionEvents({
   runCritiqueIdea,
   runScout,
   runBoardBeat,
+  presentBeatReview,
   handleAdmitSuggestion,
   handleElaborateSuggestion,
   handleDismissSuggestion,
@@ -125,8 +130,9 @@ export function useBrainstormSuggestionEvents({
             detail = {
               ok: result.ok,
               beat,
-              mode: 'preview',
+              mode: 'review',
               meta: result.meta,
+              ...(result.ok ? await presentBeatReview(result, 'webmcp') ?? {} : {}),
               hints: result.ok ? result.proposal.hints : [],
               reason: result.ok ? undefined : result.reason,
             };
@@ -145,8 +151,9 @@ export function useBrainstormSuggestionEvents({
             detail = {
               ok: result.ok,
               beat,
-              mode: 'preview',
+              mode: 'review',
               meta: result.meta,
+              ...(result.ok ? await presentBeatReview(result, 'webmcp') ?? {} : {}),
               summaries: result.ok ? result.proposal.summaries : [],
               reason: result.ok ? undefined : result.reason,
             };

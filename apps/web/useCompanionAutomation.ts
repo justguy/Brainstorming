@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { BeatName } from '../../src/beats/types';
+import type { BeatName, BeatRunState } from '../../src/beats/types';
 import type { Connection, Idea, IdeaCritique } from '../../src/types';
 import {
   dismissSoftModeHint,
   inferSoftMode,
   recordActivity,
   shouldShowSoftModeHint,
+  type ActivityKind,
   type ActivityState,
 } from './softMode';
 
@@ -16,6 +17,7 @@ const AUTO_CRITIQUE_COOLDOWN_MS = 45_000;
 export const AUTO_IDLE_MS = 1_500;
 
 type RevealOrigin = 'manual' | 'ai';
+type MeaningfulActivity = { kind: ActivityKind | null; at: number };
 
 interface RecentAiAction {
   kind: Extract<BeatName, 'connect' | 'scout' | 'critique'>;
@@ -28,6 +30,9 @@ interface UseCompanionAutomationArgs {
   setActivity: Dispatch<SetStateAction<ActivityState>>;
   dragActive: boolean;
   textEntryActive: boolean;
+  activeBeatRun: BeatRunState | null;
+  persistedFacilitatorPaused: boolean;
+  persistFacilitatorPaused: (paused: boolean) => Promise<void>;
   scouting: boolean;
   findingConnections: boolean;
   critiqueBusyByIdea: Record<string, boolean>;
@@ -58,6 +63,9 @@ export function useCompanionAutomation({
   setActivity,
   dragActive,
   textEntryActive,
+  activeBeatRun,
+  persistedFacilitatorPaused,
+  persistFacilitatorPaused,
   scouting,
   findingConnections,
   critiqueBusyByIdea,
@@ -72,12 +80,13 @@ export function useCompanionAutomation({
   runCritiqueIdea,
 }: UseCompanionAutomationArgs) {
   const [clockMs, setClockMs] = useState(() => Date.now());
-  const [facilitatorPaused, setFacilitatorPaused] = useState(false);
+  const [facilitatorPaused, setFacilitatorPaused] = useState(persistedFacilitatorPaused);
   const [aiActions, setAiActions] = useState<RecentAiAction[]>([]);
   const autoCooldownRef = useRef({
     lastConnectionsAt: 0,
     lastScoutAt: 0,
     lastAiActionAt: 0,
+    lastObservedBoardChangeAt: 0,
     critiqueByIdea: {} as Record<string, number>,
   });
 
@@ -86,7 +95,15 @@ export function useCompanionAutomation({
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    setFacilitatorPaused(persistedFacilitatorPaused);
+  }, [persistedFacilitatorPaused]);
+
   const idleMs = Math.max(0, clockMs - activity.lastInteractionAt);
+  const lastMeaningfulActivity = latestMeaningfulActivity(activity);
+  const idleSinceBoardChangeMs = lastMeaningfulActivity.at > 0
+    ? Math.max(0, clockMs - lastMeaningfulActivity.at)
+    : 0;
   const softModeAssessment = inferSoftMode({
     ideaCount: visibleIdeas.length,
     editCount: activity.recentEdits.length,
@@ -98,6 +115,8 @@ export function useCompanionAutomation({
   });
   const interactionSuppressed = dragActive || textEntryActive;
   const softModeBusy = scouting || findingConnections || Object.values(critiqueBusyByIdea).some(Boolean);
+  const pendingBoardChange = lastMeaningfulActivity.at > autoCooldownRef.current.lastObservedBoardChangeAt;
+  const autoRunReady = pendingBoardChange && idleSinceBoardChangeMs >= AUTO_IDLE_MS;
   const showSoftModeHint = shouldShowSoftModeHint({
     assessment: softModeAssessment,
     idleMs,
@@ -107,6 +126,12 @@ export function useCompanionAutomation({
 
   async function handleSoftModeAction(): Promise<void> {
     setActivity(prev => dismissSoftModeHint(recordActivity(prev, 'edit')));
+    if (lastMeaningfulActivity.at > 0) {
+      autoCooldownRef.current.lastObservedBoardChangeAt = Math.max(
+        autoCooldownRef.current.lastObservedBoardChangeAt,
+        lastMeaningfulActivity.at,
+      );
+    }
 
     if (softModeAssessment.inferredMode === 'explore') {
       await runScout();
@@ -127,7 +152,21 @@ export function useCompanionAutomation({
   const companionActionLabel = actionLabelFor(softModeAssessment.inferredMode, !!(selectedBoardIdea || visibleIdeas[0]));
 
   useEffect(() => {
-    if (facilitatorPaused || softModeBusy || interactionSuppressed || idleMs < AUTO_IDLE_MS) return;
+    if (!activeBeatRun || lastMeaningfulActivity.at === 0) return;
+    autoCooldownRef.current.lastObservedBoardChangeAt = Math.max(
+      autoCooldownRef.current.lastObservedBoardChangeAt,
+      lastMeaningfulActivity.at,
+    );
+  }, [activeBeatRun, lastMeaningfulActivity.at]);
+
+  useEffect(() => {
+    if (
+      facilitatorPaused ||
+      softModeBusy ||
+      interactionSuppressed ||
+      !pendingBoardChange ||
+      idleSinceBoardChangeMs < AUTO_IDLE_MS
+    ) return;
 
     let cancelled = false;
 
@@ -135,6 +174,7 @@ export function useCompanionAutomation({
       const now = Date.now();
       const auto = autoCooldownRef.current;
       if (now - auto.lastAiActionAt < AUTO_SEQUENCE_GAP_MS) return;
+      auto.lastObservedBoardChangeAt = lastMeaningfulActivity.at;
 
       if (visibleIdeas.length >= 3 && connectionsCount === 0 && now - auto.lastConnectionsAt >= 30_000) {
         auto.lastConnectionsAt = now;
@@ -182,7 +222,9 @@ export function useCompanionAutomation({
     facilitatorPaused,
     softModeBusy,
     interactionSuppressed,
-    idleMs,
+    pendingBoardChange,
+    idleSinceBoardChangeMs,
+    lastMeaningfulActivity.at,
     visibleIdeas,
     connectionsCount,
     suggestionsCount,
@@ -200,10 +242,22 @@ export function useCompanionAutomation({
     softModeAssessment,
     interactionSuppressed,
     softModeBusy,
+    lastMeaningfulActivity,
+    pendingBoardChange,
+    autoRunReady,
+    autoRunCountdownMs: pendingBoardChange ? Math.max(0, AUTO_IDLE_MS - idleSinceBoardChangeMs) : AUTO_IDLE_MS,
     showSoftModeHint,
     companionActionLabel,
     handleSoftModeAction,
-    toggleFacilitatorPause: () => setFacilitatorPaused(value => !value),
+    toggleFacilitatorPause: async () => {
+      const next = !facilitatorPaused;
+      setFacilitatorPaused(next);
+      try {
+        await persistFacilitatorPaused(next);
+      } catch {
+        setFacilitatorPaused(!next);
+      }
+    },
     lastAiAction: aiActions[0],
     dismissHint: () => setActivity(prev => dismissSoftModeHint(prev)),
   };
@@ -228,6 +282,7 @@ function recordAiAction(
     lastConnectionsAt: number;
     lastScoutAt: number;
     lastAiActionAt: number;
+    lastObservedBoardChangeAt: number;
     critiqueByIdea: Record<string, number>;
   }>,
   setAiActions: Dispatch<SetStateAction<RecentAiAction[]>>,
@@ -241,4 +296,16 @@ function recordAiAction(
   };
   autoCooldownRef.current.lastAiActionAt = action.createdAt;
   setAiActions(prev => [action, ...prev].slice(0, 5));
+}
+
+function latestMeaningfulActivity(activity: ActivityState): MeaningfulActivity {
+  const latestEntries: MeaningfulActivity[] = [
+    { kind: 'edit', at: activity.recentEdits.at(-1) ?? 0 },
+    { kind: 'group', at: activity.recentGroups.at(-1) ?? 0 },
+    { kind: 'doc', at: activity.recentDocs.at(-1) ?? 0 },
+  ];
+  return latestEntries.reduce<MeaningfulActivity>(
+    (latest, entry) => (entry.at > latest.at ? entry : latest),
+    { kind: null, at: 0 },
+  );
 }

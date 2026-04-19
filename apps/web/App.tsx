@@ -18,12 +18,20 @@ import { useHashRoute } from './useHashRoute';
 import { useBoardActivity } from './useBoardActivity';
 import { useBoardBeatRunner } from './useBoardBeatRunner';
 import { BoardAppView } from './BoardAppView';
+import { useBeatReviewActions } from './useBeatReviewActions';
+import { BeatReviewPanel } from './BeatReviewPanel';
+import { BoardHistoryPanel } from './BoardHistoryPanel';
+import { createBoardHistoryEntries } from './historyTimeline';
+
+const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 
 export default function App(): React.ReactElement {
   const [hash, navigate] = useHashRoute();
   const {
-    boardId, boardRepository, boardController, ideas, groups, selectedId, setSelectedId, hasApiKey,
-    docCounts, setDocCounts, connections, critiques, suggestions, historyState, applyCommittedBoard,
+    boardId, boardRepository, boardController, ideas, groups, docs, selectedId, setSelectedId, hasApiKey,
+    docCounts, setDocCounts, connections, critiques, suggestions, beatReviewSessions, beatReviewItems, tweaks,
+    historyState, changeSets, applyCommittedBoard, updateBoardTweaks, createBeatReviewSession, keepBeatReviewItem,
+    scratchBeatReviewItem,
     handleIdeaUpdate, loadIdeas, loadDocCounts, loadCritiques, supportingDocMutations, refineSupportingDoc,
   } = useBoardSync();
   const [newIdeaText, setNewIdeaText] = useState('');
@@ -32,6 +40,7 @@ export default function App(): React.ReactElement {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [advancingFromTool, setAdvancingFromTool] = useState(false);
   const [canvasBusy, setCanvasBusy] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
@@ -67,6 +76,27 @@ export default function App(): React.ReactElement {
   const { handleMove, handleGroup, handleUngroup, handleMerge } = useCanvasIdeaMutations({
     ideas, boardController, applyCommittedBoard, setCanvasBusy, setSelectedId, markActivity,
   });
+  const {
+    activeSession: activeBeatReviewSession,
+    activeItems: activeBeatReviewItems,
+    busyByItem: beatReviewBusyByItem,
+    batchBusy: beatReviewBatchBusy,
+    presentBeatReview,
+    handleKeep: handleKeepBeatReviewItem,
+    handleScratch: handleScratchBeatReviewItem,
+    handleKeepAll: handleKeepAllBeatReviewItems,
+    handleScratchAll: handleScratchAllBeatReviewItems,
+    closeActiveSession: closeBeatReviewSession,
+  } = useBeatReviewActions({
+    ideas,
+    beatReviewSessions,
+    beatReviewItems,
+    boardController,
+    applyCommittedBoard,
+    createBeatReviewSession,
+    keepBeatReviewItem,
+    scratchBeatReviewItem,
+  });
 
   useBrainstormSupportingDocEvents({ boardId, ideas, loadDocCounts, markActivity, supportingDocMutations, refineSupportingDoc });
   useBrainstormAnalysisEvents({
@@ -78,6 +108,7 @@ export default function App(): React.ReactElement {
   });
   useBrainstormSuggestionEvents({
     boardId, ideas, connections, suggestions, runConnectionFinder, runCritiqueIdea, runScout, runBoardBeat,
+    presentBeatReview,
     handleAdmitSuggestion, handleElaborateSuggestion, handleDismissSuggestion,
   });
   useBrainstormWorkspaceEvents({
@@ -86,9 +117,25 @@ export default function App(): React.ReactElement {
 
   const {
     facilitatorPaused, idleMs, softModeAssessment, interactionSuppressed, softModeBusy,
+    lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
     showSoftModeHint, companionActionLabel, handleSoftModeAction, toggleFacilitatorPause, lastAiAction, dismissHint,
   } = useCompanionAutomation({
-    activity, setActivity, dragActive, textEntryActive, scouting, findingConnections, critiqueBusyByIdea,
+    activity,
+    setActivity,
+    dragActive,
+    textEntryActive,
+    activeBeatRun,
+    persistedFacilitatorPaused: Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]),
+    persistFacilitatorPaused: async paused => {
+      await updateBoardTweaks(
+        { [DEV_COMPANION_PAUSED_TWEAK_KEY]: paused },
+        { type: 'user', source: 'canvas', label: 'devCompanion' },
+        paused ? 'Paused dev companion automation' : 'Resumed dev companion automation',
+      );
+    },
+    scouting,
+    findingConnections,
+    critiqueBusyByIdea,
     visibleIdeas, connectionsCount: connections.length, suggestionsCount: suggestions.length, docCounts,
     selectedBoardIdea, activeCritiques, runScout, runConnectionFinder, runCritiqueIdea,
   });
@@ -97,6 +144,18 @@ export default function App(): React.ReactElement {
   const editingIdeaId = textEntryActive ? selectedId : null;
   const suppressRevealAnimations = dragActive || textEntryActive;
   const openOptions = () => navigate('#/options');
+  const historyEntries = createBoardHistoryEntries({
+    changeSets,
+    historyState,
+    ideas,
+    groups,
+    docs,
+    suggestions,
+    critiques,
+    connections,
+    beatReviewSessions,
+    beatReviewItems,
+  });
 
   if (hash === '#/options') {
     return <Options onBack={() => navigate('')} />;
@@ -104,13 +163,46 @@ export default function App(): React.ReactElement {
 
   return (
     <BoardAppView
-      header={{ advancingFromTool, canvasBusy, historyState, onUndo: handleUndo, onRedo: handleRedo, onOpenOptions: openOptions }}
+      header={{
+        advancingFromTool,
+        canvasBusy,
+        historyState,
+        historyOpen,
+        onUndo: handleUndo,
+        onRedo: handleRedo,
+        onToggleHistory: () => setHistoryOpen(value => !value),
+        onOpenOptions: openOptions,
+      }}
       showApiKeyBanner={hasApiKey === false}
       onOpenOptions={openOptions}
+      historyPanel={historyOpen ? (
+        <BoardHistoryPanel
+          entries={historyEntries}
+          cursor={historyState.cursor}
+          totalChanges={Math.max(0, historyState.nextSeq - 1)}
+          canUndo={historyState.canUndo}
+          canRedo={historyState.canRedo}
+          onClose={() => setHistoryOpen(false)}
+        />
+      ) : null}
+      reviewPanel={activeBeatReviewSession && activeBeatReviewItems.length > 0 ? (
+        <BeatReviewPanel
+          session={activeBeatReviewSession}
+          items={activeBeatReviewItems}
+          busyByItem={beatReviewBusyByItem}
+          batchBusy={beatReviewBatchBusy}
+          onKeep={itemId => { void handleKeepBeatReviewItem(itemId); }}
+          onScratch={itemId => { void handleScratchBeatReviewItem(itemId); }}
+          onKeepAll={() => { void handleKeepAllBeatReviewItems(); }}
+          onScratchAll={() => { void handleScratchAllBeatReviewItems(); }}
+          onClose={closeBeatReviewSession}
+        />
+      ) : null}
       companionRail={{
         hasApiKey, facilitatorPaused, activeBeatRun, softModeAssessment, interactionSuppressed, idleMs,
         autoIdleMs: AUTO_IDLE_MS, lastAiAction, lastScoutRunAt, lastConnectionsRunAt, companionActionLabel,
-        softModeBusy, showSoftModeHint, connections, findingConnections, scouting, suggestions, handleSoftModeAction, toggleFacilitatorPause,
+        softModeBusy, lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
+        showSoftModeHint, connections, findingConnections, scouting, suggestions, handleSoftModeAction, toggleFacilitatorPause,
         runConnectionFinder: () => { void runConnectionFinder(); },
         handleHighlight,
         runScout: () => { void runScout(); },

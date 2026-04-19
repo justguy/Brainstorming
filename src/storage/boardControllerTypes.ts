@@ -1,5 +1,10 @@
-import type { ChangeSetRecord } from '../board/types';
-import type { BoardDocument } from '../board/types';
+import type {
+  BeatReviewItemRecord,
+  BeatReviewSessionRecord,
+  BoardDocument,
+  BoardTweaksRecord,
+  ChangeSetRecord,
+} from '../board/types';
 import type { Idea, IdeaCritique, ScoutSuggestion, SupportingDoc } from '../types';
 
 export interface BoardHistoryState {
@@ -42,4 +47,18 @@ export interface BoardDocCommitResult extends BoardCommitResult {
 
 export interface BoardMergeCommitResult extends BoardCommitResult {
   idea: Idea;
+}
+
+export interface BoardTweaksCommitResult extends BoardCommitResult {
+  tweaks: BoardTweaksRecord;
+}
+
+export interface BoardBeatReviewSessionCommitResult extends BoardCommitResult {
+  session: BeatReviewSessionRecord;
+  items: BeatReviewItemRecord[];
+}
+
+export interface BoardBeatReviewItemCommitResult extends BoardCommitResult {
+  session: BeatReviewSessionRecord;
+  item: BeatReviewItemRecord;
 }

@@ -666,7 +666,7 @@ const runBeatTool: ModelContextTool = {
   name: 'run_beat',
   description:
     'Runs a board-scoped beat by name. `scout`, `connect`, and `critique` use the live board flow and return committed entities. ' +
-    '`cluster` and `summarise` return preview proposals from the beat runtime. Use this as the board-first beat surface instead of phase-local tools.',
+    '`cluster` and `summarise` materialize review candidates from the beat runtime so the app can keep or scratch them before commit. Use this as the board-first beat surface instead of phase-local tools.',
   inputSchema: {
     type: 'object',
     properties: {

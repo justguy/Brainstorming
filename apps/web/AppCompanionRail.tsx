@@ -4,7 +4,7 @@ import type { Connection, ScoutSuggestion } from '../../src/types';
 import ConnectionsPanel from '../../src/canvas/ConnectionsPanel';
 import { DevCompanionCard } from './DevCompanionCard';
 import { SoftModeHint } from './SoftModeHint';
-import type { SoftModeAssessment } from './softMode';
+import type { ActivityKind, SoftModeAssessment } from './softMode';
 
 export interface AppCompanionRailRecentAiAction {
   kind: BeatName;
@@ -25,6 +25,10 @@ export interface AppCompanionRailProps {
   lastConnectionsRunAt: number | null;
   companionActionLabel?: string;
   softModeBusy: boolean;
+  lastMeaningfulActivity: { kind: ActivityKind | null; at: number };
+  pendingBoardChange: boolean;
+  autoRunReady: boolean;
+  autoRunCountdownMs: number;
   showSoftModeHint: boolean;
   connections: Connection[];
   findingConnections: boolean;
@@ -51,6 +55,10 @@ export function AppCompanionRail({
   lastConnectionsRunAt,
   companionActionLabel,
   softModeBusy,
+  lastMeaningfulActivity,
+  pendingBoardChange,
+  autoRunReady,
+  autoRunCountdownMs,
   showSoftModeHint,
   connections,
   findingConnections,
@@ -83,6 +91,11 @@ export function AppCompanionRail({
           lastAiAction={lastAiAction}
           lastScoutRunAt={lastScoutRunAt}
           lastConnectionsRunAt={lastConnectionsRunAt}
+          softModeBusy={softModeBusy}
+          lastMeaningfulActivity={lastMeaningfulActivity}
+          pendingBoardChange={pendingBoardChange}
+          autoRunReady={autoRunReady}
+          autoRunCountdownMs={autoRunCountdownMs}
           actionLabel={companionActionLabel}
           onAction={companionAction}
           onTogglePause={toggleFacilitatorPause}

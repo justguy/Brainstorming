@@ -16,6 +16,11 @@ import { publishIdeaRows } from './ideaSync';
 import { commitDismissCritique, commitDismissSuggestion } from './boardOverlayMutations';
 import { commitReplaceConnections } from './boardConnectionMutations';
 import { commitCreateDoc, commitDeleteDoc, commitUpdateDoc } from './boardDocMutations';
+import { commitUpdateTweaks } from './boardTweakMutations';
+import {
+  commitBeatReviewItemDecision,
+  commitCreateBeatReviewSession,
+} from './boardBeatReviewMutations';
 import {
   commitAdmitSuggestion,
   commitCreateCritique,
@@ -135,6 +140,21 @@ export function createBoardController(boardId: BoardId) {
     },
     replaceConnections(input: { connections: import('../types').Connection[]; actor: ChangeActor; summary?: string }) {
       return commitReplaceConnections(boardId, input);
+    },
+    updateTweaks(input: { patch: Record<string, unknown>; actor: ChangeActor; summary?: string }) {
+      return commitUpdateTweaks(boardId, input);
+    },
+    createBeatReviewSession(input: {
+      result: import('../beats/types').BeatResult<'cluster'> | import('../beats/types').BeatResult<'summarise'>;
+      actor: ChangeActor;
+    }) {
+      return commitCreateBeatReviewSession(boardId, input);
+    },
+    keepBeatReviewItem(input: { itemId: string; actor: ChangeActor }) {
+      return commitBeatReviewItemDecision(boardId, { ...input, status: 'kept' });
+    },
+    scratchBeatReviewItem(input: { itemId: string; actor: ChangeActor }) {
+      return commitBeatReviewItemDecision(boardId, { ...input, status: 'scratched' });
     },
     undo() {
       return replayChangeSet(boardId, 'undo');

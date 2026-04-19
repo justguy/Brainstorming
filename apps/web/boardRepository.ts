@@ -64,6 +64,8 @@ export interface StandaloneBoardSnapshot {
   suggestions: ScoutSuggestion[];
   critiques: IdeaCritique[];
   connections: Connection[];
+  beatReviewSessions: BoardDocument['beatReviewSessions'];
+  beatReviewItems: BoardDocument['beatReviewItems'];
   tweaks: BoardDocument['tweaks'];
 }
 
@@ -97,6 +99,8 @@ export function mapStandaloneBoardSnapshot(
     suggestions: pickPendingSuggestions(snapshot.suggestions, options.visibleSuggestionLimit),
     critiques: snapshot.critiques,
     connections: snapshot.connections,
+    beatReviewSessions: snapshot.beatReviewSessions,
+    beatReviewItems: snapshot.beatReviewItems,
     tweaks: snapshot.tweaks,
   };
 }

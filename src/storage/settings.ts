@@ -49,6 +49,7 @@ async function writeSettingsRecord(
 
 function canReadChromeStorage(): boolean {
   return typeof chrome !== 'undefined'
+    && !(chrome as { __shimInstalled?: boolean }).__shimInstalled
     && typeof chrome.storage !== 'undefined'
     && typeof chrome.storage.local !== 'undefined';
 }

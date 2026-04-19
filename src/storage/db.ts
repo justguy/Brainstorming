@@ -1,6 +1,8 @@
 import { openDB as idbOpenDB, type IDBPDatabase, type DBSchema } from 'idb';
 import type { Connection, Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion } from '../types';
 import type {
+  BeatReviewItemRecord,
+  BeatReviewSessionRecord,
   BeatRunRecord,
   BoardRecord,
   BoardTweaksRecord,
@@ -96,6 +98,27 @@ export interface Schema extends DBSchema {
       byFocusIdeaId: string;
     };
   };
+  beatReviewSessions: {
+    key: string;
+    value: BeatReviewSessionRecord;
+    indexes: {
+      byBoardId: string;
+      byBeatRunId: string;
+      byStatus: string;
+      byUpdatedAt: number;
+    };
+  };
+  beatReviewItems: {
+    key: string;
+    value: BeatReviewItemRecord;
+    indexes: {
+      byBoardId: string;
+      bySessionId: string;
+      byBeatRunId: string;
+      byStatus: string;
+      byUpdatedAt: number;
+    };
+  };
   settings: {
     key: string;
     value: SettingsRecord;
@@ -116,7 +139,7 @@ export interface Schema extends DBSchema {
 }
 
 const DB_NAME = 'brainstorming-orchestrator';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 
 let _dbPromise: Promise<IDBPDatabase<Schema>> | null = null;
 
@@ -228,6 +251,23 @@ export function getDb(): Promise<IDBPDatabase<Schema>> {
           }
           if (!db.objectStoreNames.contains('settings')) {
             const store = db.createObjectStore('settings', { keyPath: 'id' });
+            store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+        }
+        if (oldVersion < 10) {
+          if (!db.objectStoreNames.contains('beatReviewSessions')) {
+            const store = db.createObjectStore('beatReviewSessions', { keyPath: 'id' });
+            store.createIndex('byBoardId', 'boardId');
+            store.createIndex('byBeatRunId', 'beatRunId');
+            store.createIndex('byStatus', 'status');
+            store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+          if (!db.objectStoreNames.contains('beatReviewItems')) {
+            const store = db.createObjectStore('beatReviewItems', { keyPath: 'id' });
+            store.createIndex('byBoardId', 'boardId');
+            store.createIndex('bySessionId', 'sessionId');
+            store.createIndex('byBeatRunId', 'beatRunId');
+            store.createIndex('byStatus', 'status');
             store.createIndex('byUpdatedAt', 'updatedAt');
           }
         }

@@ -7,7 +7,7 @@
         "id": "facilitator",
         "label": "Facilitator Mode",
         "description": "Phases 1-4 from PHASED_IMPL: visible connections, critique, timing, signal control.",
-        "collapsed": true
+        "collapsed": false
       },
       {
         "id": "observability",
@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-029, bo-030, and bo-031 are landed in code. The next priority is browser proof for bo-009 two-tab Yjs sync, followed by bo-013 File System Access permission-loss and re-authorization validation. After those truth-seeking checks, the next design slice is bo-032 beat review flow.",
-    "rev": 38,
-    "updatedAt": "2026-04-18T15:10:40.000Z"
+    "scratchpad": "bo-029, bo-030, and bo-031 are complete. The app-shell extraction was already landed; this branch adds durable tweak persistence, web-safe settings migration, and companion watching/primed/drafting states. Verification: npm run typecheck and npm run build:web.",
+    "rev": 46,
+    "updatedAt": "2026-04-19T02:07:19.571Z"
   },
   "tasks": [
     {
@@ -443,16 +443,16 @@
       "id": "bo-009",
       "title": "4.1 Two-tab BroadcastChannel + Yjs sync spike",
       "goal": "Prove zero-server two-tab sync by wrapping the ideas store in a Y.Map with BroadcastChannel transport and y-indexeddb persistence.",
-      "status": "in_progress",
+      "status": "not_started",
       "placement": {
         "swimlaneId": "collaboration",
-        "priorityId": "p1"
+        "priorityId": "p2"
       },
       "references": [
         "ROADMAP.md:268-275"
       ],
       "effort": "m",
-      "comment": "The Yjs plus BroadcastChannel plus y-indexeddb idea-store spike is landed in code; the remaining work is live two-tab browser proof and concurrent merge validation before the full CRDT port.",
+      "comment": "This is the current sync proof now that the local-first facilitator and polish layers are shipped.",
       "definition_of_done": [
         "Adding an idea in tab A appears in tab B in under 100ms on the same machine.",
         "The ideas store is backed by a Y.Map with BroadcastChannel transport.",
@@ -479,7 +479,7 @@
           "yjs",
           "broadcastchannel"
         ],
-        "notes": "Implementation is in branch truth; the remaining proof step is browser validation before bo-010."
+        "notes": "Roadmap section 4.1 is now the next executable slice after the shipped UI/UX polish driver."
       }
     },
     {
@@ -625,17 +625,17 @@
       "id": "bo-013",
       "title": "Stretch: search_local_docs local RAG tool",
       "goal": "Let the user grant a local docs folder and search PRDs/specs with File System Access-backed local retrieval surfaced as supporting-doc candidates or scout context.",
-      "status": "in_progress",
+      "status": "not_started",
       "placement": {
         "swimlaneId": "integrations",
-        "priorityId": "p1"
+        "priorityId": "p2"
       },
       "references": [
         "ROADMAP.md:299-299",
         "ROADMAP.md:329-329"
       ],
       "effort": "m",
-      "comment": "Local doc search and the re-authorize flow are landed in code; the remaining work is browser validation of File System Access permission loss and recovery.",
+      "comment": "This is attractive, but the permission UX is the real blocker rather than retrieval code.",
       "definition_of_done": [
         "A user can grant a folder and issue local doc searches from the app.",
         "Matches surface as supporting-doc candidates or scout context rather than opaque raw snippets.",
@@ -660,7 +660,7 @@
           "docs",
           "permissions"
         ],
-        "notes": "Implementation is present, but the permission UX still needs live browser proof before this should be treated as done."
+        "notes": "The roadmap leans toward deferring this until the permission story is acceptable."
       }
     },
     {
@@ -1395,22 +1395,12 @@
         "priorityId": "p1"
       },
       "references": [
-        "apps/web/App.tsx:1-149",
-        "apps/web/BoardAppView.tsx:1-35",
-        "apps/web/AppHeaderBar.tsx:1-91",
-        "apps/web/AppCompanionRail.tsx:1-139",
-        "apps/web/BoardCanvasStage.tsx:1-70",
-        "apps/web/BoardWorkspaceOverlays.tsx:1-111",
-        "apps/web/useBoardSync.ts:1-208",
-        "apps/web/useCanvasIdeaMutations.ts:1-157",
-        "apps/web/useCompanionAutomation.ts:1-244",
-        "apps/web/useBoardSessionActions.ts:1-110",
-        "apps/web/useBoardAnalysisActions.ts:1-288",
-        "apps/web/useBoardSuggestionActions.ts:1-284",
+        "apps/web/App.tsx:1-1703",
+        "src/workspace/Workspace.tsx:152-285",
         "Design/Integration Guide.html:307-315"
       ],
       "effort": "l",
-      "comment": "Landed in code: App.tsx is down to route and shell wiring while the top chrome, companion rail, canvas stage, workspace overlays, session actions, analysis actions, suggestion actions, sync, companion automation, and WebMCP event bridges live behind explicit components and hooks.",
+      "comment": "Verified complete against current code: App.tsx is orchestration-only, BoardAppView owns the shell, and workspace surfaces are overlay-secondary rather than the hot path.",
       "definition_of_done": [
         "App.tsx no longer owns history mutation logic, storage choreography, facilitator timing, and layout concerns in one file.",
         "Board controller and board UI hooks have explicit boundaries and callers.",
@@ -1438,8 +1428,16 @@
           "refactor",
           "app-shell"
         ],
-        "notes": "Build-verified on branch truth; the board shell extraction is landed and downstream work should treat bo-029 as complete."
-      }
+        "notes": "Tracker references were stale to the pre-extraction App.tsx shape. The current board-first shell already satisfies the slice.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/BoardAppView.tsx",
+          "apps/web/BoardCanvasStage.tsx",
+          "apps/web/BoardWorkspaceOverlays.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
@@ -1459,7 +1457,7 @@
         "src/storage/settings.ts:16-68"
       ],
       "effort": "m",
-      "comment": "Landed in code: settings now persist through IndexedDB-backed storage, beat runs are durable, and reversible artifact handling uses board-scoped persistence instead of web-only chrome.storage semantics.",
+      "comment": "Persistence now includes a journal-backed tweak mutation path, legacy tweak migration, and a web-safe settings path that no longer depends on shimmed chrome.storage for the web app.",
       "definition_of_done": [
         "Turns, beat runs, tweak state, and tombstones persist in board-scoped storage.",
         "Dismissed or deleted AI artifacts are represented as reversible tombstones rather than silent hard deletes.",
@@ -1486,8 +1484,20 @@
           "persistence",
           "tombstones"
         ],
-        "notes": "Build-verified on branch truth; downstream work should treat the durable storage move as landed."
-      }
+        "notes": "Landed durable tweak storage on the same board history path as other board mutations, exposed it to the web app, and aligned the web options/settings copy with the IndexedDB-backed store.",
+        "files_touched": [
+          "src/board/types.ts",
+          "src/storage/boardController.ts",
+          "src/storage/boardControllerTypes.ts",
+          "src/storage/boardTweakMutations.ts",
+          "src/storage/settings.ts",
+          "src/storage/tweaks.ts",
+          "apps/web/useBoardSync.ts",
+          "apps/web/Options.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
@@ -1503,12 +1513,10 @@
       },
       "references": [
         "Design/Integration Guide.html:553-577",
-        "apps/web/DevCompanionCard.tsx:1-225",
-        "apps/web/useCompanionAutomation.ts:1-244",
-        "apps/web/App.tsx:867-1072"
+        "apps/web/App.tsx:1474-1528"
       ],
       "effort": "m",
-      "comment": "Landed in code: the board now has an always-on companion surface with idle-gated automation, visible state, and beat-progress affordances.",
+      "comment": "The inline Dev companion now shows watching, primed, paused, drafting, and big-beat states tied to meaningful board changes while preserving typing/drag interruptibility.",
       "definition_of_done": [
         "The board shows companion presence and state while the user is editing or when beats are running.",
         "Automatic beat triggering is idle-gated and tied to meaningful board changes.",
@@ -1533,8 +1541,19 @@
           "companion",
           "automation"
         ],
-        "notes": "Build-verified on branch truth; the remaining follow-up is refinement, not initial implementation."
-      }
+        "notes": "Automatic beats now idle-gate on the latest meaningful board change rather than coarse wall-clock idleness alone, and the companion surfaces pending-change countdowns plus persisted pause state.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/DevCompanionCard.tsx",
+          "apps/web/useCompanionAutomation.ts",
+          "apps/web/useBoardSync.ts",
+          "src/storage/boardTweakMutations.ts",
+          "src/storage/tweaks.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
@@ -1545,7 +1564,7 @@
       "id": "bo-032",
       "title": "Design UI: beat review flow with keep or scratch candidates",
       "goal": "Surface big-beat outputs as reviewable candidate ideas, sources, connections, critiques, and structural edits that the user can keep or scratch individually or as a group before they become committed board changes.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p0"
@@ -1555,7 +1574,7 @@
         "Design/Integration Guide.html:621-639"
       ],
       "effort": "l",
-      "comment": "This is the core human-in-the-loop layer for AI structural changes.",
+      "comment": "Completed the beat review flow: cluster/summarise runs now create durable review sessions/items in board state; keep/scratch decisions are journaled and undoable; the app renders a centered review panel with provenance, affected ideas/structures, and per-item or batch keep/scratch controls; kept cluster hints also apply existing group/theme mutations. Verification: `npm run typecheck` and `npm run build:web` pass.",
       "definition_of_done": [
         "Beat review UI shows candidate items with provenance, summaries, and the affected ideas or structures.",
         "Keep commits the candidate into the board journal; scratch creates a tombstone and preserves the decision in history.",
@@ -1583,7 +1602,9 @@
           "human-loop"
         ],
         "notes": "Matches the requested keep or scratch flow for beats and candidate ideas."
-      }
+      },
+      "assignee": null,
+      "blocker_reason": null
     },
     {
       "dependencies": [
@@ -1593,7 +1614,7 @@
       "id": "bo-033",
       "title": "Design UI: undo or redo controls and change history timeline",
       "goal": "Add visible undo and redo controls plus a readable change history that groups user and AI changes by actor, beat, and patch set so the board can move backward and forward safely.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p0"
@@ -1602,7 +1623,7 @@
         "Design/Integration Guide.html:580-603"
       ],
       "effort": "m",
-      "comment": "The patch journal only matters if the user can actually navigate it from the board UI.",
+      "comment": "Completed the visible history slice: undo/redo remain in the header, the board now loads live ChangeSets alongside cursor state, and a floating history panel shows actor, beat, summary, timestamp, status, patch count, and affected entities for each durable ChangeSet. Verification: `npm run typecheck` and `npm run build:web` pass.",
       "definition_of_done": [
         "Undo and redo controls are visible and operate across user and AI-authored changes.",
         "A history surface shows actor, beat, summary, timestamp, and affected board entities for each ChangeSet.",
@@ -1630,7 +1651,9 @@
           "undo-redo"
         ],
         "notes": "Implements the user-visible history and navigation controls requested for patch-backed state."
-      }
+      },
+      "assignee": null,
+      "blocker_reason": null
     },
     {
       "dependencies": [

@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ChangeActor } from '../../src/board/types';
+import type {
+  BeatReviewItemRecord,
+  BeatReviewSessionRecord,
+  BoardTweaksRecord,
+  ChangeActor,
+} from '../../src/board/types';
 import { DEFAULT_BOARD_ID } from '../../src/board/types';
 import type { Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion, Connection } from '../../src/types';
 import { getSettings } from '../../src/storage/settings';
@@ -10,7 +15,14 @@ import {
   type DocFactExtractorOutput,
 } from '../../src/orchestrator/roles/docFactExtractor';
 import { createBoardController } from '../../src/storage/boardController';
-import type { BoardCommitResult, BoardDocCommitResult, BoardHistoryState } from '../../src/storage/boardControllerTypes';
+import type {
+  BoardBeatReviewItemCommitResult,
+  BoardBeatReviewSessionCommitResult,
+  BoardCommitResult,
+  BoardDocCommitResult,
+  BoardHistoryState,
+} from '../../src/storage/boardControllerTypes';
+import type { ChangeSetRecord } from '../../src/board/types';
 import {
   defaultBoardRepository,
   mapStandaloneBoardSnapshot,
@@ -46,26 +58,35 @@ export function useBoardSync() {
   const supportingDocController = boardController as typeof boardController & SupportingDocMutationController;
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [groups, setGroups] = useState<IdeaGroup[]>([]);
+  const [docs, setDocs] = useState<SupportingDoc[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [connections, setConnections] = useState<Connection[]>([]);
   const [critiques, setCritiques] = useState<IdeaCritique[]>([]);
   const [suggestions, setSuggestions] = useState<ScoutSuggestion[]>([]);
+  const [beatReviewSessions, setBeatReviewSessions] = useState<BeatReviewSessionRecord[]>([]);
+  const [beatReviewItems, setBeatReviewItems] = useState<BeatReviewItemRecord[]>([]);
+  const [tweaks, setTweaks] = useState<BoardTweaksRecord | null>(null);
   const [historyState, setHistoryState] = useState<BoardHistoryState>({
     canUndo: false,
     canRedo: false,
     cursor: 0,
     nextSeq: 1,
   });
+  const [changeSets, setChangeSets] = useState<ChangeSetRecord[]>([]);
 
   function applyBoardSnapshot(snapshot: StandaloneBoardSnapshot): void {
     setBoardId(snapshot.board.id);
     setIdeas(snapshot.ideas);
     setGroups(snapshot.groups);
+    setDocs(snapshot.docs);
     setConnections(snapshot.connections);
     setCritiques(snapshot.critiques);
     setSuggestions(snapshot.suggestions);
+    setBeatReviewSessions(snapshot.beatReviewSessions);
+    setBeatReviewItems(snapshot.beatReviewItems);
+    setTweaks(snapshot.tweaks);
     setDocCounts(snapshot.docCounts);
   }
 
@@ -76,6 +97,7 @@ export function useBoardSync() {
     applyBoardSnapshot(mapStandaloneBoardSnapshot(document));
     setHistoryState(history);
     setSelectedId(prev => (prev && document.ideas.some(idea => idea.id === prev) ? prev : null));
+    void boardController.listChangeSets(50).then(setChangeSets).catch(() => {});
   }
 
   const supportingDocMutations: SupportingDocMutations = {
@@ -94,6 +116,38 @@ export function useBoardSync() {
       applyCommittedBoard(committed.document, committed.history);
     },
   };
+
+  async function updateBoardTweaks(
+    patch: Record<string, unknown>,
+    actor: ChangeActor,
+    summary?: string,
+  ): Promise<BoardTweaksRecord> {
+    const committed = await boardController.updateTweaks({ patch, actor, summary });
+    applyCommittedBoard(committed.document, committed.history);
+    return committed.tweaks;
+  }
+
+  async function createBeatReviewSession(
+    result: Parameters<typeof boardController.createBeatReviewSession>[0]['result'],
+    actor: ChangeActor,
+  ): Promise<BoardBeatReviewSessionCommitResult | null> {
+    const committed = await boardController.createBeatReviewSession({ result, actor });
+    if (!committed) return null;
+    applyCommittedBoard(committed.document, committed.history);
+    return committed;
+  }
+
+  async function keepBeatReviewItem(itemId: string, actor: ChangeActor): Promise<BoardBeatReviewItemCommitResult> {
+    const committed = await boardController.keepBeatReviewItem({ itemId, actor });
+    applyCommittedBoard(committed.document, committed.history);
+    return committed;
+  }
+
+  async function scratchBeatReviewItem(itemId: string, actor: ChangeActor): Promise<BoardBeatReviewItemCommitResult> {
+    const committed = await boardController.scratchBeatReviewItem({ itemId, actor });
+    applyCommittedBoard(committed.document, committed.history);
+    return committed;
+  }
 
   async function refineSupportingDoc(doc: SupportingDoc, actor: ChangeActor): Promise<SupportingDoc> {
     try {
@@ -133,8 +187,14 @@ export function useBoardSync() {
 
   async function loadBoard(): Promise<void> {
     try {
-      applyBoardSnapshot(await boardRepository.loadSnapshot());
-      setHistoryState(await boardController.getHistoryState());
+      const [snapshot, nextHistory, nextChangeSets] = await Promise.all([
+        boardRepository.loadSnapshot(),
+        boardController.getHistoryState(),
+        boardController.listChangeSets(50),
+      ]);
+      applyBoardSnapshot(snapshot);
+      setHistoryState(nextHistory);
+      setChangeSets(nextChangeSets);
     } catch {
       // non-fatal
     }
@@ -184,6 +244,7 @@ export function useBoardSync() {
     boardController,
     ideas,
     groups,
+    docs,
     selectedId,
     setSelectedId,
     hasApiKey,
@@ -192,8 +253,16 @@ export function useBoardSync() {
     connections,
     critiques,
     suggestions,
+    beatReviewSessions,
+    beatReviewItems,
+    tweaks,
     historyState,
+    changeSets,
     applyCommittedBoard,
+    updateBoardTweaks,
+    createBeatReviewSession,
+    keepBeatReviewItem,
+    scratchBeatReviewItem,
     handleIdeaUpdate,
     loadBoard,
     loadIdeas: loadBoard,

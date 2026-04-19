@@ -13,7 +13,19 @@ export async function replayChangeSet(
   await ensureBoard(boardId);
   const db = await getDb();
   const tx = db.transaction(
-    ['boards', 'ideas', 'groups', 'docs', 'suggestions', 'critiques', 'connections', 'tweaks', 'changeSets'],
+    [
+      'boards',
+      'ideas',
+      'groups',
+      'docs',
+      'suggestions',
+      'critiques',
+      'connections',
+      'beatReviewSessions',
+      'beatReviewItems',
+      'tweaks',
+      'changeSets',
+    ],
     'readwrite',
   );
   const boardsStore = tx.objectStore('boards');

@@ -2,7 +2,7 @@
  * Options.tsx — Settings page for the web app.
  *
  * Reached via hash-based routing: window.location.hash = '#/options'
- * Uses the chrome-shim storage (localStorage under "brainstorm:" prefix) to persist.
+ * Uses the IndexedDB-backed settings store via src/storage/settings.ts.
  *
  * Reuses the exact same logic as src/options/Options.tsx but adds a Back link
  * and operates in the single-page hash router context.
@@ -307,8 +307,8 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
         </Button>
 
         <p className="text-xs text-gray-400 mt-4 text-center">
-          Keys are stored in your browser's localStorage under the "brainstorm:" prefix.
-          They never leave your device.
+          Keys are stored in the browser's IndexedDB-backed settings store on this device.
+          Legacy localStorage values are migrated on first load.
         </p>
       </div>
     </div>
