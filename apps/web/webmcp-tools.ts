@@ -28,6 +28,11 @@ import { listDocsForIdea, getDoc } from '../../src/storage/docs';
 import type { LegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
 import { defaultBoardRepository } from './boardRepository';
 import { createBoardController } from '../../src/storage/boardController';
+import {
+  createAttachLocalDocCandidateTool,
+  searchLocalDocsTool,
+  type SupportingDocToolResult,
+} from './webmcpLocalDocTools';
 
 // ---------------------------------------------------------------------------
 // safeRegisterTool — StrictMode-resilient registerTool wrapper
@@ -1073,6 +1078,8 @@ function docSummary(doc: SupportingDoc): {
   };
 }
 
+type SupportingDocToolCompletion = SupportingDocToolResult;
+
 const attachSupportingDocTool: ModelContextTool = {
   name: 'attach_supporting_doc',
   description:
@@ -1123,13 +1130,13 @@ const attachSupportingDocTool: ModelContextTool = {
     if (!rawText || rawText.trim().length === 0) return 'ERROR: `rawText` must be non-empty.';
     const idea = await getIdea(ideaId);
     if (!idea) return `ERROR: no idea with id ${ideaId}.`;
-    const refined = await dispatchAndWaitForResult<SupportingDoc>('brainstorm:attachSupportingDoc', {
+    const refined = await dispatchAndWaitForResult<SupportingDocToolCompletion>('brainstorm:attachSupportingDoc', {
       ideaId,
       title: title ?? '',
       rawText,
     });
     return {
-      docId: refined.id,
+      docId: refined.docId,
       status: refined.status,
       summary: refined.summary,
       facts: refined.facts,
@@ -1223,9 +1230,9 @@ const retryDocExtractionTool: ModelContextTool = {
     if (!docId) return 'ERROR: `docId` is required.';
     const doc = await getDoc(docId);
     if (!doc) return `ERROR: no doc with id ${docId}.`;
-    const refined = await dispatchAndWaitForResult<SupportingDoc>('brainstorm:retrySupportingDoc', { docId });
+    const refined = await dispatchAndWaitForResult<SupportingDocToolCompletion>('brainstorm:retrySupportingDoc', { docId });
     return {
-      docId: refined.id,
+      docId: refined.docId,
       status: refined.status,
       summary: refined.summary,
       facts: refined.facts,
@@ -1233,6 +1240,15 @@ const retryDocExtractionTool: ModelContextTool = {
     };
   },
 };
+
+const attachLocalDocCandidateTool = createAttachLocalDocCandidateTool(async (ideaId, title, rawText) => {
+  const refined = await dispatchAndWaitForResult<SupportingDocToolCompletion>('brainstorm:attachSupportingDoc', {
+    ideaId,
+    title,
+    rawText,
+  });
+  return refined;
+});
 
 // ---------------------------------------------------------------------------
 // Lifecycle tools — phase-contextual
@@ -1629,6 +1645,8 @@ export function useBrainstormingTools(_selectedIdea: LegacyToolIdea | null): voi
       safeRegisterTool(mc, ungroupIdeaTool, opts);
       safeRegisterTool(mc, mergeIdeasTool, opts);
       safeRegisterTool(mc, attachSupportingDocTool, opts);
+      safeRegisterTool(mc, searchLocalDocsTool, opts);
+      safeRegisterTool(mc, attachLocalDocCandidateTool, opts);
       safeRegisterTool(mc, listSupportingDocsTool, opts);
       safeRegisterTool(mc, getSupportingDocTool, opts);
       safeRegisterTool(mc, deleteSupportingDocTool, opts);
@@ -1647,7 +1665,7 @@ export function useBrainstormingTools(_selectedIdea: LegacyToolIdea | null): voi
       safeRegisterTool(mc, admitSuggestionTool, opts);
       safeRegisterTool(mc, elaborateSuggestionTool, opts);
       safeRegisterTool(mc, dismissSuggestionTool, opts);
-      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, get_board, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, run_beat, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
+      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, get_board, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, search_local_docs, attach_local_doc_candidate, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, run_beat, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
     }
 
     return () => {

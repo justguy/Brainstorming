@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "bo-009 is complete. Ideas sync now reloads through an ideas-only web seam with board-scoped invalidation, while display groups reconcile from synced idea panel membership so two-tab group and merge visuals stay coherent without migrating non-idea stores. Verification: npm run typecheck and npm run build:web. Manual same-browser two-tab latency proof remains the runtime check for the <100ms DoD.",
-    "rev": 54,
-    "updatedAt": "2026-04-19T03:38:03.439Z"
+    "scratchpad": "bo-013 is complete. Local-doc search now has both the in-app File System Access flow in DocsModal and an explicit WebMCP candidate flow via search_local_docs plus attach_local_doc_candidate, while keeping re-authorize visible instead of hidden. Verification: npm run typecheck and npm run build:web. I did not run a manual browser File System Access smoke test.",
+    "rev": 56,
+    "updatedAt": "2026-04-19T05:18:19.324Z"
   },
   "tasks": [
     {
@@ -632,7 +632,7 @@
       "id": "bo-013",
       "title": "Stretch: search_local_docs local RAG tool",
       "goal": "Let the user grant a local docs folder and search PRDs/specs with File System Access-backed local retrieval surfaced as supporting-doc candidates or scout context.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "integrations",
         "priorityId": "p2"
@@ -642,7 +642,7 @@
         "ROADMAP.md:329-329"
       ],
       "effort": "m",
-      "comment": "This is attractive, but the permission UX is the real blocker rather than retrieval code.",
+      "comment": "Closed with an explicit local-doc candidate tool flow layered onto the existing DocsModal grant/search/attach UX. search_local_docs now returns candidates or re-authorize guidance, and attach_local_doc_candidate turns a chosen hit into a normal supporting doc that feeds later scout context.",
       "definition_of_done": [
         "A user can grant a folder and issue local doc searches from the app.",
         "Matches surface as supporting-doc candidates or scout context rather than opaque raw snippets.",
@@ -667,8 +667,14 @@
           "docs",
           "permissions"
         ],
-        "notes": "The roadmap leans toward deferring this until the permission story is acceptable."
-      }
+        "notes": "The repo already had the File System Access UI path in DocsModal. This slice added the missing board-first WebMCP tool surface and corrected the supporting-doc tool completion shape to use docId rather than id.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts",
+          "apps/web/webmcpLocalDocTools.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [],
