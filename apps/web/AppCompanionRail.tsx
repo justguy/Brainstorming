@@ -1,7 +1,9 @@
 import React from 'react';
 import type { BeatName, BeatRunState } from '../../src/beats/types';
+import type { BeatReviewItemRecord, BeatReviewSessionRecord } from '../../src/board/types';
 import type { Connection, ScoutSuggestion } from '../../src/types';
 import ConnectionsPanel from '../../src/canvas/ConnectionsPanel';
+import { BoardBeatsCard } from './BoardBeatsCard';
 import { DevCompanionCard } from './DevCompanionCard';
 import { SoftModeHint } from './SoftModeHint';
 import type { ActivityKind, SoftModeAssessment } from './softMode';
@@ -40,6 +42,11 @@ export interface AppCompanionRailProps {
   handleHighlight: (ideaIds: string[]) => void;
   runScout: () => void | Promise<void>;
   dismissHint: () => void;
+  boardBeatReviewSession: BeatReviewSessionRecord | null;
+  boardBeatReviewItems: BeatReviewItemRecord[];
+  onOpenBoardBeatReview?: () => void;
+  onRunClusterBeat: () => void | Promise<void>;
+  onRunSummariseBeat: () => void | Promise<void>;
 }
 
 export function AppCompanionRail({
@@ -70,6 +77,11 @@ export function AppCompanionRail({
   handleHighlight,
   runScout,
   dismissHint,
+  boardBeatReviewSession,
+  boardBeatReviewItems,
+  onOpenBoardBeatReview,
+  onRunClusterBeat,
+  onRunSummariseBeat,
 }: AppCompanionRailProps): React.ReactElement {
   const companionAction = companionActionLabel
     ? () => {
@@ -128,6 +140,15 @@ export function AppCompanionRail({
             {scouting ? 'Scouting…' : suggestions.length > 0 ? `Scout (${suggestions.length})` : 'Scout'}
           </span>
         </button>
+
+        <BoardBeatsCard
+          activeBeatRun={activeBeatRun}
+          boardBeatReviewSession={boardBeatReviewSession}
+          boardBeatReviewItems={boardBeatReviewItems}
+          onOpenBoardBeatReview={onOpenBoardBeatReview}
+          onRunClusterBeat={onRunClusterBeat}
+          onRunSummariseBeat={onRunSummariseBeat}
+        />
 
         {showSoftModeHint && (
           <SoftModeHint

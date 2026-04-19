@@ -23,13 +23,14 @@ import { useBeatReviewActions } from './useBeatReviewActions';
 import { BeatReviewPanel } from './BeatReviewPanel';
 import { BoardHistoryPanel } from './BoardHistoryPanel';
 import { createBoardHistoryEntries } from './historyTimeline';
+import { runManualBoardBeat, selectBoardBeatReviewSurface } from './boardBeatReviewSurface';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 
 export default function App(): React.ReactElement {
   const [hash, navigate] = useHashRoute();
   const {
-    boardId, boardRepository, boardController, ideas, groups, docs, selectedId, setSelectedId, hasApiKey,
+    boardId, boardTitle, boardRepository, boardController, ideas, groups, docs, selectedId, setSelectedId, hasApiKey,
     docCounts, setDocCounts, connections, critiques, suggestions, beatReviewSessions, beatReviewItems, tweaks,
     historyState, changeSets, applyCommittedBoard, updateBoardTweaks, createBeatReviewSession, keepBeatReviewItem,
     scratchBeatReviewItem,
@@ -85,26 +86,12 @@ export default function App(): React.ReactElement {
     ideas, boardController, applyCommittedBoard, setCanvasBusy, setSelectedId, markActivity,
   });
   const {
-    activeSession: activeBeatReviewSession,
-    activeItems: activeBeatReviewItems,
-    busyByItem: beatReviewBusyByItem,
-    batchBusy: beatReviewBatchBusy,
-    presentBeatReview,
-    handleKeep: handleKeepBeatReviewItem,
-    handleScratch: handleScratchBeatReviewItem,
-    handleKeepAll: handleKeepAllBeatReviewItems,
-    handleScratchAll: handleScratchAllBeatReviewItems,
-    closeActiveSession: closeBeatReviewSession,
-  } = useBeatReviewActions({
-    ideas,
-    beatReviewSessions,
-    beatReviewItems,
-    boardController,
-    applyCommittedBoard,
-    createBeatReviewSession,
-    keepBeatReviewItem,
-    scratchBeatReviewItem,
-  });
+    activeSession: activeBeatReviewSession, activeItems: activeBeatReviewItems, busyByItem: beatReviewBusyByItem,
+    batchBusy: beatReviewBatchBusy, presentBeatReview, handleKeep: handleKeepBeatReviewItem,
+    handleScratch: handleScratchBeatReviewItem, handleKeepAll: handleKeepAllBeatReviewItems,
+    handleScratchAll: handleScratchAllBeatReviewItems, closeActiveSession: closeBeatReviewSession,
+    focusSession: focusBeatReviewSession,
+  } = useBeatReviewActions({ ideas, beatReviewSessions, beatReviewItems, boardController, applyCommittedBoard, createBeatReviewSession, keepBeatReviewItem, scratchBeatReviewItem });
 
   useBrainstormSupportingDocEvents({ boardId, ideas, loadDocCounts, markActivity, supportingDocMutations, refineSupportingDoc });
   useBrainstormAnalysisEvents({
@@ -115,13 +102,15 @@ export default function App(): React.ReactElement {
     boardId, ideas, boardController, applyCommittedBoard, loadIdeas, setSelectedId, setAdvancingFromTool, setCreating,
   });
   useBrainstormSuggestionEvents({
-    boardId, ideas, connections, suggestions, runConnectionFinder, runCritiqueIdea, runScout, runBoardBeat,
+    boardId, boardTitle, ideas, groups, connections, suggestions, runConnectionFinder, runCritiqueIdea, runScout, runBoardBeat,
     presentBeatReview,
     handleAdmitSuggestion, handleElaborateSuggestion, handleDismissSuggestion,
   });
   useBrainstormWorkspaceEvents({
     boardId, ideas, boardController, applyCommittedBoard, loadIdeas, setSelectedId, handleMove, handleGroup, handleUngroup, handleMerge,
   });
+
+  const { boardBeatReviewSession, boardBeatReviewItems } = selectBoardBeatReviewSurface({ beatReviewSessions, beatReviewItems, activeBeatReviewSession });
 
   const {
     facilitatorPaused, idleMs, softModeAssessment, interactionSuppressed, softModeBusy,
@@ -152,18 +141,12 @@ export default function App(): React.ReactElement {
   const editingIdeaId = textEntryActive ? selectedId : null;
   const suppressRevealAnimations = dragActive || textEntryActive;
   const openOptions = () => navigate('#/options');
-  const historyEntries = createBoardHistoryEntries({
-    changeSets,
-    historyState,
-    ideas,
-    groups,
-    docs,
-    suggestions,
-    critiques,
-    connections,
-    beatReviewSessions,
-    beatReviewItems,
-  });
+  const historyEntries = createBoardHistoryEntries({ changeSets, historyState, ideas, groups, docs, suggestions, critiques, connections, beatReviewSessions, beatReviewItems });
+  const triggerManualBoardBeat = (beat: 'cluster' | 'summarise'): void => {
+    void runManualBoardBeat({ beat, boardId, boardTitle, ideas, groups, connections, runBoardBeat, presentBeatReview }).catch(err => {
+      console.error(`[App] ${beat} beat failed:`, err);
+    });
+  };
 
   if (hash === '#/options') {
     return <Options onBack={() => navigate('')} />;
@@ -215,6 +198,11 @@ export default function App(): React.ReactElement {
         handleHighlight,
         runScout: () => { void runScout(); },
         dismissHint,
+        boardBeatReviewSession,
+        boardBeatReviewItems,
+        onOpenBoardBeatReview: boardBeatReviewSession ? () => focusBeatReviewSession(boardBeatReviewSession.id) : undefined,
+        onRunClusterBeat: () => triggerManualBoardBeat('cluster'),
+        onRunSummariseBeat: () => triggerManualBoardBeat('summarise'),
       }}
       canvasStage={{
         ideas: visibleIdeas, groups, connections, critiques, critiqueBusyByIdea, critiqueFocusIdeaId, hoverIdeaId, editingIdeaId,

@@ -6,6 +6,7 @@ import type { Connection, Idea } from '../../types';
 const schema = z.object({
   summary: z.string().min(12).max(180),
   relatedIdeaIds: z.array(z.string()).max(6).optional(),
+  relatedGroupIds: z.array(z.string()).max(4).optional(),
 });
 
 type Output = z.infer<typeof schema>;
@@ -17,6 +18,7 @@ export const boardSummariser: RoleSpec = {
 Rules:
 - summary: one sentence, concrete, no fluff, max 180 chars.
 - relatedIdeaIds: optional. Include up to 6 ids that most strongly support the takeaway.
+- relatedGroupIds: optional. Include up to 4 group ids when an existing board theme or shared question grounds the takeaway.
 - Do not invent ideas or ids that are not in the board payload.
 - Prefer a tension, pattern, or through-line over a generic recap.`,
   schema,
@@ -32,12 +34,26 @@ Rules:
 export function buildBoardSummariserTask(args: {
   boardTitle?: string;
   ideas: Array<Pick<Idea, 'id' | 'rawText'>>;
+  groups: Array<{
+    id: string;
+    theme?: string;
+    sharedQuestion?: string;
+    ideaIds: string[];
+  }>;
   connections: Array<Pick<Connection, 'kind' | 'ideaIds' | 'rationale'>>;
 }): string {
   const title = args.boardTitle?.trim() ? args.boardTitle.trim() : 'Untitled board';
   const ideaLines = args.ideas
     .slice(0, 20)
     .map((idea, index) => `${index + 1}. [${idea.id}] ${idea.rawText.slice(0, 220)}`)
+    .join('\n') || '(none)';
+  const groupLines = args.groups
+    .slice(0, 8)
+    .map((group, index) => {
+      const theme = group.theme?.trim() || 'unthemed';
+      const sharedQuestion = group.sharedQuestion?.trim() || 'no shared question';
+      return `${index + 1}. [${group.id}] theme="${theme}" question="${sharedQuestion}" ideas=${group.ideaIds.join(', ')}`;
+    })
     .join('\n') || '(none)';
   const connectionLines = args.connections
     .slice(0, 12)
@@ -49,6 +65,7 @@ export function buildBoardSummariserTask(args: {
   return (
     `Board title: ${title}\n\n` +
     `Ideas:\n${ideaLines}\n\n` +
+    `Current groups:\n${groupLines}\n\n` +
     `Connections:\n${connectionLines}\n\n` +
     'Produce one high-signal takeaway for the current state of the board.'
   );

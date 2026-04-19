@@ -69,8 +69,8 @@
       }
     ],
     "scratchpad": "bo-029 through bo-034 are complete. The board-first cutover now keeps the canvas primary with a centered focus dock for the active phase loop, while the old workspace has been reduced to a secondary inspector. Verification: npm run typecheck and npm run build:web.",
-    "rev": 48,
-    "updatedAt": "2026-04-19T02:30:48.101Z"
+    "rev": 50,
+    "updatedAt": "2026-04-19T02:58:39.433Z"
   },
   "tasks": [
     {
@@ -1724,7 +1724,7 @@
       "id": "bo-035",
       "title": "Design UI: cluster and summarise beats",
       "goal": "Implement the missing cluster and summarise beats with inline group proposals, board-level thematic labeling, and summaries that stay connected to board entities and beat history.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p1"
@@ -1734,7 +1734,7 @@
         "apps/web/App.tsx:1382-1467"
       ],
       "effort": "m",
-      "comment": "The guide defines five beats; the current app still behaves like connect, critique, scout plus helper logic.",
+      "comment": "Completed the cluster and summarise beat slice: cluster now uses a dedicated boardClusterer role that can return multiple inline grouping proposals from shared-theme components; summarise now receives live group themes/questions and emits explicit related group ids; review items and history entries carry the actual takeaway text plus labeled idea/group provenance. Verification: `npm run typecheck` and `npm run build:web` pass.",
       "definition_of_done": [
         "Cluster beat can propose grouping or regrouping operations with user review.",
         "Summarise beat produces board-level digests tied back to ideas, sources, or groups.",
@@ -1762,7 +1762,9 @@
           "summarise"
         ],
         "notes": "Closes the missing beat gap between the current app and the target interaction model."
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [

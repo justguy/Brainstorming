@@ -66,7 +66,10 @@ export function createBoardHistoryEntries({
     connections: new Map(connections.map(entity => [entity.id, { id: entity.id, label: connectionLabel(entity) }])),
     tweaks: new Map<string, HistoryEntity>(),
     beatReviewSessions: new Map(beatReviewSessions.map(entity => [entity.id, { id: entity.id, label: entity.title }])),
-    beatReviewItems: new Map(beatReviewItems.map(entity => [entity.id, { id: entity.id, label: entity.candidate.label }])),
+    beatReviewItems: new Map(beatReviewItems.map(entity => [entity.id, {
+      id: entity.id,
+      label: entity.candidate.label || truncate(entity.candidate.summary, 72),
+    }])),
     boards: new Map<string, HistoryEntity>(),
   } as const;
 

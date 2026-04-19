@@ -121,6 +121,22 @@ export async function commitBeatReviewItemDecision(
         status: input.status,
         updatedAt: now,
         reviewedAt: now,
+        keptAt: input.status === 'kept' ? now : undefined,
+        scratchedAt: input.status === 'scratched' ? now : undefined,
+        tombstone: input.status === 'scratched'
+          ? { scratchedAt: now, note: 'Scratched during beat review.' }
+          : undefined,
+        decisionHistory: [
+          ...(itemBefore.decisionHistory ?? []),
+          {
+            status: input.status,
+            decidedAt: now,
+            actor: input.actor.type,
+            note: input.status === 'kept'
+              ? 'Accepted from beat review.'
+              : 'Dismissed from beat review.',
+          },
+        ],
       };
   const relatedItems = await itemsStore.index('bySessionId').getAll(itemBefore.sessionId);
   const sessionAfter = deriveSessionAfterDecision(

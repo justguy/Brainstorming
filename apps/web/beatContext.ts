@@ -3,12 +3,21 @@ import type {
   BeatConnectionSnapshot,
   BeatContextMap,
   BeatCritiqueSnapshot,
+  BeatGroupSnapshot,
   BeatIdeaSnapshot,
   BeatSupportingDocSnapshot,
   BeatTrigger,
   BeatSize,
 } from '../../src/beats/types';
-import type { BoardId, Connection, Idea, IdeaCritique, ScoutSuggestion, SupportingDoc } from '../../src/types';
+import type {
+  BoardId,
+  Connection,
+  Idea,
+  IdeaCritique,
+  IdeaGroup,
+  ScoutSuggestion,
+  SupportingDoc,
+} from '../../src/types';
 
 type CommonArgs = {
   boardId: BoardId;
@@ -58,6 +67,15 @@ function toConnectionSnapshot(connection: Connection): BeatConnectionSnapshot {
     supportingDocIds: connection.supportingDocIds,
     rationale: connection.rationale,
     strength: connection.strength,
+  };
+}
+
+function toGroupSnapshot(group: IdeaGroup): BeatGroupSnapshot {
+  return {
+    id: group.id,
+    theme: group.theme,
+    sharedQuestion: group.sharedQuestion,
+    ideaIds: group.ideaIds,
   };
 }
 
@@ -132,12 +150,14 @@ export function buildClusterBeatContext(args: CommonArgs & {
 }
 
 export function buildSummariseBeatContext(args: CommonArgs & {
+  groups: IdeaGroup[];
   connections: Connection[];
 }): BeatContextMap['summarise'] {
   return {
     beat: 'summarise',
     ...baseContext(args),
     liveIdeas: args.ideas.filter(idea => idea.status !== 'archived' && idea.status !== 'discarded').map(toIdeaSnapshot),
+    groups: args.groups.filter(group => group.ideaIds.length > 0).map(toGroupSnapshot),
     connections: args.connections.map(toConnectionSnapshot),
   };
 }

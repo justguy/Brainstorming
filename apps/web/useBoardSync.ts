@@ -5,7 +5,7 @@ import type {
   BoardTweaksRecord,
   ChangeActor,
 } from '../../src/board/types';
-import { DEFAULT_BOARD_ID } from '../../src/board/types';
+import { DEFAULT_BOARD_ID, DEFAULT_BOARD_TITLE } from '../../src/board/types';
 import type { Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion, Connection } from '../../src/types';
 import { getSettings } from '../../src/storage/settings';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
@@ -53,6 +53,7 @@ type SupportingDocMutations = {
 
 export function useBoardSync() {
   const [boardId, setBoardId] = useState(DEFAULT_BOARD_ID);
+  const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
   const boardRepository = useMemo(() => defaultBoardRepository.forBoard(boardId), [boardId]);
   const boardController = useMemo(() => createBoardController(boardId), [boardId]);
   const supportingDocController = boardController as typeof boardController & SupportingDocMutationController;
@@ -78,6 +79,7 @@ export function useBoardSync() {
 
   function applyBoardSnapshot(snapshot: StandaloneBoardSnapshot): void {
     setBoardId(snapshot.board.id);
+    setBoardTitle(snapshot.board.title);
     setIdeas(snapshot.ideas);
     setGroups(snapshot.groups);
     setDocs(snapshot.docs);
@@ -240,6 +242,7 @@ export function useBoardSync() {
 
   return {
     boardId,
+    boardTitle,
     boardRepository,
     boardController,
     ideas,

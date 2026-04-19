@@ -21,8 +21,9 @@ export interface BeatRunMeta {
 }
 
 export interface BeatSourceRef {
-  kind: 'idea' | 'doc' | 'critique' | 'connection';
+  kind: 'idea' | 'doc' | 'critique' | 'connection' | 'group';
   id: string;
+  label?: string;
 }
 
 export interface BeatIdeaSnapshot {
@@ -56,6 +57,13 @@ export interface BeatConnectionSnapshot {
   supportingDocIds?: string[];
   rationale: string;
   strength: ConnectionStrength;
+}
+
+export interface BeatGroupSnapshot {
+  id: string;
+  theme?: string;
+  sharedQuestion?: string;
+  ideaIds: string[];
 }
 
 interface BeatContextBase<TBeat extends BeatName> {
@@ -98,6 +106,7 @@ export interface ClusterBeatContext extends BeatContextBase<'cluster'> {
 
 export interface SummariseBeatContext extends BeatContextBase<'summarise'> {
   liveIdeas: BeatIdeaSnapshot[];
+  groups: BeatGroupSnapshot[];
   connections: BeatConnectionSnapshot[];
 }
 
@@ -144,6 +153,7 @@ export interface BeatClusterHint extends BeatProposalBase {
 export interface BeatSummaryProposal extends BeatProposalBase {
   summary: string;
   relatedIdeaIds: string[];
+  relatedGroupIds?: string[];
 }
 
 export type BeatProposalMap = {

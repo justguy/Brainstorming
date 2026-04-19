@@ -3,7 +3,7 @@ import type {
   BeatReviewItemRecord,
   BeatReviewSessionRecord,
 } from '../board/types';
-import type { BeatResult } from '../beats/types';
+import type { BeatResult, BeatRunMeta } from '../beats/types';
 import type { BoardId } from '../types';
 import { DEFAULT_BOARD_ID } from '../board/types';
 import { getDb } from './db';
@@ -56,6 +56,7 @@ export function buildBeatReviewRecords(
 ): { session: BeatReviewSessionRecord; items: BeatReviewItemRecord[] } {
   const sessionId = crypto.randomUUID();
   const itemCandidates = result.ok ? mapCandidates(result) : [];
+  const provenance = buildRunProvenance(result.meta);
   const items = itemCandidates.map((candidate, index) => ({
     id: crypto.randomUUID(),
     boardId,
@@ -66,6 +67,7 @@ export function buildBeatReviewRecords(
     candidate,
     createdAt: now + index,
     updatedAt: now + index,
+    provenance,
   }));
   const count = items.length;
   const label = result.beat === 'cluster' ? 'Cluster review' : 'Summary review';
@@ -83,6 +85,12 @@ export function buildBeatReviewRecords(
     summary: count === 1 ? `1 candidate from ${label.toLowerCase()}.` : `${count} candidates from ${label.toLowerCase()}.`,
     status: count > 0 && items.some(item => item.status === 'pending') ? 'open' : 'resolved',
     itemIds: items.map(item => item.id),
+    pendingCount: count,
+    keptCount: 0,
+    scratchedCount: 0,
+    proposalKeys: result.ok ? Object.keys(result.proposal) : [],
+    rawProposal: result.ok ? result.proposal : undefined,
+    provenance,
     startedAt: result.meta.startedAt,
     finishedAt: result.meta.finishedAt,
     createdAt: now,
@@ -104,20 +112,77 @@ function mapCandidates(result: ReviewableBeatResult): BeatReviewCandidateRecord[
       confidence: hint.confidence,
       affectedIdeaIds: [...hint.ideaIds],
       sources: [...hint.sources],
+      affectedRefs: hint.ideaIds.map(id => ({
+        kind: 'idea' as const,
+        id,
+        label: sourceLabel(hint.sources, 'idea', id),
+      })),
+      rawProposal: hint,
       payload: hint,
     }));
   }
 
   return result.proposal.summaries.map(summary => ({
     kind: 'summary',
-    label: 'Board summary',
+    label: truncateLabel(summary.summary, 72),
     summary: summary.summary,
-    detail: summary.relatedIdeaIds.length > 0
-      ? `Touches ${summary.relatedIdeaIds.length} related idea${summary.relatedIdeaIds.length === 1 ? '' : 's'}.`
-      : 'No specific related ideas were called out.',
+    detail: buildSummaryDetail(summary.relatedIdeaIds, summary.relatedGroupIds ?? []),
     confidence: summary.confidence,
     affectedIdeaIds: [...summary.relatedIdeaIds],
+    affectedStructureIds: [...(summary.relatedGroupIds ?? [])],
     sources: [...summary.sources],
+    affectedRefs: [
+      ...summary.relatedIdeaIds.map(id => ({
+        kind: 'idea' as const,
+        id,
+        label: sourceLabel(summary.sources, 'idea', id),
+      })),
+      ...(summary.relatedGroupIds ?? []).map(id => ({
+        kind: 'group' as const,
+        id,
+        label: sourceLabel(summary.sources, 'group', id),
+      })),
+    ],
+    rawProposal: summary,
     payload: summary,
   }));
+}
+
+function sourceLabel(
+  sources: BeatReviewCandidateRecord['sources'],
+  kind: BeatReviewCandidateRecord['sources'][number]['kind'],
+  id: string,
+): string | undefined {
+  return sources.find(source => source.kind === kind && source.id === id)?.label;
+}
+
+function truncateLabel(value: string, limit: number): string {
+  return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
+}
+
+function buildRunProvenance(meta: BeatRunMeta) {
+  return {
+    beatRunId: meta.runId,
+    beat: meta.beat,
+    roleId: meta.roleId,
+    usedFallback: meta.usedFallback,
+    trigger: meta.trigger,
+    size: meta.size,
+    startedAt: meta.startedAt,
+    finishedAt: meta.finishedAt,
+    focusIdeaId: meta.focusIdeaId,
+  };
+}
+
+function buildSummaryDetail(ideaIds: string[], groupIds: string[]): string {
+  if (ideaIds.length === 0 && groupIds.length === 0) {
+    return 'No specific related ideas or groups were called out.';
+  }
+  if (groupIds.length === 0) {
+    return `Touches ${ideaIds.length} related idea${ideaIds.length === 1 ? '' : 's'}.`;
+  }
+  if (ideaIds.length === 0) {
+    return `Touches ${groupIds.length} related group${groupIds.length === 1 ? '' : 's'}.`;
+  }
+  return `Touches ${ideaIds.length} related idea${ideaIds.length === 1 ? '' : 's'} across ${groupIds.length} group${groupIds.length === 1 ? '' : 's'}.`;
 }

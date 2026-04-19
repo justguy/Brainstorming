@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { DEFAULT_BOARD_TITLE } from '../../src/board/types';
 import type {
   BeatName,
   BeatResult,
@@ -9,7 +8,7 @@ import type {
   SummariseBeatContext,
 } from '../../src/beats/types';
 import { getSuggestion } from '../../src/storage/suggestions';
-import type { Connection, Idea, IdeaCritique, ScoutSuggestion } from '../../src/types';
+import type { Connection, Idea, IdeaCritique, IdeaGroup, ScoutSuggestion } from '../../src/types';
 import { buildClusterBeatContext, buildSummariseBeatContext } from './beatContext';
 
 type RunBoardBeat = {
@@ -21,7 +20,9 @@ type RunBoardBeat = {
 
 interface UseBrainstormSuggestionEventsArgs {
   boardId: string;
+  boardTitle: string;
   ideas: Idea[];
+  groups: IdeaGroup[];
   connections: Connection[];
   suggestions: ScoutSuggestion[];
   runConnectionFinder: (options?: {
@@ -50,7 +51,9 @@ interface UseBrainstormSuggestionEventsArgs {
 
 export function useBrainstormSuggestionEvents({
   boardId,
+  boardTitle,
   ideas,
+  groups,
   connections,
   suggestions,
   runConnectionFinder,
@@ -120,7 +123,7 @@ export function useBrainstormSuggestionEvents({
           case 'cluster': {
             const result = await runBoardBeat(buildClusterBeatContext({
               boardId,
-              boardTitle: DEFAULT_BOARD_TITLE,
+              boardTitle,
               ideas,
               connections,
               trigger: 'manual',
@@ -141,8 +144,9 @@ export function useBrainstormSuggestionEvents({
           case 'summarise': {
             const result = await runBoardBeat(buildSummariseBeatContext({
               boardId,
-              boardTitle: DEFAULT_BOARD_TITLE,
+              boardTitle,
               ideas,
+              groups,
               connections,
               trigger: 'manual',
               size: 'big',
@@ -220,5 +224,5 @@ export function useBrainstormSuggestionEvents({
     return () => {
       listeners.forEach(([name, listener]) => window.removeEventListener(name, listener));
     };
-  }, [boardId, ideas, connections, suggestions]);
+  }, [boardId, boardTitle, ideas, groups, connections, suggestions]);
 }

@@ -182,6 +182,10 @@ export function useBeatReviewActions({
     handleKeepAll,
     handleScratchAll,
     closeActiveSession,
+    focusSession(sessionId: string): void {
+      setDismissedSessionIds(prev => prev.filter(id => id !== sessionId));
+      setActiveSessionId(sessionId);
+    },
   };
 }
 

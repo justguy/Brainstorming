@@ -15,6 +15,8 @@ export function BeatReviewPanelCard({
   onScratch,
 }: BeatReviewPanelCardProps): React.ReactElement {
   const { candidate } = item;
+  const ideaRefs = (candidate.affectedRefs ?? []).filter(ref => ref.kind === 'idea');
+  const groupRefs = (candidate.affectedRefs ?? []).filter(ref => ref.kind === 'group');
   const statusTone = item.status === 'kept'
     ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700'
     : item.status === 'scratched'
@@ -30,7 +32,7 @@ export function BeatReviewPanelCard({
               {item.status}
             </span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-              {candidate.kind.replace(/_/g, ' ')}
+              {candidate.kind === 'summary' ? 'one-line takeaway' : candidate.kind.replace(/_/g, ' ')}
             </span>
             {candidate.confidence && (
               <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
@@ -38,7 +40,9 @@ export function BeatReviewPanelCard({
               </span>
             )}
           </div>
-          <h3 className="text-sm font-semibold text-slate-900">{candidate.label}</h3>
+          <h3 className="text-sm font-semibold text-slate-900">
+            {candidate.kind === 'summary' ? 'One-line takeaway' : candidate.label}
+          </h3>
         </div>
         {busy && <span className="text-[11px] italic text-slate-500">{busy === 'keep' ? 'Keeping…' : 'Scratching…'}</span>}
       </div>
@@ -46,43 +50,53 @@ export function BeatReviewPanelCard({
       <div className="mt-3 space-y-3">
         {candidate.kind === 'cluster_hint' ? (
           <>
-            <p className="text-sm leading-snug text-slate-700">{candidate.summary}</p>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                Shared question
+              </p>
+              <p className="mt-1 text-sm leading-snug text-slate-700">{candidate.summary}</p>
+            </div>
             <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
-              {candidate.affectedIdeaIds.length} linked idea{candidate.affectedIdeaIds.length === 1 ? '' : 's'}
+              Theme: {candidate.label}
             </p>
           </>
         ) : (
-          <p className="text-sm leading-snug text-slate-700">{candidate.summary}</p>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+              Board takeaway
+            </p>
+            <p className="mt-1 text-sm leading-snug text-slate-700">{candidate.summary}</p>
+          </div>
         )}
 
         {candidate.detail && <p className="text-xs leading-snug text-slate-500">{candidate.detail}</p>}
 
-        {candidate.affectedIdeaIds.length > 0 && (
+        {ideaRefs.length > 0 && (
           <div className="space-y-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Affected ideas</p>
             <div className="flex flex-wrap gap-1.5">
-              {candidate.affectedIdeaIds.map(ideaId => (
+              {ideaRefs.map(ref => (
                 <span
-                  key={ideaId}
+                  key={`${ref.kind}-${ref.id}`}
                   className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600"
                 >
-                  {ideaId}
+                  {ref.label ?? ref.id}
                 </span>
               ))}
             </div>
           </div>
         )}
 
-        {(candidate.affectedStructureIds?.length ?? 0) > 0 && (
+        {groupRefs.length > 0 && (
           <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Affected structures</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Affected groups</p>
             <div className="flex flex-wrap gap-1.5">
-              {candidate.affectedStructureIds?.map(structureId => (
+              {groupRefs.map(ref => (
                 <span
-                  key={structureId}
+                  key={`${ref.kind}-${ref.id}`}
                   className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600"
                 >
-                  {structureId}
+                  {ref.label ?? ref.id}
                 </span>
               ))}
             </div>
@@ -98,7 +112,7 @@ export function BeatReviewPanelCard({
                   key={`${source.kind}-${source.id}`}
                   className="rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-500 ring-1 ring-slate-200"
                 >
-                  {source.kind}: {source.id}
+                  {source.kind}: {source.label ?? source.id}
                 </span>
               ))}
             </div>
