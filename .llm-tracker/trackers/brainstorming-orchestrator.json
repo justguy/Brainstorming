@@ -69,8 +69,8 @@
       }
     ],
     "scratchpad": "bo-037 is complete. The board now has persisted whiteboard/sketch theme mode, reduced-motion handling for visible beat animations, keyboard-focusable history/review overlays with Escape close, and more intentional empty/thinking/kept/scratched board states. Verification: npm run typecheck and npm run build:web. I did not run a manual browser pass across both themes or reduced-motion.",
-    "rev": 61,
-    "updatedAt": "2026-04-19T05:49:42.562Z"
+    "rev": 64,
+    "updatedAt": "2026-04-19T15:10:44.240Z"
   },
   "tasks": [
     {
@@ -589,7 +589,7 @@
       "id": "bo-012",
       "title": "4.4 CRDT-driven autonomous facilitator triggers",
       "goal": "Move facilitator triggers onto Y.Doc update events with idle gating, AI-host election, and AI-origin dedup so exactly one peer automates the board.",
-      "status": "not_started",
+      "status": "in_progress",
       "placement": {
         "swimlaneId": "automation",
         "priorityId": "p3"
@@ -625,7 +625,13 @@
           "election"
         ],
         "notes": "Peer-aware automation starts only after sync is real."
-      }
+      },
+      "notes": "Additional progress in commit 8c05ef2: widened synced peer refresh from ideas-only to full board reloads, gave shared AI actions stable identity, and used shared AI-action updates as a peer board-refresh trigger so same-browser peers pull facilitator outputs (critiques, suggestions, connections, docs, tweaks) after host activity lands. Verification: npm run typecheck, npm run build:web. Remaining gap: artifacts themselves are still not CRDT entities, so this is convergence via shared board snapshot reloads rather than true cross-machine artifact replication.",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web",
+        "git commit 8c05ef2"
+      ]
     },
     {
       "dependencies": [],
@@ -830,7 +836,7 @@
       "id": "bo-017",
       "title": "Stretch: W1 external system integration tools",
       "goal": "Use the W1 active-tab tool path to let phase transitions write to Linear, Jira, or PRD tools with explicit second-step consent.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "integrations",
         "priorityId": "p3"
@@ -867,7 +873,13 @@
           "consent"
         ],
         "notes": "This is the explicit W1 writeback stretch item from the roadmap."
-      }
+      },
+      "notes": "Implemented in commit c1c4ff8 via the existing W1 consume path. Phase and next-step changes now surface a second-consent writeback draft in the live-tool panel, with editable JSON payloads and an active-origin guard before invokeActiveTabTool(). Verification: npm run typecheck, npm run build:web.",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web",
+        "git commit c1c4ff8"
+      ]
     },
     {
       "dependencies": [],
