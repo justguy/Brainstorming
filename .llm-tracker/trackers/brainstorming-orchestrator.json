@@ -69,8 +69,8 @@
       }
     ],
     "scratchpad": "bo-037 is complete. The board now has persisted whiteboard/sketch theme mode, reduced-motion handling for visible beat animations, keyboard-focusable history/review overlays with Escape close, and more intentional empty/thinking/kept/scratched board states. Verification: npm run typecheck and npm run build:web. I did not run a manual browser pass across both themes or reduced-motion.",
-    "rev": 64,
-    "updatedAt": "2026-04-19T15:10:44.240Z"
+    "rev": 65,
+    "updatedAt": "2026-04-19T15:51:52.000Z"
   },
   "tasks": [
     {
@@ -626,11 +626,10 @@
         ],
         "notes": "Peer-aware automation starts only after sync is real."
       },
-      "notes": "Additional progress in commit 8c05ef2: widened synced peer refresh from ideas-only to full board reloads, gave shared AI actions stable identity, and used shared AI-action updates as a peer board-refresh trigger so same-browser peers pull facilitator outputs (critiques, suggestions, connections, docs, tweaks) after host activity lands. Verification: npm run typecheck, npm run build:web. Remaining gap: artifacts themselves are still not CRDT entities, so this is convergence via shared board snapshot reloads rather than true cross-machine artifact replication.",
+      "notes": "Additional progress after commits 8eb16d7 and 8c05ef2: facilitator sync now publishes shared non-idea board-mutation signals for docs, critiques, suggestions, and connections so peers reload once per remote mutation and non-AI mutation activity advances the shared observer clock. The WebMCP surface also now exposes list_peers, claim_ai_host, release_ai_host, and set_ai_paused on top of a manual host override layered over the existing lowest-client election. Verification: npm run typecheck, npm run build:web. Remaining gaps: artifact stores are still not true CRDT entities, host election still uses facilitator-map heartbeats rather than y-protocols/awareness, and this branch remains BroadcastChannel-backed rather than the roadmap's y-webrtc cross-machine path, so bo-012 stays in progress.",
       "verification": [
         "npm run typecheck",
-        "npm run build:web",
-        "git commit 8c05ef2"
+        "npm run build:web"
       ]
     },
     {

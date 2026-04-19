@@ -1,3 +1,4 @@
+import type { ChangeActor } from '../board/types';
 import type { BoardId } from '../types';
 import {
   AI_SYNC_ORIGIN,
@@ -12,7 +13,9 @@ import {
 
 const PEER_PREFIX = 'peer:';
 const SHARED_PAUSE_KEY = 'sharedPause';
+const MANUAL_HOST_KEY = 'manualHostClientId';
 const LAST_AI_ACTION_KEY = 'lastAiAction';
+const LAST_BOARD_MUTATION_KEY = 'lastBoardMutation';
 const PEER_STALE_MS = 6_000;
 
 export interface FacilitatorPeerState {
@@ -28,13 +31,23 @@ export interface FacilitatorAiAction {
   ideaId?: string;
 }
 
+export interface FacilitatorBoardMutation {
+  id: string;
+  kind: 'connection' | 'critique' | 'doc' | 'suggestion';
+  at: number;
+  actorType: ChangeActor['type'];
+  clientId: number | null;
+}
+
 export interface FacilitatorSnapshot {
   localClientId: number | null;
   hostClientId: number | null;
+  manualHostClientId: number | null;
   isAiHost: boolean;
   sharedPause: boolean;
   lastBoardActivityAt: number;
   lastAiAction: FacilitatorAiAction | null;
+  lastBoardMutation: FacilitatorBoardMutation | null;
   peers: FacilitatorPeerState[];
 }
 
@@ -59,6 +72,11 @@ export function observeFacilitatorSnapshot(
   };
 }
 
+export function getFacilitatorSnapshot(boardId: BoardId): FacilitatorSnapshot {
+  const controller = getFacilitatorController(boardId);
+  return buildFacilitatorSnapshot(boardId, controller.lastBoardActivityAt);
+}
+
 export function heartbeatFacilitatorPeer(
   boardId: BoardId,
   wantsAiHost: boolean,
@@ -79,6 +97,9 @@ export function clearFacilitatorPeer(boardId: BoardId): void {
   if (!doc) return;
   transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
     facilitatorMap.delete(`${PEER_PREFIX}${doc.clientID}`);
+    if (facilitatorMap.get(MANUAL_HOST_KEY) === doc.clientID) {
+      facilitatorMap.delete(MANUAL_HOST_KEY);
+    }
   }, FACILITATOR_SYNC_ORIGIN);
 }
 
@@ -86,6 +107,30 @@ export function setSharedFacilitatorPause(boardId: BoardId, paused: boolean): vo
   transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
     facilitatorMap.set(SHARED_PAUSE_KEY, paused);
   }, FACILITATOR_SYNC_ORIGIN);
+}
+
+export function claimFacilitatorAiHost(boardId: BoardId): FacilitatorSnapshot | null {
+  const snapshot = getFacilitatorSnapshot(boardId);
+  if (snapshot.localClientId === null) return null;
+  if (!snapshot.peers.some(peer => peer.clientId === snapshot.localClientId)) {
+    return null;
+  }
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    facilitatorMap.set(MANUAL_HOST_KEY, snapshot.localClientId);
+  }, FACILITATOR_SYNC_ORIGIN);
+  return getFacilitatorSnapshot(boardId);
+}
+
+export function releaseFacilitatorAiHost(boardId: BoardId): FacilitatorSnapshot | null {
+  const snapshot = getFacilitatorSnapshot(boardId);
+  if (snapshot.localClientId === null) return null;
+  if (snapshot.manualHostClientId !== null && snapshot.manualHostClientId !== snapshot.localClientId) {
+    return null;
+  }
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    facilitatorMap.delete(MANUAL_HOST_KEY);
+  }, FACILITATOR_SYNC_ORIGIN);
+  return getFacilitatorSnapshot(boardId);
 }
 
 export function recordFacilitatorAiAction(
@@ -99,6 +144,20 @@ export function recordFacilitatorAiAction(
       at: action.at ?? Date.now(),
     } satisfies FacilitatorAiAction);
   }, AI_SYNC_ORIGIN);
+}
+
+export function recordFacilitatorBoardMutation(
+  boardId: BoardId,
+  mutation: Omit<FacilitatorBoardMutation, 'at' | 'id' | 'clientId'> & { at?: number; id?: string },
+): void {
+  transactIdeaSync(boardId, (doc, facilitatorMap) => {
+    facilitatorMap.set(LAST_BOARD_MUTATION_KEY, {
+      ...mutation,
+      id: mutation.id ?? crypto.randomUUID(),
+      at: mutation.at ?? Date.now(),
+      clientId: doc.clientID,
+    } satisfies FacilitatorBoardMutation);
+  }, mutation.actorType === 'ai' ? AI_SYNC_ORIGIN : FACILITATOR_SYNC_ORIGIN);
 }
 
 function getFacilitatorController(boardId: BoardId): FacilitatorController {
@@ -115,9 +174,16 @@ function getFacilitatorController(boardId: BoardId): FacilitatorController {
   controller.unobserveSync = observeIdeaSyncUpdates(boardId, event => {
     if (
       event.origin === AI_SYNC_ORIGIN ||
-      event.origin === BOOTSTRAP_SYNC_ORIGIN ||
-      event.origin === FACILITATOR_SYNC_ORIGIN
+      event.origin === BOOTSTRAP_SYNC_ORIGIN
     ) {
+      notifyFacilitatorListeners(controller);
+      return;
+    }
+    if (event.origin === FACILITATOR_SYNC_ORIGIN) {
+      const sharedBoardMutation = readBoardMutation(getIdeaSyncFacilitatorMap(boardId)?.get(LAST_BOARD_MUTATION_KEY));
+      if (sharedBoardMutation && sharedBoardMutation.actorType !== 'ai') {
+        controller.lastBoardActivityAt = Math.max(controller.lastBoardActivityAt, sharedBoardMutation.at);
+      }
       notifyFacilitatorListeners(controller);
       return;
     }
@@ -144,18 +210,33 @@ function buildFacilitatorSnapshot(
   const localClientId = doc?.clientID ?? null;
   const peers = readFreshPeers(facilitatorMap);
   const sharedPause = facilitatorMap?.get(SHARED_PAUSE_KEY) === true;
-  const hostClientId = sharedPause ? null : peers[0]?.clientId ?? null;
+  const manualHostClientId = readManualHostClientId(facilitatorMap?.get(MANUAL_HOST_KEY), peers);
+  const hostClientId = sharedPause ? null : manualHostClientId ?? peers[0]?.clientId ?? null;
   const lastAiAction = readAiAction(facilitatorMap?.get(LAST_AI_ACTION_KEY));
+  const lastBoardMutation = readBoardMutation(facilitatorMap?.get(LAST_BOARD_MUTATION_KEY));
+  const boardActivityAt = lastBoardMutation && lastBoardMutation.actorType !== 'ai'
+    ? lastBoardMutation.at
+    : 0;
 
   return {
     localClientId,
     hostClientId,
+    manualHostClientId,
     isAiHost: hostClientId !== null && hostClientId === localClientId,
     sharedPause,
-    lastBoardActivityAt,
+    lastBoardActivityAt: Math.max(lastBoardActivityAt, boardActivityAt),
     lastAiAction,
+    lastBoardMutation,
     peers,
   };
+}
+
+function readManualHostClientId(
+  value: unknown,
+  peers: FacilitatorPeerState[],
+): number | null {
+  if (typeof value !== 'number') return null;
+  return peers.some(peer => peer.clientId === value) ? value : null;
 }
 
 function readFreshPeers(
@@ -192,5 +273,42 @@ function readAiAction(value: unknown): FacilitatorAiAction | null {
     kind: action.kind,
     at: action.at,
     ...(typeof action.ideaId === 'string' ? { ideaId: action.ideaId } : {}),
+  };
+}
+
+function readBoardMutation(value: unknown): FacilitatorBoardMutation | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const mutation = value as Partial<FacilitatorBoardMutation>;
+  if (typeof mutation.id !== 'string' || mutation.id.length === 0) return null;
+  if (typeof mutation.at !== 'number') return null;
+  if (
+    mutation.kind !== 'connection' &&
+    mutation.kind !== 'critique' &&
+    mutation.kind !== 'doc' &&
+    mutation.kind !== 'suggestion'
+  ) {
+    return null;
+  }
+  if (
+    mutation.actorType !== 'user' &&
+    mutation.actorType !== 'ai' &&
+    mutation.actorType !== 'tool' &&
+    mutation.actorType !== 'system'
+  ) {
+    return null;
+  }
+  if (
+    mutation.clientId !== undefined &&
+    mutation.clientId !== null &&
+    typeof mutation.clientId !== 'number'
+  ) {
+    return null;
+  }
+  return {
+    id: mutation.id,
+    at: mutation.at,
+    kind: mutation.kind,
+    actorType: mutation.actorType,
+    clientId: typeof mutation.clientId === 'number' ? mutation.clientId : null,
   };
 }

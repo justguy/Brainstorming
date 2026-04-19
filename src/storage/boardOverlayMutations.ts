@@ -6,6 +6,7 @@ import { getBoardHistoryState } from './boardHistoryState';
 import type { BoardCommitResult } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { recordFacilitatorBoardMutation } from './facilitatorSync';
 
 export async function commitDismissCritique(
   boardId: string,
@@ -61,6 +62,7 @@ export async function commitDismissCritique(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'critique', actorType: input.actor.type, at: now });
 
   const document = await loadBoardDocument(boardId);
   return { document, history: await getBoardHistoryState(boardId), changeSet };
@@ -120,6 +122,7 @@ export async function commitDismissSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
 
   const document = await loadBoardDocument(boardId);
   return { document, history: await getBoardHistoryState(boardId), changeSet };

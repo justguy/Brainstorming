@@ -7,6 +7,7 @@ import { getBoardHistoryState } from './boardHistoryState';
 import type { BoardCommitResult } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { recordFacilitatorBoardMutation } from './facilitatorSync';
 
 export async function commitReplaceConnections(
   boardId: BoardId,
@@ -73,6 +74,7 @@ export async function commitReplaceConnections(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'connection', actorType: input.actor.type, at: now });
 
   return {
     document: await loadBoardDocument(boardId),

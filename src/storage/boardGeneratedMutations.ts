@@ -12,6 +12,7 @@ import type {
 } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { recordFacilitatorBoardMutation } from './facilitatorSync';
 import { publishIdeaRows } from './ideaSync';
 
 export async function commitCreateCritique(
@@ -63,6 +64,7 @@ export async function commitCreateCritique(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'critique', actorType: input.actor.type, at: now });
 
   return {
     critique,
@@ -131,6 +133,7 @@ export async function commitCreateSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
 
   return {
     suggestion,
@@ -192,6 +195,7 @@ export async function commitElaborateSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
 
   return {
     suggestion,
@@ -250,6 +254,7 @@ export async function commitAdmitSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
   await publishIdeaRows([idea], boardId);
 
   return {

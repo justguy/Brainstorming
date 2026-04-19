@@ -34,6 +34,12 @@ import {
   searchLocalDocsTool,
   type SupportingDocToolResult,
 } from './webmcpLocalDocTools';
+import {
+  claimAiHostTool,
+  listPeersTool,
+  releaseAiHostTool,
+  setAiPausedTool,
+} from './webmcpFacilitatorTools';
 
 // ---------------------------------------------------------------------------
 // safeRegisterTool — StrictMode-resilient registerTool wrapper
@@ -1682,7 +1688,11 @@ export function useBrainstormingTools(_selectedIdea: LegacyToolIdea | null): voi
       safeRegisterTool(mc, admitSuggestionTool, opts);
       safeRegisterTool(mc, elaborateSuggestionTool, opts);
       safeRegisterTool(mc, dismissSuggestionTool, opts);
-      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, get_board, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, search_local_docs, attach_local_doc_candidate, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, cross_pollinate, run_beat, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
+      safeRegisterTool(mc, listPeersTool, opts);
+      safeRegisterTool(mc, claimAiHostTool, opts);
+      safeRegisterTool(mc, releaseAiHostTool, opts);
+      safeRegisterTool(mc, setAiPausedTool, opts);
+      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, get_board, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, search_local_docs, attach_local_doc_candidate, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, cross_pollinate, run_beat, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion, list_peers, claim_ai_host, release_ai_host, set_ai_paused');
     }
 
     return () => {

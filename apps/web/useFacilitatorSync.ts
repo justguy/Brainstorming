@@ -15,10 +15,12 @@ const HEARTBEAT_MS = 2_000;
 const EMPTY_SNAPSHOT: FacilitatorSnapshot = {
   localClientId: null,
   hostClientId: null,
+  manualHostClientId: null,
   isAiHost: false,
   sharedPause: false,
   lastBoardActivityAt: 0,
   lastAiAction: null,
+  lastBoardMutation: null,
   peers: [],
 };
 

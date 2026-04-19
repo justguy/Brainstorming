@@ -8,6 +8,7 @@ import { getBoardHistoryState } from './boardHistoryState';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
 import { deriveTitle, type CreateDocInput } from './docs';
+import { recordFacilitatorBoardMutation } from './facilitatorSync';
 
 type DocPatch = Partial<Pick<SupportingDoc, 'title' | 'rawText' | 'summary' | 'facts' | 'status' | 'error'>>;
 
@@ -60,6 +61,7 @@ export async function commitCreateDoc(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'doc', actorType: input.actor.type, at: now });
 
   return {
     doc,
@@ -126,6 +128,7 @@ export async function commitUpdateDoc(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'doc', actorType: input.actor.type, at: now });
 
   return {
     doc,
@@ -175,6 +178,7 @@ export async function commitDeleteDoc(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, { kind: 'doc', actorType: input.actor.type, at: now });
 
   return {
     doc,

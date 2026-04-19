@@ -50,7 +50,7 @@ export default function App(): React.ReactElement {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
-  const lastSharedAiActionIdRef = useRef<string | null>(null);
+  const lastSharedBoardMutationIdRef = useRef<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
   const persistedFacilitatorPaused = Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]);
@@ -117,13 +117,13 @@ export default function App(): React.ReactElement {
   const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
 
   useEffect(() => {
-    const sharedAiAction = facilitatorSync.lastAiAction;
-    if (!sharedAiAction) return;
-    if (lastSharedAiActionIdRef.current === sharedAiAction.id) return;
-    lastSharedAiActionIdRef.current = sharedAiAction.id;
-    if (facilitatorSync.isAiHost) return;
+    const sharedBoardMutation = facilitatorSync.lastBoardMutation;
+    if (!sharedBoardMutation) return;
+    if (lastSharedBoardMutationIdRef.current === sharedBoardMutation.id) return;
+    lastSharedBoardMutationIdRef.current = sharedBoardMutation.id;
+    if (sharedBoardMutation.clientId === facilitatorSync.localClientId) return;
     void loadBoard();
-  }, [facilitatorSync.isAiHost, facilitatorSync.lastAiAction, loadBoard]);
+  }, [facilitatorSync.lastBoardMutation, facilitatorSync.localClientId, loadBoard]);
 
   const { boardBeatReviewSession, boardBeatReviewItems } = selectBoardBeatReviewSurface({ beatReviewSessions, beatReviewItems, activeBeatReviewSession });
 
