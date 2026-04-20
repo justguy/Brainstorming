@@ -5,6 +5,11 @@ import type { BeatResult, ConnectBeatContext, CritiqueBeatContext } from '../../
 import { listCritiquesForIdea } from '../../src/storage/critiques';
 import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
+import type {
+  FacilitatorActionExecutionMode,
+  FacilitatorInterventionStrength,
+  FacilitatorRoleId,
+} from '../../src/storage/facilitatorSyncEvents';
 import type { Connection, Idea, IdeaCritique, SupportingDoc } from '../../src/types';
 import type { BoardRepository } from './boardRepository';
 import { buildConnectBeatContext, buildCritiqueBeatContext } from './beatContext';
@@ -19,6 +24,15 @@ const HIGHLIGHT_FLASH_MS = 320;
 const REVEAL_WINDOW_MS = 1_800;
 
 type RevealOrigin = 'manual' | 'ai';
+type AnalysisPolicyOptions = {
+  origin?: RevealOrigin;
+  source?: 'canvas' | 'webmcp' | 'beat';
+  automationKey?: string;
+  executionMode?: FacilitatorActionExecutionMode;
+  interventionStrength?: FacilitatorInterventionStrength;
+  role?: FacilitatorRoleId;
+  policyReason?: string;
+};
 
 type RunBoardBeat = {
   (context: ConnectBeatContext): Promise<BeatResult<'connect'>>;
@@ -33,6 +47,10 @@ interface UseBoardAnalysisActionsArgs {
   boardController: ReturnType<typeof createBoardController>;
   applyCommittedBoard: (document: BoardDocument, history: BoardHistoryState) => void;
   runBoardBeat: RunBoardBeat;
+  onCritiqueOutcome?: (input: {
+    critiqueId: string;
+    outcome: 'rejected';
+  }) => void;
 }
 
 export function useBoardAnalysisActions({
@@ -43,6 +61,7 @@ export function useBoardAnalysisActions({
   boardController,
   applyCommittedBoard,
   runBoardBeat,
+  onCritiqueOutcome,
 }: UseBoardAnalysisActionsArgs) {
   const [findingConnections, setFindingConnections] = useState(false);
   const [lastConnectionsRunAt, setLastConnectionsRunAt] = useState<number | null>(null);
@@ -89,11 +108,7 @@ export function useBoardAnalysisActions({
     }, REVEAL_WINDOW_MS);
   }
 
-  async function runConnectionFinder(options: {
-    origin?: RevealOrigin;
-    limitGenerated?: number;
-    source?: 'canvas' | 'webmcp' | 'beat';
-  } = {}): Promise<Connection[]> {
+  async function runConnectionFinder(options: AnalysisPolicyOptions & { limitGenerated?: number } = {}): Promise<Connection[]> {
     setFindingConnections(true);
     try {
       const boardIdeas = ideas.filter(idea => idea.status !== 'archived' && idea.status !== 'discarded');
@@ -108,7 +123,7 @@ export function useBoardAnalysisActions({
         supportingDocs,
         trigger: beatTrigger(options.origin),
         size: beatSize(options.origin),
-        aggressiveness: beatAggressiveness(options.origin),
+        aggressiveness: beatAggressiveness(options.origin, options.interventionStrength),
       }));
       const now = beatResult.meta.finishedAt;
       const proposedConnections = beatResult.ok ? beatResult.proposal.connections : [];
@@ -131,6 +146,10 @@ export function useBoardAnalysisActions({
           return left.createdAt - right.createdAt;
         })
         .slice(0, options.limitGenerated ?? materialised.length);
+      if (options.origin === 'ai' && options.executionMode === 'stage') {
+        setLastConnectionsRunAt(now);
+        return nextGenerated;
+      }
       const committed = await boardController.replaceConnections({
         connections: replaceGeneratedConnections(connections, nextGenerated),
         actor: analysisActorFor(options),
@@ -197,7 +216,7 @@ export function useBoardAnalysisActions({
 
   async function runCritiqueIdea(
     ideaId: string,
-    options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat'; automationKey?: string } = {},
+    options: AnalysisPolicyOptions = {},
   ): Promise<IdeaCritique | null> {
     setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: true }));
     try {
@@ -225,7 +244,7 @@ export function useBoardAnalysisActions({
         existingCritiques: priorCritiques,
         trigger: beatTrigger(options.origin),
         size: beatSize(options.origin),
-        aggressiveness: beatAggressiveness(options.origin),
+        aggressiveness: beatAggressiveness(options.origin, options.interventionStrength),
       }));
       if (!beatResult.ok || beatResult.proposal.challenges.length === 0) {
         throw new Error('Devil’s advocate returned no critique.');
@@ -239,6 +258,20 @@ export function useBoardAnalysisActions({
       ));
       if (!nextChallenge) {
         throw new Error('No new critique surfaced beyond the ones already shown.');
+      }
+
+      if (options.origin === 'ai' && options.executionMode === 'stage') {
+        return {
+          id: crypto.randomUUID(),
+          boardId,
+          ideaId,
+          critique: nextChallenge.critique,
+          evidenceAsk: nextChallenge.evidenceAsk,
+          status: 'active',
+          source: 'devils_advocate',
+          createdAt: beatResult.meta.finishedAt,
+          updatedAt: beatResult.meta.finishedAt,
+        };
       }
 
       const critiqueResult = await boardController.createCritique({
@@ -267,6 +300,7 @@ export function useBoardAnalysisActions({
         actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
       });
       applyCommittedBoard(result.document, result.history);
+      onCritiqueOutcome?.({ critiqueId: id, outcome: 'rejected' });
     } catch (err) {
       console.error('[App] dismiss critique failed:', err);
     }
@@ -303,13 +337,22 @@ function beatSize(origin?: RevealOrigin): 'small' | 'big' {
   return origin === 'ai' ? 'small' : 'big';
 }
 
-function beatAggressiveness(origin?: RevealOrigin): 'gentle' | 'balanced' {
-  return origin === 'ai' ? 'gentle' : 'balanced';
+function beatAggressiveness(
+  origin?: RevealOrigin,
+  interventionStrength?: FacilitatorInterventionStrength,
+): 'gentle' | 'balanced' | 'aggressive' {
+  if (origin !== 'ai') return 'balanced';
+  return interventionStrength ?? 'gentle';
 }
 
-function analysisActorFor(options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat' }) {
+function analysisActorFor(options: AnalysisPolicyOptions) {
   if (options.origin === 'ai') {
-    return { type: 'ai' as const, source: 'beat' as const, beat: 'connect' as const, label: 'connectionFinder' };
+    return {
+      type: 'ai' as const,
+      source: 'beat' as const,
+      beat: 'connect' as const,
+      label: aiLabelForRole(options.role, 'connectionFinder'),
+    };
   }
   if (options.source === 'webmcp') {
     return { type: 'tool' as const, source: 'webmcp' as const };
@@ -317,9 +360,14 @@ function analysisActorFor(options: { origin?: RevealOrigin; source?: 'canvas' | 
   return { type: 'user' as const, source: 'canvas' as const };
 }
 
-function critiqueActorFor(options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat' }) {
+function critiqueActorFor(options: AnalysisPolicyOptions) {
   if (options.origin === 'ai') {
-    return { type: 'ai' as const, source: 'beat' as const, beat: 'critique' as const, label: 'devilsAdvocate' };
+    return {
+      type: 'ai' as const,
+      source: 'beat' as const,
+      beat: 'critique' as const,
+      label: aiLabelForRole(options.role, 'devilsAdvocate'),
+    };
   }
   if (options.source === 'webmcp') {
     return { type: 'tool' as const, source: 'webmcp' as const };
@@ -336,5 +384,18 @@ function connectionStrengthWeight(strength: Connection['strength']): number {
     case 'weak':
     default:
       return 0;
+  }
+}
+
+function aiLabelForRole(role: FacilitatorRoleId | undefined, fallback: string): string {
+  switch (role) {
+    case 'synthesizer':
+      return 'policySynthesizer';
+    case 'challenger':
+      return 'policyChallenger';
+    case 'facilitator':
+      return 'policyFacilitator';
+    default:
+      return fallback;
   }
 }

@@ -46,7 +46,7 @@ export function BeatReviewPanel({
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                {session.beat} beat review
+                {session.beat} role review
               </span>
               <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
                 {formatRunAt(session.finishedAt)}
@@ -64,7 +64,7 @@ export function BeatReviewPanel({
             type="button"
             onClick={onClose}
             className="rounded-full px-2.5 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close beat review"
+            aria-label="Close role review"
           >
             Close
           </button>

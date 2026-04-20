@@ -3,6 +3,7 @@ import type { Connection, Idea, IdeaGroup, ScoutSuggestion } from '../types';
 import IdeaPanel from './IdeaPanel';
 import GhostPanel from './GhostPanel';
 import { ConnectionOverlay } from './ConnectionOverlay';
+import { ConnectionComposer } from './ConnectionComposer';
 import { deriveCanvasFocus } from './canvasFocus';
 
 export const MERGE_HOLD_MS = 2000;
@@ -65,10 +66,17 @@ export interface CanvasProps {
   onMove: (ideaId: string, x: number, y: number) => void;
   onOpen: (ideaId: string) => void;
   onOpenDocs?: (ideaId: string) => void;
+  linkModeEnabled?: boolean;
   onGroup: (ideaIdA: string, ideaIdB: string) => void;
   onUngroup: (ideaId: string) => void;
   onMerge: (draggedId: string, targetId: string) => void;
   onDiscard?: (ideaId: string) => void;
+  onCreateConnection?: (input: {
+    fromIdeaId: string;
+    toIdeaId: string;
+    kind: Connection['kind'];
+    rationale: string;
+  }) => Promise<Connection>;
   suggestions?: ScoutSuggestion[];
   suggestionBusy?: Record<string, 'admit' | 'elaborate' | 'dismiss' | null>;
   onAdmitSuggestion?: (id: string) => void;
@@ -96,10 +104,12 @@ export default function Canvas({
   onMove,
   onOpen,
   onOpenDocs,
+  linkModeEnabled = false,
   onGroup,
   onUngroup,
   onMerge,
   onDiscard,
+  onCreateConnection,
   suggestions,
   suggestionBusy,
   onAdmitSuggestion,
@@ -113,6 +123,15 @@ export default function Canvas({
   const [mergeProgress, setMergeProgress] = useState(0);
   const [hoveredIdeaId, setHoveredIdeaId] = useState<string | null>(null);
   const [flashState, setFlashState] = useState<{ activeIdeaId: string | null; ideaIds: string[] }>({ activeIdeaId: null, ideaIds: [] });
+  const [linkAnchorId, setLinkAnchorId] = useState<string | null>(null);
+  const [linkDraft, setLinkDraft] = useState<{
+    fromIdeaId: string;
+    toIdeaId: string;
+    kind: Connection['kind'];
+    rationale: string;
+  } | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
   const mergeStartRef = useRef<number | null>(null);
   const mergeTimerRef = useRef<number | null>(null);
   const flashTimerRef = useRef<number | null>(null);
@@ -223,6 +242,57 @@ export default function Canvas({
     onConnectionClick?.(ideaIds);
   }
 
+  function handleLinkStart(ideaId: string): void {
+    if (!linkModeEnabled) return;
+    setLinkDraft(null);
+    setLinkError(null);
+    setLinkAnchorId(prev => (prev === ideaId ? null : ideaId));
+  }
+
+  function handleLinkComplete(ideaId: string): void {
+    if (!linkAnchorId || linkAnchorId === ideaId) {
+      setLinkAnchorId(null);
+      return;
+    }
+    if (!onCreateConnection) {
+      setLinkAnchorId(null);
+      return;
+    }
+    setLinkDraft({
+      fromIdeaId: linkAnchorId,
+      toIdeaId: ideaId,
+      kind: 'builds_on',
+      rationale: '',
+    });
+    setLinkError(null);
+    setLinkAnchorId(null);
+  }
+
+  async function handleSaveLink(): Promise<void> {
+    if (!linkDraft || !onCreateConnection) return;
+    const rationale = linkDraft.rationale.trim();
+    if (!rationale) {
+      setLinkError('Add a short rationale before saving the link.');
+      return;
+    }
+
+    setLinkBusy(true);
+    setLinkError(null);
+    try {
+      await onCreateConnection({
+        fromIdeaId: linkDraft.fromIdeaId,
+        toIdeaId: linkDraft.toIdeaId,
+        kind: linkDraft.kind,
+        rationale,
+      });
+      setLinkDraft(null);
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : 'Failed to save link.');
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
   const activeIdeaId = liveDrag?.id ?? hoveredIdeaId ?? flashState.activeIdeaId;
   const focus = useMemo(
     () => deriveCanvasFocus(ideas.map(idea => idea.id), connectionList, activeIdeaId, flashState.ideaIds),
@@ -230,6 +300,8 @@ export default function Canvas({
   );
   const highlightSet = new Set(flashState.ideaIds);
   const showConnectionHint = connectionList.length === 0 && ideas.length >= 2 && liveDrag === null;
+  const linkSourceIdea = linkDraft ? ideas.find(idea => idea.id === linkDraft.fromIdeaId) ?? null : null;
+  const linkTargetIdea = linkDraft ? ideas.find(idea => idea.id === linkDraft.toIdeaId) ?? null : null;
 
   return (
     <div
@@ -250,13 +322,23 @@ export default function Canvas({
         onConnectionClick={onConnectionClick ? handleConnectionClick : undefined}
       />
       {overlayContent}
+      {linkModeEnabled && (
+        <div className="pointer-events-none absolute left-4 top-4 z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
+            Link mode
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-900">
+            Pick a source handle, then a target handle, and write the reason on the canvas.
+          </p>
+        </div>
+      )}
       {showConnectionHint && (
         <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[18rem] rounded-[22px] border border-amber-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
             Connections
           </p>
           <p className="mt-1 text-xs font-semibold text-slate-900">
-            Add one from the companion rail, or ask the facilitator to scan this board.
+            Toggle link mode to connect notes on the board, or ask the facilitator to scan this workspace.
           </p>
         </div>
       )}
@@ -312,9 +394,37 @@ export default function Canvas({
             onOpen={onOpen}
             onOpenDocs={onOpenDocs}
             onDiscard={onDiscard}
+            linkModeEnabled={linkModeEnabled}
+            linkModeAnchor={linkAnchorId === idea.id}
+            onLinkStart={handleLinkStart}
+            onLinkComplete={handleLinkComplete}
           />
         );
       })}
+
+      {linkDraft && linkSourceIdea && linkTargetIdea && (
+        <ConnectionComposer
+          sourceIdea={linkSourceIdea}
+          targetIdea={linkTargetIdea}
+          draftKind={linkDraft.kind}
+          draftRationale={linkDraft.rationale}
+          busy={linkBusy}
+          error={linkError}
+          onKindChange={kind => {
+            setLinkDraft(current => (current ? { ...current, kind } : current));
+          }}
+          onRationaleChange={rationale => {
+            setLinkDraft(current => (current ? { ...current, rationale } : current));
+          }}
+          onSubmit={() => {
+            void handleSaveLink();
+          }}
+          onCancel={() => {
+            setLinkDraft(null);
+            setLinkError(null);
+          }}
+        />
+      )}
 
       {suggestions?.map((suggestion, index) => {
         const isLastVisible = index === suggestions.length - 1;
@@ -345,7 +455,7 @@ export default function Canvas({
               Add the first note.
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Use <span className="font-semibold text-slate-800">New note</span> to place a card on the canvas. Then run <span className="font-semibold text-slate-800">Connections</span> to link notes and use the <span className="font-semibold text-slate-800">AI facilitator</span> rail to scout and drive beats.
+              Use <span className="font-semibold text-slate-800">New note</span> to place a card on the canvas. Then use <span className="font-semibold text-slate-800">Link mode</span> to connect notes and the <span className="font-semibold text-slate-800">role dock</span> to scout or challenge the board.
             </p>
           </div>
         </div>

@@ -24,38 +24,38 @@ export function BoardBeatsCard({
   const isSummariseRunning = activeBeat === 'summarise';
 
   return (
-    <section className="bo-card-surface w-full rounded-[24px] p-4">
+    <section className="bo-card-surface w-full rounded-[18px] border border-slate-200/80 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-            Manual beats
+            Role passes
           </p>
           <h3 className="mt-2 text-sm font-semibold text-slate-900">
-            Pull the facilitator into a deliberate pass
+            Pull a role pass into the canvas flow
           </h3>
           <p className="mt-1 text-sm leading-5 text-slate-600">
-            Cluster or summarise without leaving the canvas. Each pass resolves inline and reuses the existing review flow.
+            Run a role pass for clusters or synthesis without leaving the board.
           </p>
         </div>
         {activeBeat && (
           <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700">
-            {beatLabel(activeBeat)} running
+            {beatLabel(activeBeat)} in progress
           </span>
         )}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => {
             void onRunClusterBeat();
           }}
           disabled={activeBeatRun !== null}
-          className="rounded-[22px] border border-slate-300 bg-white/95 px-3 py-3 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
-          aria-label={isClusterRunning ? 'Cluster beat running' : 'Run board cluster review'}
+          className="rounded-[16px] border border-slate-300 bg-white/95 px-3 py-2.5 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
+          aria-label={isClusterRunning ? 'Cluster role in progress' : 'Run board clustering role'}
         >
           <div className="font-semibold text-slate-900">
-            {isClusterRunning ? 'Clustering…' : 'Cluster board'}
+            {isClusterRunning ? 'Clustering…' : 'Clustering role'}
           </div>
           <div className="mt-1 text-xs leading-5 text-slate-500">
             Surface related ideas and review the cluster candidates inline.
@@ -67,25 +67,25 @@ export function BoardBeatsCard({
             void onRunSummariseBeat();
           }}
           disabled={activeBeatRun !== null}
-          className="rounded-[22px] border border-slate-300 bg-white/95 px-3 py-3 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
-          aria-label={isSummariseRunning ? 'Summarise beat running' : 'Run board summary review'}
+          className="rounded-[16px] border border-slate-300 bg-white/95 px-3 py-2.5 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
+          aria-label={isSummariseRunning ? 'Summarise role in progress' : 'Run board synthesis role'}
         >
           <div className="font-semibold text-slate-900">
-            {isSummariseRunning ? 'Summarising…' : 'Summarise board'}
+            {isSummariseRunning ? 'Synthesising…' : 'Synthesis role'}
           </div>
           <div className="mt-1 text-xs leading-5 text-slate-500">
-            Produce a manual one-line takeaway and review it inline.
+            Produce a one-line synthesis for current board structure.
           </div>
         </button>
       </div>
 
       {boardBeatReviewSession && (
-        <article className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-3">
+        <article className="mt-3 rounded-[16px] border border-slate-200 bg-white/90 p-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                  {boardBeatReviewSession.beat} review
+                  {boardBeatReviewSession.beat} role review
                 </span>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
                   {formatRunAt(boardBeatReviewSession.finishedAt)}
@@ -175,13 +175,13 @@ function beatLabel(beat: BeatName): string {
     case 'scout':
       return 'Scout';
     case 'connect':
-      return 'Connect';
+      return 'Connector';
     case 'critique':
-      return 'Critique';
+      return 'Challenger';
     case 'cluster':
       return 'Cluster';
     case 'summarise':
-      return 'Summarise';
+      return 'Synthesiser';
   }
 }
 

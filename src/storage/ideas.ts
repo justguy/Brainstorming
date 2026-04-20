@@ -1,4 +1,9 @@
-import { createCapturedIdea, defaultBriefState, defaultPanelForIdea } from '../board/ideaFactory';
+import {
+  createCapturedIdea,
+  defaultBeadCoordination,
+  defaultBriefState,
+  defaultPanelForIdea,
+} from '../board/ideaFactory';
 import { DEFAULT_BOARD_ID } from '../board/types';
 import type { BoardId, Idea, LlmMessage, BriefState, Panel } from '../types';
 import { getDb } from './db';
@@ -32,6 +37,7 @@ function hydrateIdea(idea: Idea): Idea {
       challenges: bs.challenges ?? [],
       stressResults: bs.stressResults ?? [],
     },
+    beadCoordination: idea.beadCoordination ?? defaultBeadCoordination(),
     lastTurnAt: idea.lastTurnAt ?? (idea.turnLog.length > 0 ? idea.updatedAt : undefined),
     panel: idea.panel ?? defaultPanelForIdea(idea),
   };

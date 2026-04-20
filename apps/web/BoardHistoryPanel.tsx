@@ -54,7 +54,7 @@ export function BoardHistoryPanel({
               Change history
             </h2>
             <p id={summaryId} className="text-sm leading-snug text-slate-600">
-              Every patch set stays readable here, including actor, beat context, and affected board entities.
+              Every patch set stays readable here, including actor, role context, and affected board entities.
             </p>
           </div>
 

@@ -263,7 +263,8 @@ export type ChangeSetKind =
   | 'create_beat_review_session'
   | 'keep_beat_review_item'
   | 'scratch_beat_review_item'
-  | 'dismiss_suggestion';
+  | 'dismiss_suggestion'
+  | 'ai_undo';
 
 export type ChangeSetStatus = 'committed' | 'undone' | 'superseded';
 

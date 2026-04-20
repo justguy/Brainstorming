@@ -25,6 +25,20 @@ export interface GhostPanelProps {
 const DEFAULT_PANEL = { x: 480, y: 60, width: 280, height: 200 } as const;
 const ELABORATION_HEADING_RE = /^\*\*(.+?)\*\*:?\s*$/;
 
+type SignalStrength = 'speculative' | 'anchored' | 'strong';
+
+function describeSignal(rawText: string, relatedCount: number, hasRationale: boolean, hasElaboration: boolean, sourceIdeaCount: number): SignalStrength {
+  if (hasElaboration) return 'strong';
+  if (sourceIdeaCount >= 2 || (hasRationale && rawText.length > 140) || relatedCount >= 2) return 'anchored';
+  return 'speculative';
+}
+
+function strengthBadge(strength: SignalStrength): { label: string; cls: string } {
+  if (strength === 'strong') return { label: 'Strong signal', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
+  if (strength === 'anchored') return { label: 'Anchored signal', cls: 'bg-cyan-100 text-cyan-800 border-cyan-300' };
+  return { label: 'Speculative', cls: 'bg-slate-100 text-slate-700 border-slate-300' };
+}
+
 interface DetailSection {
   title: string;
   paragraphs: string[];
@@ -92,6 +106,15 @@ export default function GhostPanel({
   const hasDetailToggle = hasElaboration || relatedCount > 0 || suggestion.rationale.length > 0;
   const canExpandOverflow = overflowCount > 0 && !!onExpandOverflow;
   const canCollapseOverflow = expandedList && !!onCollapseOverflow;
+  const sourceIdeaCount = suggestion.sourceIdeaIds?.length ?? relatedCount;
+  const signalStrength = describeSignal(
+    suggestion.rawText,
+    relatedCount,
+    suggestion.rationale.length > 0,
+    hasElaboration,
+    sourceIdeaCount,
+  );
+  const signalMeta = strengthBadge(signalStrength);
 
   return (
     <div
@@ -126,6 +149,12 @@ export default function GhostPanel({
             <span className="rounded-full bg-teal-100/80 px-2 py-0.5 text-[10px] text-teal-800">
               {suggestion.source}
             </span>
+            <span className="rounded-full border border-slate-200 bg-white/85 px-2 py-0.5 text-[10px] text-slate-700">
+              {sourceIdeaCount === 0 ? 'No linked sources' : `${sourceIdeaCount} source idea${sourceIdeaCount === 1 ? '' : 's'}`}
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] ${signalMeta.cls}`}>
+              {signalMeta.label}
+            </span>
           </div>
           {busy && (
             <span className="text-[10px] italic text-teal-700">
@@ -159,6 +188,18 @@ export default function GhostPanel({
               </p>
               <p className={`mt-1 text-[11px] italic leading-snug text-slate-600 ${expanded ? '' : 'line-clamp-3'}`}>
                 {suggestion.rationale}
+              </p>
+            </div>
+            <div className="rounded-md border border-teal-200/90 bg-sky-50/80 p-2">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-600">
+                Provenance / confidence
+              </p>
+              <p className="mt-1 text-[11px] text-slate-700">
+                {signalStrength === 'strong'
+                  ? 'High-confidence signal: explicit rationale plus follow-up detail is available.'
+                  : signalStrength === 'anchored'
+                    ? 'Medium-confidence signal: grounded with linked source ideas and rationale.'
+                    : 'Low-confidence signal: early suggestion pending confirmation.'}
               </p>
             </div>
 

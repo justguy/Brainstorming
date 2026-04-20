@@ -1,6 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Button from '../../src/ui/Button';
 
 export interface CaptureIdeaPopoverProps {
   open: boolean;
@@ -11,7 +10,8 @@ export interface CaptureIdeaPopoverProps {
   } | null;
   text: string;
   tags: string;
-  onToggle: () => void;
+  onToggle?: () => void;
+  anchorSelector?: string;
   onTextChange: (value: string) => void;
   onTagsChange: (value: string) => void;
   onClose: () => void;
@@ -24,19 +24,18 @@ export function CaptureIdeaPopover({
   feedback,
   text,
   tags,
-  onToggle,
+  anchorSelector = '[data-capture-anchor=\"bo-capture-portal-anchor\"]',
   onTextChange,
   onTagsChange,
   onClose,
   onSubmit,
 }: CaptureIdeaPopoverProps): React.ReactElement | null {
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({
     position: 'fixed',
-    right: 20,
-    top: 80,
+    right: 16,
+    top: 96,
     width: 320,
     maxHeight: 'calc(100vh - 32px)',
     overflowY: 'auto',
@@ -54,25 +53,34 @@ export function CaptureIdeaPopover({
     if (!open) return;
 
     const margin = 16;
-    const gap = 12;
+    const gap = 10;
 
     const reposition = () => {
-      const trigger = triggerRef.current;
       const panel = panelRef.current;
-      if (!trigger || !panel) return;
+      if (!panel) return;
 
-      const triggerRect = trigger.getBoundingClientRect();
       const panelRect = panel.getBoundingClientRect();
-      const panelWidth = Math.min(320, window.innerWidth - margin * 2);
-      const panelHeight = Math.min(panelRect.height || 240, window.innerHeight - margin * 2);
+      const anchor = typeof document === 'undefined'
+        ? null
+        : (document.querySelector(anchorSelector) as HTMLElement | null);
+      const anchorRect = anchor?.getBoundingClientRect() ?? null;
 
-      let left = triggerRect.right - panelWidth;
-      left = Math.min(window.innerWidth - margin - panelWidth, Math.max(margin, left));
+      const panelWidth = Math.min(360, window.innerWidth - margin * 2);
+      const estimatedHeight = Math.max(panelRect.height || 360, 260);
+      const panelHeight = Math.min(estimatedHeight, window.innerHeight - margin * 2);
 
-      let top = triggerRect.top - panelHeight - gap;
-      if (top < margin) {
-        top = triggerRect.bottom + gap;
+      let left = window.innerWidth - margin - panelWidth;
+      let top = 96;
+
+      if (anchorRect) {
+        left = anchorRect.right - panelWidth;
+        top = anchorRect.bottom + gap;
+        if (top + panelHeight > window.innerHeight - margin) {
+          top = anchorRect.top - panelHeight - gap;
+        }
       }
+
+      left = Math.max(margin, Math.min(left, window.innerWidth - margin - panelWidth));
       top = Math.min(window.innerHeight - margin - panelHeight, Math.max(margin, top));
 
       setPanelStyle({
@@ -104,9 +112,9 @@ export function CaptureIdeaPopover({
       viewport?.removeEventListener('scroll', reposition);
       observer?.disconnect();
     };
-  }, [open]);
+  }, [open, anchorSelector]);
 
-  if (typeof document === 'undefined') return null;
+  if (typeof document === 'undefined' || !open) return null;
 
   async function handleSubmit(): Promise<void> {
     const committed = await onSubmit();
@@ -116,105 +124,88 @@ export function CaptureIdeaPopover({
   }
 
   return createPortal(
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label="Capture new idea"
-        aria-expanded={open}
-        onClick={onToggle}
-        className={`fixed bottom-[4.75rem] left-5 z-[100] inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-lg focus:outline-none focus:ring-4 focus:ring-violet-300 lg:bottom-5 ${
-          open
-            ? 'bg-violet-700 hover:bg-violet-800'
-            : 'bg-violet-600 hover:bg-violet-700'
-        }`}
-      >
-        <span aria-hidden="true" className="text-lg leading-none">+</span>
-        <span>{open ? 'Close note' : 'New note'}</span>
-      </button>
-
-      {open && (
-        <div
-          ref={panelRef}
-          style={panelStyle}
-          className="z-[110] rounded-lg border border-gray-200 bg-white p-4 shadow-xl"
-          onPointerDown={event => event.stopPropagation()}
-          onClick={event => event.stopPropagation()}
+    <div
+      ref={panelRef}
+      style={panelStyle}
+      className="bo-capture-surface z-[110]"
+      onPointerDown={event => event.stopPropagation()}
+      onClick={event => event.stopPropagation()}
+      role="dialog"
+      aria-label="Add note to canvas"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-sm font-semibold leading-tight">Add note to canvas</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-black/20 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-black/20"
+          aria-label="Close note dialog"
         >
-          <div className="flex items-start justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-              Add a note
-            </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-sm leading-none text-gray-400 hover:text-gray-600"
-              aria-label="Close capture"
-            >
-              ✕
-            </button>
+          Close
+        </button>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {feedback && (
+          <div
+            className={`rounded-md border px-3 py-2 text-xs ${
+              feedback.tone === 'success'
+                ? 'border-emerald-300 bg-emerald-50/60 text-emerald-800'
+                : 'border-rose-300 bg-rose-50/65 text-rose-800'
+            }`}
+            role="status"
+          >
+            {feedback.message}
           </div>
-          <div className="mt-2 space-y-2">
-            {feedback && (
-              <div
-                className={`rounded-md border px-3 py-2 text-xs ${
-                  feedback.tone === 'success'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-rose-200 bg-rose-50 text-rose-700'
-                }`}
-                role="status"
-              >
-                {feedback.message}
-              </div>
-            )}
-            <textarea
-              ref={textareaRef}
-              autoFocus
-              value={text}
-              onChange={event => onTextChange(event.target.value)}
-              placeholder="Describe your idea…"
-              rows={3}
-              className="w-full resize-none rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
-              aria-label="New idea description"
-              onKeyDown={event => {
-                if (event.key === 'Escape') {
-                  event.preventDefault();
-                  onClose();
-                  return;
-                }
-                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  void handleSubmit();
-                }
-              }}
-            />
-            <input
-              type="text"
-              value={tags}
-              onChange={event => onTagsChange(event.target.value)}
-              placeholder="Tags (comma-separated, optional)"
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
-              aria-label="Tags"
-            />
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                void handleSubmit();
-              }}
-              disabled={creating || !text.trim()}
-              className="w-full"
-            >
-              {creating ? 'Adding note…' : 'Add note to canvas'}
-            </Button>
-            <p className="text-[11px] leading-5 text-gray-500">
-              New notes are placed near the current viewport and centered into view so they are
-              legible on the board immediately.
-            </p>
-          </div>
-        </div>
-      )}
-    </>,
+        )}
+
+        <textarea
+          ref={textareaRef}
+          autoFocus
+          value={text}
+          onChange={event => onTextChange(event.target.value)}
+          placeholder="Describe your idea..."
+          rows={4}
+          className="bo-capture-input"
+          aria-label="New idea description"
+          onKeyDown={event => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onClose();
+              return;
+            }
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              void handleSubmit();
+            }
+          }}
+        />
+
+        <input
+          type="text"
+          value={tags}
+          onChange={event => onTagsChange(event.target.value)}
+          placeholder="Tags, comma-separated"
+          className="bo-capture-input"
+          aria-label="Tags"
+        />
+
+        <button
+          type="button"
+          onClick={() => {
+            void handleSubmit();
+          }}
+          disabled={creating || !text.trim()}
+          className="bo-topbar-primary-action w-full"
+        >
+          {creating ? 'Adding note...' : 'Add note'}
+        </button>
+
+        <p className="text-[11px] leading-5 text-black/60">
+          New notes appear near the current viewport and center into view.
+        </p>
+      </div>
+    </div>,
     document.body,
   );
 }

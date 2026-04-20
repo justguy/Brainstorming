@@ -11,6 +11,11 @@ import {
 import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
 import { getSuggestion } from '../../src/storage/suggestions';
+import type {
+  FacilitatorActionExecutionMode,
+  FacilitatorInterventionStrength,
+  FacilitatorRoleId,
+} from '../../src/storage/facilitatorSyncEvents';
 import type { Idea, ScoutSuggestion, SupportingDoc } from '../../src/types';
 import type { BoardRepository } from './boardRepository';
 import { buildScoutBeatContext } from './beatContext';
@@ -27,6 +32,16 @@ const COLLAPSED_SUGGESTION_COUNT = 3;
 const REVEAL_WINDOW_MS = 1_800;
 
 type SuggestionBusyState = 'admit' | 'elaborate' | 'dismiss' | null;
+type ScoutPolicyOptions = {
+  origin?: RevealOrigin;
+  limitNew?: number;
+  source?: SuggestionMutationSource;
+  automationKey?: string;
+  executionMode?: FacilitatorActionExecutionMode;
+  interventionStrength?: FacilitatorInterventionStrength;
+  role?: FacilitatorRoleId;
+  policyReason?: string;
+};
 
 type RunBoardBeat = {
   (context: ScoutBeatContext): Promise<BeatResult<'scout'>>;
@@ -41,6 +56,10 @@ interface UseBoardSuggestionActionsArgs {
   applyCommittedBoard: (document: BoardDocument, history: BoardHistoryState) => void;
   runBoardBeat: RunBoardBeat;
   markActivity: (kind: 'edit' | 'group' | 'doc') => void;
+  onSuggestionOutcome?: (input: {
+    suggestionId: string;
+    outcome: 'accepted' | 'rejected';
+  }) => void;
 }
 
 export function useBoardSuggestionActions({
@@ -52,6 +71,7 @@ export function useBoardSuggestionActions({
   applyCommittedBoard,
   runBoardBeat,
   markActivity,
+  onSuggestionOutcome,
 }: UseBoardSuggestionActionsArgs) {
   const [scouting, setScouting] = useState(false);
   const [lastScoutRunAt, setLastScoutRunAt] = useState<number | null>(null);
@@ -79,12 +99,7 @@ export function useBoardSuggestionActions({
     }, REVEAL_WINDOW_MS);
   }
 
-  async function runScout(options: {
-    origin?: RevealOrigin;
-    limitNew?: number;
-    source?: SuggestionMutationSource;
-    automationKey?: string;
-  } = {}): Promise<ScoutSuggestion[]> {
+  async function runScout(options: ScoutPolicyOptions = {}): Promise<ScoutSuggestion[]> {
     setScouting(true);
     try {
       const boardIdeas = ideas.filter(idea => idea.status !== 'archived' && idea.status !== 'discarded');
@@ -108,7 +123,7 @@ export function useBoardSuggestionActions({
         existingSuggestions: existing,
         trigger: beatTrigger(options.origin),
         size: beatSize(options.origin),
-        aggressiveness: beatAggressiveness(options.origin),
+        aggressiveness: beatAggressiveness(options.origin, options.interventionStrength),
       }));
       const now = beatResult.meta.finishedAt;
       setLastScoutRunAt(now);
@@ -122,6 +137,20 @@ export function useBoardSuggestionActions({
       }).slice(0, options.limitNew ?? MAX_VISIBLE_SUGGESTIONS);
       if (visibleSuggestions.length === 0) return [];
 
+      if (options.origin === 'ai' && options.executionMode === 'stage') {
+        return visibleSuggestions.map(suggestion => ({
+          id: crypto.randomUUID(),
+          boardId,
+          rawText: suggestion.rawText,
+          rationale: suggestion.rationale,
+          source: suggestion.source,
+          status: 'pending',
+          relatedIdeaIds: suggestion.relatedIdeaIds,
+          createdAt: now,
+          updatedAt: now,
+        }));
+      }
+
       const allIdeaIds = new Set(ideas.map(idea => idea.id));
       const created: ScoutSuggestion[] = [];
       let lastCommit: Awaited<ReturnType<typeof boardController.createSuggestion>> | null = null;
@@ -133,7 +162,10 @@ export function useBoardSuggestionActions({
           source: suggestion.source,
           relatedIdeaIds: suggestion.relatedIdeaIds?.filter(id => allIdeaIds.has(id)),
           panel: ghostPanelFor(suggestions.length + index),
-          actor: suggestionActorFor(options),
+          actor: suggestionActorFor({
+            ...options,
+            label: aiLabelForRole(options.role, 'outsideKnowledgeScout'),
+          }),
           automationKey: options.automationKey,
         });
         created.push(lastCommit.suggestion);
@@ -190,6 +222,7 @@ export function useBoardSuggestionActions({
       });
       applyCommittedBoard(result.document, result.history);
       markActivity('edit');
+      onSuggestionOutcome?.({ suggestionId: id, outcome: 'accepted' });
     } catch (err) {
       console.error('[App] admit suggestion failed:', err);
     } finally {
@@ -243,6 +276,7 @@ export function useBoardSuggestionActions({
         actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
       });
       applyCommittedBoard(result.document, result.history);
+      onSuggestionOutcome?.({ suggestionId: id, outcome: 'rejected' });
     } catch (err) {
       console.error('[App] dismiss suggestion failed:', err);
     } finally {
@@ -288,6 +322,23 @@ function beatSize(origin?: RevealOrigin): 'small' | 'big' {
   return origin === 'ai' ? 'small' : 'big';
 }
 
-function beatAggressiveness(origin?: RevealOrigin): 'gentle' | 'balanced' {
-  return origin === 'ai' ? 'gentle' : 'balanced';
+function beatAggressiveness(
+  origin?: RevealOrigin,
+  interventionStrength?: FacilitatorInterventionStrength,
+): 'gentle' | 'balanced' | 'aggressive' {
+  if (origin !== 'ai') return 'balanced';
+  return interventionStrength ?? 'gentle';
+}
+
+function aiLabelForRole(role: FacilitatorRoleId | undefined, fallback: string): string {
+  switch (role) {
+    case 'scout':
+      return 'policyScout';
+    case 'historian':
+      return 'policyHistorian';
+    case 'facilitator':
+      return 'policyFacilitator';
+    default:
+      return fallback;
+  }
 }

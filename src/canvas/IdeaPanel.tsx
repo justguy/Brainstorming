@@ -36,6 +36,10 @@ export interface IdeaPanelProps {
   onOpen?: (ideaId: string) => void;
   onOpenDocs?: (ideaId: string) => void;
   onDiscard?: (ideaId: string) => void;
+  linkModeEnabled?: boolean;
+  linkModeAnchor?: boolean;
+  onLinkStart?: (ideaId: string) => void;
+  onLinkComplete?: (ideaId: string) => void;
 }
 
 export default function IdeaPanel({
@@ -55,6 +59,10 @@ export default function IdeaPanel({
   onOpen,
   onOpenDocs,
   onDiscard,
+  linkModeEnabled = true,
+  linkModeAnchor = false,
+  onLinkStart,
+  onLinkComplete,
 }: IdeaPanelProps): React.ReactElement {
   const panel = idea.panel ?? { x: 0, y: 0, width: 260, height: 180 };
   const x = liveX ?? panel.x;
@@ -158,6 +166,11 @@ export default function IdeaPanel({
     ? 'border-gray-200 shadow-sm'
     : 'border-gray-200 shadow-md hover:shadow-lg';
   const insightCount = idea.insights?.length ?? 0;
+  const linkStartEnabled = typeof onLinkStart === 'function';
+  const linkCompleteEnabled = typeof onLinkComplete === 'function';
+  const showLinkAffordance = linkModeEnabled || linkStartEnabled || linkCompleteEnabled;
+  const docPillLabel = docCount > 0 ? `${docCount}` : '0';
+  const docPillAria = docCount > 0 ? `${docCount} supporting docs` : 'Open supporting docs';
 
   return (
     <div
@@ -198,6 +211,45 @@ export default function IdeaPanel({
       className={`select-none cursor-grab ${dragging ? 'cursor-grabbing shadow-2xl' : ''} bg-white rounded-lg border transition-[opacity,transform,box-shadow,border-color] duration-200 ${surfaceClass} ${ringClass}`}
       aria-label={`Idea: ${title}`}
     >
+      <div className="absolute inset-y-0 -left-2 flex items-center">
+        {showLinkAffordance && (
+          <button
+            type="button"
+            onPointerDown={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              onLinkStart?.(idea.id);
+            }}
+            className={`w-4 h-7 rounded-l-full border border-gray-300/80 bg-white/95 px-1 text-[10px] font-semibold tracking-[0.14em] text-gray-500 uppercase transition-opacity ${
+              linkStartEnabled ? 'cursor-pointer hover:border-sky-400 hover:text-sky-700' : 'opacity-60'
+            }`}
+            title={linkStartEnabled ? 'Start link mode from this idea' : 'Link mode affordance'}
+            aria-label="Start linking from this idea"
+          >
+            ⇄
+          </button>
+        )}
+      </div>
+      <div className="absolute inset-y-0 -right-2 flex items-center">
+        {showLinkAffordance && (
+          <button
+            type="button"
+            onPointerDown={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              onLinkComplete?.(idea.id);
+            }}
+            className={`w-4 h-7 rounded-r-full border border-gray-300/80 bg-white/95 px-1 text-[10px] font-semibold tracking-[0.14em] text-gray-500 uppercase transition-opacity ${
+              linkCompleteEnabled ? 'cursor-pointer hover:border-sky-400 hover:text-sky-700' : 'opacity-60'
+            }`}
+            title={linkCompleteEnabled ? 'Finish link mode on this idea' : 'Link mode affordance'}
+            aria-label="Complete linking to this idea"
+          >
+            ➜
+          </button>
+        )}
+      </div>
+
       {/* Docs pill — stops pointer events so it doesn't start a drag */}
       {onOpenDocs && (
         <button
@@ -207,11 +259,23 @@ export default function IdeaPanel({
             e.stopPropagation();
             onOpenDocs(idea.id);
           }}
-          className="absolute top-1.5 right-1.5 z-10 text-[10px] font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-400"
-          aria-label={docCount > 0 ? `${docCount} supporting docs` : 'Add supporting doc'}
-          title={docCount > 0 ? `${docCount} supporting doc${docCount === 1 ? '' : 's'}` : 'Add supporting doc'}
+          className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 border border-gray-300 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-sky-400 hover:bg-slate-100"
+          aria-label={docPillAria}
+          title={docPillAria}
         >
-          {docCount > 0 ? `📎 ${docCount}` : '📎'}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            className="h-3.5 w-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M5.25 5.25 8.9 1.6a2.75 2.75 0 1 1 3.9 3.9L7.55 10.75a3.5 3.5 0 1 1-4.95-4.95l5.1-5.1" />
+          </svg>
+          <span>{docPillLabel}</span>
         </button>
       )}
 
@@ -246,6 +310,12 @@ export default function IdeaPanel({
             <span className="text-[10px] text-violet-700 bg-violet-50 rounded px-1.5 py-0.5 font-semibold">
               Merged from {idea.mergedFrom.length}
             </span>
+          </div>
+        )}
+
+        {linkModeAnchor && (
+          <div className="mt-2 text-[10px] text-gray-500">
+            Anchor selected for linking
           </div>
         )}
 

@@ -11,16 +11,40 @@ import {
 } from './ideaSync';
 import {
   appendRecentFacilitatorEvent,
+  appendFacilitatorStagedInsight,
+  appendRecentAiActionOutcome,
+  createAutonomyStatePatch,
+  createFacilitatorAiActionOutcomeRecord,
   createFacilitatorEventFromAiAction,
   createFacilitatorEventFromBoardMutation,
+  createFacilitatorStagedInsight,
+  readAiActionOutcomes,
+  readAutonomyState,
   readAiAction,
   readBoardMutation,
   readRecentFacilitatorEvents,
+  readFacilitatorStagedInsights,
+  removeFacilitatorStagedInsight,
+  markAiActionOutcome,
+  markAiActionOutcomeByEntityId,
+  markAiActionOutcomeByPendingInsightId,
+  type FacilitatorAiActionOutcome,
+  type FacilitatorAiActionOutcomeRecord,
   type FacilitatorAiAction,
   type FacilitatorBoardMutation,
+  type FacilitatorAutonomyState,
+  type FacilitatorStagedInsight,
   type FacilitatorSessionEvent,
 } from './facilitatorSyncEvents';
-export type { FacilitatorAiAction, FacilitatorBoardMutation, FacilitatorSessionEvent } from './facilitatorSyncEvents';
+export type {
+  FacilitatorAiAction,
+  FacilitatorBoardMutation,
+  FacilitatorSessionEvent,
+  FacilitatorAutonomyState,
+  FacilitatorAiActionOutcomeRecord,
+  FacilitatorAiActionOutcome,
+  FacilitatorStagedInsight,
+} from './facilitatorSyncEvents';
 
 const PEER_PREFIX = 'peer:';
 const SHARED_PAUSE_KEY = 'sharedPause';
@@ -28,6 +52,9 @@ const MANUAL_HOST_KEY = 'manualHostClientId';
 const LAST_AI_ACTION_KEY = 'lastAiAction';
 const LAST_BOARD_MUTATION_KEY = 'lastBoardMutation';
 const RECENT_SESSION_EVENTS_KEY = 'recentSessionEvents';
+const AUTONOMY_STATE_KEY = 'autonomyState';
+const AI_ACTION_OUTCOMES_KEY = 'recentAiActionOutcomes';
+const STAGED_INSIGHTS_KEY = 'stagedInsights';
 const PEER_STALE_MS = 6_000;
 
 export interface FacilitatorPeerState {
@@ -42,10 +69,13 @@ export interface FacilitatorSnapshot {
   manualHostClientId: number | null;
   isAiHost: boolean;
   sharedPause: boolean;
+  autonomyState: FacilitatorAutonomyState;
   lastBoardActivityAt: number;
   lastAiAction: FacilitatorAiAction | null;
   lastBoardMutation: FacilitatorBoardMutation | null;
   recentSessionEvents?: FacilitatorSessionEvent[];
+  recentAiActionOutcomes?: FacilitatorAiActionOutcomeRecord[];
+  stagedInsights?: FacilitatorStagedInsight[];
   peers: FacilitatorPeerState[];
 }
 
@@ -107,6 +137,121 @@ export function setSharedFacilitatorPause(boardId: BoardId, paused: boolean): vo
   }, FACILITATOR_SYNC_ORIGIN);
 }
 
+export function updateAutonomyState(
+  boardId: BoardId,
+  nextState: Partial<FacilitatorAutonomyState>,
+): void {
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    const current = readAutonomyState(facilitatorMap.get(AUTONOMY_STATE_KEY));
+    facilitatorMap.set(AUTONOMY_STATE_KEY, createAutonomyStatePatch(current, nextState));
+  }, FACILITATOR_SYNC_ORIGIN);
+}
+
+export function setAutonomyConfiguredCeiling(
+  boardId: BoardId,
+  configuredCeiling: FacilitatorAutonomyState['configuredCeiling'],
+): void {
+  updateAutonomyState(boardId, { configuredCeiling });
+}
+
+export function setAutonomyEffectiveMode(
+  boardId: BoardId,
+  effectiveMode: FacilitatorAutonomyState['effectiveMode'],
+): void {
+  updateAutonomyState(boardId, { effectiveMode });
+}
+
+export function setAutonomyBackoffState(
+  boardId: BoardId,
+  backoffStatus: FacilitatorAutonomyState['backoffStatus'],
+  backoffUntil: number,
+): void {
+  updateAutonomyState(boardId, { backoffStatus, backoffUntil });
+}
+
+export function clearAutonomyBackoff(
+  boardId: BoardId,
+): void {
+  updateAutonomyState(boardId, { backoffStatus: 'clear', backoffUntil: 0 });
+}
+
+export function recordFacilitatorRecoverySignal(
+  boardId: BoardId,
+  reason: string,
+): void {
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    const current = readAutonomyState(facilitatorMap.get(AUTONOMY_STATE_KEY));
+    facilitatorMap.set(AUTONOMY_STATE_KEY, createAutonomyStatePatch(current, {
+      backoffStatus: 'clear',
+      backoffUntil: 0,
+      ...(reason ? { effectiveMode: current.configuredCeiling } : {}),
+    }));
+  }, FACILITATOR_SYNC_ORIGIN);
+}
+
+export function markFacilitatorAiActionOutcome(
+  boardId: BoardId,
+  actionId: string,
+  outcome: FacilitatorAiActionOutcome,
+): void {
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    const currentOutcomes = readAiActionOutcomes(facilitatorMap.get(AI_ACTION_OUTCOMES_KEY));
+    const nextOutcomeRecords = markAiActionOutcome(currentOutcomes, actionId, outcome);
+    facilitatorMap.set(AI_ACTION_OUTCOMES_KEY, nextOutcomeRecords);
+  }, FACILITATOR_SYNC_ORIGIN);
+}
+
+export function markFacilitatorAiActionOutcomeForEntity(
+  boardId: BoardId,
+  entityId: string,
+  outcome: FacilitatorAiActionOutcome,
+): void {
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    facilitatorMap.set(
+      AI_ACTION_OUTCOMES_KEY,
+      markAiActionOutcomeByEntityId(facilitatorMap.get(AI_ACTION_OUTCOMES_KEY), entityId, outcome),
+    );
+  }, FACILITATOR_SYNC_ORIGIN);
+}
+
+export function markFacilitatorAiActionOutcomeForPendingInsight(
+  boardId: BoardId,
+  insightId: string,
+  outcome: FacilitatorAiActionOutcome,
+): void {
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    facilitatorMap.set(
+      AI_ACTION_OUTCOMES_KEY,
+      markAiActionOutcomeByPendingInsightId(facilitatorMap.get(AI_ACTION_OUTCOMES_KEY), insightId, outcome),
+    );
+  }, FACILITATOR_SYNC_ORIGIN);
+  if (outcome !== 'pending') {
+    removeFacilitatorStagedInsightRecord(boardId, insightId);
+  }
+}
+
+export function addFacilitatorStagedInsight(
+  boardId: BoardId,
+  insight: Omit<FacilitatorStagedInsight, 'id' | 'at'> & { id?: string; at?: number },
+): void {
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    const nextInsight = createFacilitatorStagedInsight(insight);
+    facilitatorMap.set(
+      STAGED_INSIGHTS_KEY,
+      appendFacilitatorStagedInsight(facilitatorMap.get(STAGED_INSIGHTS_KEY), nextInsight),
+    );
+  }, FACILITATOR_SYNC_ORIGIN);
+}
+
+export function removeFacilitatorStagedInsightRecord(boardId: BoardId, insightId: string): void {
+  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
+    facilitatorMap.set(
+      STAGED_INSIGHTS_KEY,
+      removeFacilitatorStagedInsight(facilitatorMap.get(STAGED_INSIGHTS_KEY), insightId),
+    );
+  }, FACILITATOR_SYNC_ORIGIN);
+}
+
 export function claimFacilitatorAiHost(boardId: BoardId): FacilitatorSnapshot | null {
   const snapshot = getFacilitatorSnapshot(boardId);
   if (snapshot.localClientId === null) return null;
@@ -143,6 +288,13 @@ export function recordFacilitatorAiAction(
       clientId: doc.clientID,
     } satisfies FacilitatorAiAction;
     facilitatorMap.set(LAST_AI_ACTION_KEY, nextAction);
+    facilitatorMap.set(
+      AI_ACTION_OUTCOMES_KEY,
+      appendRecentAiActionOutcome(
+        facilitatorMap.get(AI_ACTION_OUTCOMES_KEY),
+        createFacilitatorAiActionOutcomeRecord(nextAction),
+      ),
+    );
     facilitatorMap.set(
       RECENT_SESSION_EVENTS_KEY,
       appendRecentFacilitatorEvent(
@@ -230,6 +382,9 @@ function buildFacilitatorSnapshot(
   const lastAiAction = readAiAction(facilitatorMap?.get(LAST_AI_ACTION_KEY));
   const lastBoardMutation = readBoardMutation(facilitatorMap?.get(LAST_BOARD_MUTATION_KEY));
   const recentSessionEvents = readRecentFacilitatorEvents(facilitatorMap?.get(RECENT_SESSION_EVENTS_KEY));
+  const autonomyState = readAutonomyState(facilitatorMap?.get(AUTONOMY_STATE_KEY));
+  const recentAiActionOutcomes = readAiActionOutcomes(facilitatorMap?.get(AI_ACTION_OUTCOMES_KEY));
+  const stagedInsights = readFacilitatorStagedInsights(facilitatorMap?.get(STAGED_INSIGHTS_KEY));
   const boardActivityAt = lastBoardMutation && lastBoardMutation.actorType !== 'ai'
     ? lastBoardMutation.at
     : 0;
@@ -240,10 +395,13 @@ function buildFacilitatorSnapshot(
     manualHostClientId,
     isAiHost: hostClientId !== null && hostClientId === localClientId,
     sharedPause,
+    autonomyState,
     lastBoardActivityAt: Math.max(lastBoardActivityAt, boardActivityAt),
     lastAiAction,
     lastBoardMutation,
     recentSessionEvents,
+    recentAiActionOutcomes,
+    stagedInsights,
     peers,
   };
 }

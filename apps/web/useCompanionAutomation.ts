@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { BeatRunState } from '../../src/beats/types';
-import type { FacilitatorAiAction } from '../../src/storage/facilitatorSync';
+import type {
+  FacilitatorAiAction,
+  FacilitatorAiActionOutcomeRecord,
+  FacilitatorAutonomyState,
+  FacilitatorSessionEvent,
+} from '../../src/storage/facilitatorSync';
+import type {
+  FacilitatorActionExecutionMode,
+  FacilitatorInterventionStrength,
+  FacilitatorRoleId,
+} from '../../src/storage/facilitatorSyncEvents';
 import type { Connection, Idea, IdeaCritique } from '../../src/types';
 import {
   actionLabelFor,
@@ -22,13 +32,22 @@ import {
   consumeSharedObserverWork,
   observerAutomationKey,
   reconcilePendingObserverWork,
-  selectCritiqueTarget,
-  selectPendingScoutIdeaId,
 } from './companionAutomationObserverTargets';
-const AUTO_SEQUENCE_GAP_MS = 850;
-const AUTO_CRITIQUE_COOLDOWN_MS = 45_000;
+import {
+  buildFacilitatorControlPlaneContext,
+  decideCompanionAutomationAction,
+} from './facilitatorPolicy';
 export const AUTO_IDLE_MS = 1_500;
 type RevealOrigin = 'manual' | 'ai';
+type AutomatedRunOptions = {
+  origin?: RevealOrigin;
+  source?: 'canvas' | 'webmcp' | 'beat';
+  automationKey?: string;
+  executionMode?: FacilitatorActionExecutionMode;
+  interventionStrength?: FacilitatorInterventionStrength;
+  role?: FacilitatorRoleId;
+  policyReason?: string;
+};
 const createAutoCooldownState = (): AutoCooldownState => ({
   lastConnectionsAt: 0,
   lastScoutAt: 0,
@@ -36,6 +55,29 @@ const createAutoCooldownState = (): AutoCooldownState => ({
   lastObservedBoardChangeAt: 0,
   critiqueByIdea: {},
 });
+
+function nextEffectiveModeForBackoff(
+  configuredCeiling: FacilitatorAutonomyState['configuredCeiling'],
+  rejectedCount: number,
+): FacilitatorAutonomyState['effectiveMode'] {
+  if (rejectedCount >= 4) return 'shadow';
+  switch (configuredCeiling) {
+    case 'challenger':
+      return 'copilot';
+    case 'copilot':
+    case 'passive':
+    default:
+      return 'shadow';
+  }
+}
+
+function summarizeStagedScout(rawText: string): string {
+  return rawText.length <= 90 ? rawText : `${rawText.slice(0, 89)}...`;
+}
+
+function summarizeStagedCritique(critique: string): string {
+  return critique.length <= 90 ? critique : `${critique.slice(0, 89)}...`;
+}
 interface UseCompanionAutomationArgs {
   activity: ActivityState;
   setActivity: Dispatch<SetStateAction<ActivityState>>;
@@ -54,14 +96,36 @@ interface UseCompanionAutomationArgs {
   findingConnections: boolean;
   critiqueBusyByIdea: Record<string, boolean>;
   visibleIdeas: Idea[];
+  discardedIdeasCount: number;
   connectionsCount: number;
   suggestionsCount: number;
   docCounts: Record<string, number>;
   selectedBoardIdea: Idea | null;
   activeCritiques: IdeaCritique[];
-  runScout: (options?: { origin?: RevealOrigin; limitNew?: number; source?: 'canvas' | 'webmcp' | 'beat'; automationKey?: string }) => Promise<unknown[]>;
-  runConnectionFinder: (options?: { origin?: RevealOrigin; limitGenerated?: number; source?: 'canvas' | 'webmcp' | 'beat' }) => Promise<Connection[]>;
-  runCritiqueIdea: (ideaId: string, options?: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat'; automationKey?: string }) => Promise<IdeaCritique | null>;
+  recentSessionEvents?: FacilitatorSessionEvent[];
+  autonomyState: FacilitatorAutonomyState;
+  recentAiActionOutcomes?: FacilitatorAiActionOutcomeRecord[];
+  runScout: (options?: AutomatedRunOptions & { limitNew?: number }) => Promise<unknown[]>;
+  runConnectionFinder: (options?: AutomatedRunOptions & { limitGenerated?: number }) => Promise<Connection[]>;
+  runCritiqueIdea: (ideaId: string, options?: AutomatedRunOptions) => Promise<IdeaCritique | null>;
+  setAutonomyEffectiveMode: (effectiveMode: FacilitatorAutonomyState['effectiveMode']) => void;
+  setAutonomyBackoffState: (
+    backoffStatus: FacilitatorAutonomyState['backoffStatus'],
+    backoffUntil: number,
+  ) => void;
+  recordRecoverySignal: (reason: string) => void;
+  addStagedInsight: (insight: {
+    id?: string;
+    sourceActionId: string;
+    summary: string;
+    kind?: 'scout' | 'critique' | 'connection' | 'tool_suggestion' | 'generic';
+    at?: number;
+    source?: string;
+    beadId?: string;
+    ideaId?: string;
+    payload?: Record<string, unknown>;
+    status?: 'pending' | 'accepted' | 'rejected';
+  }) => void;
 }
 
 export function useCompanionAutomation({
@@ -82,14 +146,22 @@ export function useCompanionAutomation({
   findingConnections,
   critiqueBusyByIdea,
   visibleIdeas,
+  discardedIdeasCount,
   connectionsCount,
   suggestionsCount,
   docCounts,
   selectedBoardIdea,
   activeCritiques,
+  recentSessionEvents,
+  autonomyState,
+  recentAiActionOutcomes,
   runScout,
   runConnectionFinder,
   runCritiqueIdea,
+  setAutonomyEffectiveMode,
+  setAutonomyBackoffState,
+  recordRecoverySignal,
+  addStagedInsight,
 }: UseCompanionAutomationArgs) {
   const [clockMs, setClockMs] = useState(() => Date.now());
   const [facilitatorPaused, setFacilitatorPaused] = useState(persistedFacilitatorPaused);
@@ -131,6 +203,90 @@ export function useCompanionAutomation({
     lastDismissedAt: activity.lastDismissedAt,
     now: clockMs,
   }) && !softModeBusy && !interactionSuppressed;
+
+  function buildPolicyContext(now: number) {
+    return buildFacilitatorControlPlaneContext({
+      now,
+      idleMs,
+      pendingBoardChange,
+      autoRunReady,
+      interactionSuppressed,
+      softModeBusy,
+      isAiHost,
+      effectiveFacilitatorPaused,
+      cooldowns: autoCooldownRef.current,
+      pendingConnectionIdeaIds: pendingConnectionIdeaIdsRef.current,
+      pendingScoutIdeaIds: pendingScoutIdeaIdsRef.current,
+      docCounts,
+      visibleIdeas,
+      discardedIdeaCount: discardedIdeasCount,
+      suggestionCount: suggestionsCount,
+      selectedBoardIdea,
+      activeCritiques,
+      lastMeaningfulActivity,
+      recentSessionEvents,
+      autonomyState,
+      recentAiActionOutcomes,
+    });
+  }
+
+  const policyDecision = decideCompanionAutomationAction(buildPolicyContext(clockMs));
+  const previousPhaseRef = useRef<{ ideaId: string | null; phase: number | null }>({ ideaId: null, phase: null });
+
+  useEffect(() => {
+    const recentWindow = (recentAiActionOutcomes ?? []).slice(0, 5);
+    const rejectedCount = recentWindow.filter(item => item.outcome === 'rejected').length;
+    const acceptedCount = recentWindow.filter(item => item.outcome === 'accepted').length;
+    const now = Date.now();
+
+    if (acceptedCount > 0 && autonomyState.backoffStatus !== 'clear') {
+      recordRecoverySignal('A recent acceptance reopened the lane.');
+      return;
+    }
+
+    if (rejectedCount >= 3) {
+      const nextBackoffStatus = rejectedCount >= 4 ? 'shadow' : 'cooldown';
+      const nextEffectiveMode = nextEffectiveModeForBackoff(autonomyState.configuredCeiling, rejectedCount);
+      if (
+        autonomyState.backoffStatus !== nextBackoffStatus
+        || autonomyState.backoffUntil <= now
+        || autonomyState.effectiveMode !== nextEffectiveMode
+      ) {
+        setAutonomyEffectiveMode(nextEffectiveMode);
+        setAutonomyBackoffState(nextBackoffStatus, now + 2 * 60_000);
+      }
+      return;
+    }
+
+    if (autonomyState.backoffStatus !== 'clear' && autonomyState.backoffUntil <= now) {
+      recordRecoverySignal('Backoff expired.');
+      return;
+    }
+
+    if (autonomyState.backoffStatus === 'clear' && autonomyState.effectiveMode !== autonomyState.configuredCeiling) {
+      setAutonomyEffectiveMode(autonomyState.configuredCeiling);
+    }
+  }, [
+    autonomyState.backoffStatus,
+    autonomyState.backoffUntil,
+    autonomyState.configuredCeiling,
+    autonomyState.effectiveMode,
+    recentAiActionOutcomes,
+    recordRecoverySignal,
+    setAutonomyBackoffState,
+    setAutonomyEffectiveMode,
+  ]);
+
+  useEffect(() => {
+    const previous = previousPhaseRef.current;
+    const nextIdeaId = selectedBoardIdea?.id ?? null;
+    const nextPhase = selectedBoardIdea?.phase ?? null;
+    if (previous.ideaId === nextIdeaId && previous.phase !== null && nextPhase !== null && nextPhase > previous.phase) {
+      recordRecoverySignal(`Idea ${nextIdeaId} advanced to phase ${nextPhase}.`);
+    }
+    previousPhaseRef.current = { ideaId: nextIdeaId, phase: nextPhase };
+  }, [recordRecoverySignal, selectedBoardIdea?.id, selectedBoardIdea?.phase]);
+
   useEffect(() => {
     const pendingWork = reconcilePendingObserverWork({
       visibleIdeas,
@@ -145,6 +301,7 @@ export function useCompanionAutomation({
   }, [docCounts, latestSyncedBoardChangeAt, visibleIdeas]);
   async function handleSoftModeAction(): Promise<void> {
     setActivity(prev => dismissSoftModeHint(recordActivity(prev, 'edit')));
+    recordRecoverySignal('Explicit pull from the facilitator dock.');
     if (latestSyncedBoardChangeAt > 0) {
       autoCooldownRef.current.lastObservedBoardChangeAt = Math.max(
         autoCooldownRef.current.lastObservedBoardChangeAt,
@@ -183,64 +340,204 @@ export function useCompanionAutomation({
     pendingScoutIdeaIdsRef.current = pendingWork.scoutIdeaIds;
   }, [sharedAiAction]);
   useEffect(() => {
-    if (
-      effectiveFacilitatorPaused ||
-      !isAiHost ||
-      softModeBusy ||
-      interactionSuppressed ||
-      !pendingBoardChange ||
-      idleSinceBoardChangeMs < AUTO_IDLE_MS
-    ) return;
+    if (!pendingBoardChange) return;
     let cancelled = false;
 
     async function runObserver(): Promise<void> {
       const now = Date.now();
       const auto = autoCooldownRef.current;
-      if (now - auto.lastAiActionAt < AUTO_SEQUENCE_GAP_MS) return;
-      auto.lastObservedBoardChangeAt = latestSyncedBoardChangeAt;
+      const decision = decideCompanionAutomationAction(buildPolicyContext(now));
+      if (decision.consumePendingChange) {
+        auto.lastObservedBoardChangeAt = latestSyncedBoardChangeAt;
+      }
+      if (!decision.action) return;
 
-      if (pendingConnectionIdeaIdsRef.current.length >= 3 && now - auto.lastConnectionsAt >= 30_000) {
+      if (decision.action === 'connect') {
         auto.lastConnectionsAt = now;
         pendingConnectionIdeaIdsRef.current = [];
-        const found = await runConnectionFinder({ origin: 'ai', limitGenerated: 1 });
+        const found = await runConnectionFinder({
+          origin: 'ai',
+          limitGenerated: 1,
+          executionMode: decision.executionMode,
+          interventionStrength: decision.interventionStrength,
+          role: decision.role,
+          policyReason: decision.reason,
+        });
         if (!cancelled && found.length > 0) {
           recordAiAction(autoCooldownRef, setAiActions, 'connect', undefined, now);
-          recordSharedAiAction({ kind: 'connect', at: now });
+          const actionId = crypto.randomUUID();
+          if (decision.disposition === 'stage') {
+            const insightId = crypto.randomUUID();
+            addStagedInsight({
+              id: insightId,
+              at: now,
+              sourceActionId: actionId,
+              kind: 'connection',
+              summary: `Connection draft: ${found[0]?.rationale ?? 'New structural link'}`,
+              source: 'Synthesizer',
+              payload: {
+                drafts: found.map(connection => ({
+                  ideaIds: connection.ideaIds,
+                  kind: connection.kind,
+                  rationale: connection.rationale,
+                  strength: connection.strength,
+                  supportingDocIds: connection.supportingDocIds,
+                })),
+              },
+              status: 'pending',
+            });
+            recordSharedAiAction({
+              id: actionId,
+              kind: 'connect',
+              at: now,
+              role: decision.role,
+              executionMode: decision.executionMode,
+              interventionStrength: decision.interventionStrength,
+              policyReason: decision.reason,
+              confidenceScore: decision.confidenceScore,
+              pendingInsightIds: [insightId],
+            });
+            return;
+          }
+          recordSharedAiAction({
+            id: actionId,
+            kind: 'connect',
+            at: now,
+            role: decision.role,
+            executionMode: decision.executionMode,
+            interventionStrength: decision.interventionStrength,
+            policyReason: decision.reason,
+            confidenceScore: decision.confidenceScore,
+            entityIds: found.map(connection => connection.id),
+          });
         }
         return;
       }
 
-      const critiqueTarget = selectCritiqueTarget({ visibleIdeas, selectedBoardIdea, activeCritiques });
-      if (critiqueTarget) {
-        const lastCritiqueAt = auto.critiqueByIdea[critiqueTarget.id] ?? 0;
-        const critiqueAllowed = now - lastCritiqueAt >= AUTO_CRITIQUE_COOLDOWN_MS;
-        if (critiqueAllowed) {
-          auto.critiqueByIdea[critiqueTarget.id] = now;
-          const critique = await runCritiqueIdea(critiqueTarget.id, {
-            origin: 'ai',
-            automationKey: observerAutomationKey('critique', critiqueTarget.id),
-          }).catch(() => null);
-          if (critique) {
-            if (!cancelled) {
-              recordAiAction(autoCooldownRef, setAiActions, 'critique', critiqueTarget.id, now);
-              recordSharedAiAction({ kind: 'critique', ideaId: critiqueTarget.id, at: now });
-            }
+      if (decision.action === 'critique' && decision.targetIdeaId) {
+        auto.critiqueByIdea[decision.targetIdeaId] = now;
+        const critique = await runCritiqueIdea(decision.targetIdeaId, {
+          origin: 'ai',
+          automationKey: observerAutomationKey('critique', decision.targetIdeaId),
+          executionMode: decision.executionMode,
+          interventionStrength: decision.interventionStrength,
+          role: decision.role,
+          policyReason: decision.reason,
+        }).catch(() => null);
+        if (!cancelled && critique) {
+          recordAiAction(autoCooldownRef, setAiActions, 'critique', decision.targetIdeaId, now);
+          const actionId = crypto.randomUUID();
+          if (decision.disposition === 'stage') {
+            const insightId = crypto.randomUUID();
+            addStagedInsight({
+              id: insightId,
+              at: now,
+              sourceActionId: actionId,
+              kind: 'critique',
+              ideaId: decision.targetIdeaId,
+              summary: summarizeStagedCritique(critique.critique),
+              source: 'Challenger',
+              payload: {
+                ideaId: critique.ideaId,
+                critique: critique.critique,
+                evidenceAsk: critique.evidenceAsk,
+              },
+              status: 'pending',
+            });
+            recordSharedAiAction({
+              id: actionId,
+              kind: 'critique',
+              ideaId: decision.targetIdeaId,
+              at: now,
+              role: decision.role,
+              executionMode: decision.executionMode,
+              interventionStrength: decision.interventionStrength,
+              policyReason: decision.reason,
+              confidenceScore: decision.confidenceScore,
+              pendingInsightIds: [insightId],
+            });
             return;
           }
+          recordSharedAiAction({
+            id: actionId,
+            kind: 'critique',
+            ideaId: decision.targetIdeaId,
+            at: now,
+            role: decision.role,
+            executionMode: decision.executionMode,
+            interventionStrength: decision.interventionStrength,
+            policyReason: decision.reason,
+            confidenceScore: decision.confidenceScore,
+            entityIds: [critique.id],
+          });
         }
+        return;
       }
-      const doclessIdeaId = selectPendingScoutIdeaId(pendingScoutIdeaIdsRef.current, docCounts);
-      if (doclessIdeaId && now - auto.lastScoutAt >= 45_000) {
+
+      if (decision.action === 'scout' && decision.targetIdeaId) {
         auto.lastScoutAt = now;
-        pendingScoutIdeaIdsRef.current = pendingScoutIdeaIdsRef.current.filter(id => id !== doclessIdeaId);
+        pendingScoutIdeaIdsRef.current = pendingScoutIdeaIdsRef.current.filter(id => id !== decision.targetIdeaId);
         const created = await runScout({
           origin: 'ai',
           limitNew: 1,
-          automationKey: observerAutomationKey('scout', doclessIdeaId),
+          automationKey: observerAutomationKey('scout', decision.targetIdeaId),
+          executionMode: decision.executionMode,
+          interventionStrength: decision.interventionStrength,
+          role: decision.role,
+          policyReason: decision.reason,
         });
         if (!cancelled && created.length > 0) {
-          recordAiAction(autoCooldownRef, setAiActions, 'scout', doclessIdeaId, now);
-          recordSharedAiAction({ kind: 'scout', ideaId: doclessIdeaId, at: now });
+          recordAiAction(autoCooldownRef, setAiActions, 'scout', decision.targetIdeaId, now);
+          const actionId = crypto.randomUUID();
+          if (decision.disposition === 'stage') {
+            const insightId = crypto.randomUUID();
+            addStagedInsight({
+              id: insightId,
+              at: now,
+              sourceActionId: actionId,
+              kind: 'scout',
+              ideaId: decision.targetIdeaId,
+              summary: summarizeStagedScout((created[0] as { rawText?: string }).rawText ?? 'Scout draft'),
+              source: 'Scout',
+              payload: {
+                drafts: created.map(candidate => ({
+                  rawText: (candidate as { rawText?: string }).rawText ?? '',
+                  rationale: (candidate as { rationale?: string }).rationale ?? '',
+                  source: (candidate as { source?: string }).source ?? 'Scout draft',
+                  sourceIdeaIds: (candidate as { sourceIdeaIds?: string[] }).sourceIdeaIds,
+                  relatedIdeaIds: (candidate as { relatedIdeaIds?: string[] }).relatedIdeaIds,
+                })),
+              },
+              status: 'pending',
+            });
+            recordSharedAiAction({
+              id: actionId,
+              kind: 'scout',
+              ideaId: decision.targetIdeaId,
+              at: now,
+              role: decision.role,
+              executionMode: decision.executionMode,
+              interventionStrength: decision.interventionStrength,
+              policyReason: decision.reason,
+              confidenceScore: decision.confidenceScore,
+              pendingInsightIds: [insightId],
+            });
+            return;
+          }
+          recordSharedAiAction({
+            id: actionId,
+            kind: 'scout',
+            ideaId: decision.targetIdeaId,
+            at: now,
+            role: decision.role,
+            executionMode: decision.executionMode,
+            interventionStrength: decision.interventionStrength,
+            policyReason: decision.reason,
+            confidenceScore: decision.confidenceScore,
+            entityIds: created
+              .map(candidate => (candidate as { id?: string }).id)
+              .filter((id): id is string => typeof id === 'string'),
+          });
         }
       }
     }
@@ -249,21 +546,31 @@ export function useCompanionAutomation({
       cancelled = true;
     };
   }, [
-    effectiveFacilitatorPaused,
-    isAiHost,
-    softModeBusy,
-    interactionSuppressed,
     pendingBoardChange,
-    idleSinceBoardChangeMs,
     latestSyncedBoardChangeAt,
+    idleMs,
     visibleIdeas,
+    discardedIdeasCount,
     docCounts,
     selectedBoardIdea,
     activeCritiques,
+    recentSessionEvents,
     runConnectionFinder,
     runCritiqueIdea,
     runScout,
     recordSharedAiAction,
+    addStagedInsight,
+    effectiveFacilitatorPaused,
+    isAiHost,
+    softModeBusy,
+    interactionSuppressed,
+    autoRunReady,
+    lastMeaningfulActivity,
+    recordRecoverySignal,
+    recentAiActionOutcomes,
+    autonomyState,
+    setAutonomyBackoffState,
+    setAutonomyEffectiveMode,
   ]);
 
   return {
@@ -278,6 +585,7 @@ export function useCompanionAutomation({
     autoRunCountdownMs: pendingBoardChange ? Math.max(0, AUTO_IDLE_MS - idleSinceBoardChangeMs) : AUTO_IDLE_MS,
     showSoftModeHint,
     companionActionLabel,
+    policyDecision,
     handleSoftModeAction,
     toggleFacilitatorPause: async () => {
       const previousLocalPause = facilitatorPaused;

@@ -1,5 +1,5 @@
 import { SUB_PHASES, findSubPhase, type SubPhaseSpec } from '../orchestrator/subPhases';
-import type { BriefState, ClarificationQuestion, Idea, Phase } from '../types';
+import type { Ambiguity, BeadCoordinationState, ClarificationQuestion, Idea, Phase } from '../types';
 
 export interface LegacyWorkspacePhaseSection {
   spec: SubPhaseSpec;
@@ -22,8 +22,12 @@ export interface LegacyToolIdea {
   id: string;
   rawText: string;
   phase: Phase;
+  readiness: Idea['readiness'];
+  artifactMd?: string;
+  ambiguities: Ambiguity[];
   clarifications: ClarificationQuestion[];
-  briefState: Pick<BriefState, 'approaches' | 'lenses' | 'challenges' | 'stressResults'>;
+  beadCoordination?: BeadCoordinationState;
+  briefState: Idea['briefState'];
 }
 
 export function createLegacyWorkspaceAdapter(idea: Idea): LegacyWorkspaceAdapter {
@@ -44,13 +48,12 @@ export function createLegacyToolIdea(idea: Idea | null): LegacyToolIdea | null {
     id: idea.id,
     rawText: idea.rawText,
     phase: idea.phase,
+    readiness: idea.readiness,
+    artifactMd: idea.artifactMd,
+    ambiguities: idea.ambiguities,
     clarifications: idea.clarifications,
-    briefState: {
-      approaches: idea.briefState.approaches,
-      lenses: idea.briefState.lenses,
-      challenges: idea.briefState.challenges,
-      stressResults: idea.briefState.stressResults,
-    },
+    beadCoordination: idea.beadCoordination,
+    briefState: idea.briefState,
   };
 }
 

@@ -27,6 +27,7 @@ import {
   commitCreateSuggestion,
   commitElaborateSuggestion,
 } from './boardGeneratedMutations';
+import { undoAiChange } from './boardAiUndo';
 
 export function createBoardController(boardId: BoardId) {
   return {
@@ -160,6 +161,9 @@ export function createBoardController(boardId: BoardId) {
     },
     undo() {
       return replayChangeSet(boardId, 'undo');
+    },
+    undoAiChange(input: { changeSetId: string; actor: ChangeActor }) {
+      return undoAiChange(boardId, input.changeSetId, input.actor);
     },
     redo() {
       return replayChangeSet(boardId, 'redo');

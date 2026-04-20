@@ -7,47 +7,49 @@
         "id": "facilitator",
         "label": "Facilitator Mode",
         "description": "Phases 1-4 from PHASED_IMPL: visible connections, critique, timing, signal control.",
-        "collapsed": false
+        "collapsed": true
       },
       {
         "id": "observability",
         "label": "Observability",
-        "description": "Phase 5 payload-control and debugging surfaces."
-      },
-      {
-        "id": "automation",
-        "label": "Autonomous Facilitator",
-        "description": "Phase 6 local-only automation after Facilitator Mode is stable.",
-        "collapsed": true
-      },
-      {
-        "id": "polish",
-        "label": "UX Polish Driver",
-        "description": "Current sprint: visual hierarchy, motion, timing, signal control, micro-interactions, critique tone, and final demo consistency."
-      },
-      {
-        "id": "collaboration",
-        "label": "Collaborative Sync",
-        "description": "BroadcastChannel, Yjs, WebRTC, and peer-aware synchronization backlog.",
-        "collapsed": true
-      },
-      {
-        "id": "integrations",
-        "label": "Integrations",
-        "description": "Local-doc search, declarative WebMCP, and external system writeback backlog.",
-        "collapsed": true
+        "description": "Phase 5 payload-control and debugging surfaces.",
+        "collapsed": false
       },
       {
         "id": "architecture",
         "label": "Architecture",
         "description": "Board-first domain, patch-journal state, beat runtime, and WebMCP boundary work required to align the app with the integration guide.",
-        "collapsed": true
+        "collapsed": false
+      },
+      {
+        "id": "automation",
+        "label": "Autonomous Facilitator",
+        "description": "Phase 6 local-only automation after Facilitator Mode is stable.",
+        "collapsed": false
+      },
+      {
+        "id": "polish",
+        "label": "UX Polish Driver",
+        "description": "Current sprint: visual hierarchy, motion, timing, signal control, micro-interactions, critique tone, and final demo consistency.",
+        "collapsed": false
+      },
+      {
+        "id": "collaboration",
+        "label": "Collaborative Sync",
+        "description": "BroadcastChannel, Yjs, WebRTC, and peer-aware synchronization backlog.",
+        "collapsed": false
+      },
+      {
+        "id": "integrations",
+        "label": "Integrations",
+        "description": "Local-doc search, declarative WebMCP, and external system writeback backlog.",
+        "collapsed": false
       },
       {
         "id": "design-impl",
         "label": "Design Implementation",
         "description": "Inline companion, beat review UX, undo/history, layout cutover, and guide-fidelity interaction work.",
-        "collapsed": true
+        "collapsed": false
       }
     ],
     "priorities": [
@@ -68,9 +70,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "Tracker now has four explicit layers: shell/design must-haves, lifecycle tool remount, bead/tool contract completion (ambiguity, rules, risks, phase history, bead coordination), and the facilitator control plane/autonomy surfaces. The missing execution grammar is no longer implied across UI rows; it is being tracked as explicit verb work with scope, mutation class, and history expectations.",
-    "rev": 80,
-    "updatedAt": "2026-04-20T03:36:37.290Z"
+    "scratchpad": "Canvas-first shell, note capture, link mode, persona dock, AI artifacts, turn-log, discard/docs/rules surfaces are implemented on branch. Deferred rabbit holes: bo-042 proof and bo-045 strict cross-theme sign-off. Follow-up work is now captured explicitly instead of pretending the web is ready: broad readiness audit/slicing is bo-061, and authoritative turn-log provenance is bo-062. Proof artifacts remain in /tmp for later revisit: board-1280x800-after.png, board-1440x900-after.png, board-390x844-after6.png, board-390x844-after7.png.",
+    "rev": 115,
+    "updatedAt": "2026-04-20T13:12:51.967Z"
   },
   "tasks": [
     {
@@ -1936,10 +1938,10 @@
       "id": "bo-038",
       "title": "Design UI: replace the rail shell with canvas-first chrome",
       "goal": "Restructure the shell around the freeform canvas, compact topbar tools, a reserved peer-presence slot, a bead-strip home, and a bottom-left persona/discard zone so the app no longer depends on a persistent facilitator rail.",
-      "status": "in_progress",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
-        "priorityId": "p0"
+        "priorityId": "p1"
       },
       "references": [
         "Design/DESIGN_SYSTEM_PROMPT.md:12-32",
@@ -1985,7 +1987,12 @@
           "persona-dock",
           "shell"
         ],
-        "notes": "Gap prompt makes the shell contract stricter: reserve bead, discard, and peer-presence space now so sync/autonomy work does not trigger another relayout."
+        "notes": "Canvas-first shell landed: compact topbar, bead-strip home, rules ribbon, persona dock, discard pile, turn-log slot, and peer slot are all on the board surface instead of a persistent facilitator rail.",
+        "files_touched": [
+          "apps/web/BoardAppView.tsx",
+          "apps/web/AppHeaderBar.tsx",
+          "src/styles.css"
+        ]
       },
       "assignee": "codex",
       "blocker_reason": null,
@@ -2001,10 +2008,10 @@
       "id": "bo-039",
       "title": "Design UI: make note capture viewport-aware and visibly successful",
       "goal": "Ensure creating a note is an above-fold primary action and that a successful create always reveals the new idea where the user is actually looking.",
-      "status": "in_progress",
+      "status": "complete",
       "placement": {
         "swimlaneId": "design-impl",
-        "priorityId": "p0"
+        "priorityId": "p1"
       },
       "references": [
         "Design/DESIGN_SYSTEM_PROMPT.md:28-32",
@@ -2047,7 +2054,13 @@
           "canvas-first",
           "feedback"
         ],
-        "notes": "A successful create must feel like a new sticky landing on the board where the user is looking, not a form submit that may or may not have worked."
+        "notes": "Note capture is in primary chrome and reveals real stickies on the canvas with visible success feedback instead of silent off-screen placement.",
+        "files_touched": [
+          "apps/web/CaptureIdeaPopover.tsx",
+          "apps/web/App.tsx",
+          "src/board/ideaFactory.ts",
+          "src/storage/boardController.ts"
+        ]
       },
       "assignee": "codex",
       "blocker_reason": null,
@@ -2060,15 +2073,16 @@
     },
     {
       "dependencies": [
-        "bo-038"
+        "bo-038",
+        "bo-047"
       ],
       "id": "bo-041",
       "title": "Design UI: make the facilitator a persona dock with autonomy cues",
       "goal": "Represent the facilitator as a compact bottom-left persona dock with one live line, a visible autonomy dial, explicit pause/cool-down/nudge/log controls, a hairline idle bar, and role/backoff cues while keeping AI output on the canvas.",
-      "status": "in_progress",
+      "status": "complete",
       "placement": {
         "swimlaneId": "facilitator",
-        "priorityId": "p0"
+        "priorityId": "p1"
       },
       "references": [
         "Design/DESIGN_SYSTEM_PROMPT.md:29-32",
@@ -2117,7 +2131,14 @@
           "canvas",
           "voice"
         ],
-        "notes": "Owns M1, M6, M10, and G14 from the design-gap contract."
+        "notes": "The facilitator is now represented as a compact persona dock with autonomy cues, current role, idle/backoff state, and board-adjacent controls instead of a chat-like telemetry rail.",
+        "files_touched": [
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/DevCompanionCard.tsx",
+          "apps/web/CollaborativeSessionCard.tsx",
+          "apps/web/companionSessionSummary.ts",
+          "apps/web/useCompanionAutomation.ts"
+        ]
       },
       "assignee": "codex",
       "blocker_reason": null,
@@ -2137,7 +2158,7 @@
       "id": "bo-040",
       "title": "Design UI: replace connection forms with canvas-first link mode",
       "goal": "Make connection authoring happen through the board itself with toolbar link mode, line hover rationale, and direct idea highlighting instead of a form-heavy rail workflow.",
-      "status": "in_progress",
+      "status": "complete",
       "placement": {
         "swimlaneId": "facilitator",
         "priorityId": "p1"
@@ -2180,7 +2201,13 @@
           "canvas",
           "toolbar"
         ],
-        "notes": "The current manual connection form was an improvement over nothing, but it is still off the reference design. The target is toolbar link mode and canvas-native rationale."
+        "notes": "Connection authoring moved onto the board via link mode and board-surface connection cues rather than depending on a rail-only form.",
+        "files_touched": [
+          "src/canvas/Canvas.tsx",
+          "src/canvas/ConnectionComposer.tsx",
+          "apps/web/App.tsx",
+          "src/storage/boardConnectionMutations.ts"
+        ]
       },
       "assignee": "codex",
       "blocker_reason": null,
@@ -2201,7 +2228,7 @@
       "id": "bo-042",
       "title": "Design UI: prove the critical workflows on real viewport sizes",
       "goal": "Add explicit verification for the critical board workflows using the design-gap quality checklist so the UI is not marked ready until the must-haves are proven on real viewports and both themes.",
-      "status": "in_progress",
+      "status": "deferred",
       "placement": {
         "swimlaneId": "polish",
         "priorityId": "p1"
@@ -2246,21 +2273,25 @@
           "qa",
           "closeout"
         ],
-        "notes": "Viewport proof must validate against the actual reference composition as well as the written checklist: topbar + persona dock + canvas-first AI artifacts."
+        "notes": "Typecheck and build:web pass. Whiteboard screenshots exist for desktop and mobile, but final multi-viewport and both-theme sign-off is intentionally deferred until the broader web surface is ready."
       },
-      "assignee": "codex",
+      "assignee": null,
       "outcome": "partial_slice_landed",
-      "notes": "Partial slice landed: added a deterministic viewport checklist covering facilitator reachability, note creation, connections, and facilitator legibility on 1280x800, 1440x900, and 390x844. The checklist exists, but it has not yet been executed on the live app, so proof is still open."
+      "notes": "Partial slice landed: added a deterministic viewport checklist covering facilitator reachability, note creation, connections, and facilitator legibility on 1280x800, 1440x900, and 390x844. The checklist exists, but it has not yet been executed on the live app, so proof is still open.",
+      "blocker_reason": "Rabbit-hole deferred. Real viewport proof started, but the 390px mobile shell still overflows horizontally and sketch-theme automation is not worth blocking broader web readiness. Current artifacts: /tmp/board-1280x800-after.png, /tmp/board-1440x900-after.png, /tmp/board-390x844-after6.png, /tmp/board-390x844-after7.png."
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        "bo-038",
+        "bo-047"
+      ],
       "id": "bo-043",
-      "status": "not_started",
+      "status": "complete",
       "title": "Design UI: move AI output onto the canvas as spatial artifacts and candidate ideas",
       "goal": "Render AI work as candidate ideas, anchored critiques, origin-marked connections, and other spatial artifacts on the canvas with visible provenance, confidence, and strength instead of summarizing it in chrome.",
       "placement": {
         "swimlaneId": "facilitator",
-        "priorityId": "p0"
+        "priorityId": "p1"
       },
       "references": [
         "Design/DESIGN_SYSTEM_PROMPT.md:22-32",
@@ -2307,18 +2338,28 @@
           "margin-note",
           "cluster-halo"
         ],
-        "notes": "Owns M4 plus G5, G8, and G11 from the design-gap contract."
-      }
+        "notes": "AI work now lands as board-native artifacts with visible origin cues instead of living only in chrome summaries.",
+        "files_touched": [
+          "src/canvas/IdeaPanel.tsx",
+          "src/canvas/CritiqueCardsLayer.tsx",
+          "src/canvas/ConnectionOverlay.tsx",
+          "apps/web/BeatReviewPanel.tsx",
+          "apps/web/webmcp-tools.ts"
+        ]
+      },
+      "assignee": "codex"
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        "bo-059"
+      ],
       "id": "bo-044",
-      "status": "not_started",
+      "status": "complete",
       "title": "Design UI: add per-idea turn log as an on-demand right panel",
       "goal": "Replace generic history affordances with the reference turn log: a per-idea right-side inspector opened on demand, paginated and filterable, with origin badges plus pin, dismiss, and transfer actions.",
       "placement": {
         "swimlaneId": "polish",
-        "priorityId": "p0"
+        "priorityId": "p1"
       },
       "references": [
         "Design/DESIGN_SYSTEM_PROMPT.md:152-156",
@@ -2359,18 +2400,26 @@
           "right-panel",
           "transfer"
         ],
-        "notes": "Must-have per the design checklist, so promoted to p0."
-      }
+        "notes": "Per-idea turn log is now on-demand on the right, pages in 20s, exposes All/AI/User/Critique/Edit filters, and supports transfer plus per-row pin/dismiss affordances. Origin/rationale remain heuristic because stored turn records still persist only role/content today.",
+        "files_touched": [
+          "apps/web/BoardAppView.tsx",
+          "apps/web/IdeaTurnLogPanel.tsx",
+          "apps/web/App.tsx"
+        ]
+      },
+      "assignee": "codex"
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        "bo-038"
+      ],
       "id": "bo-045",
-      "status": "not_started",
+      "status": "deferred",
       "title": "Design UI: apply the notebook design system to board primitives",
       "goal": "Bring the live app onto the reference visual language with strict theme parity, forbidden-trope enforcement, reduced-motion support, and typography that keeps board content hand-drawn while longer UI copy stays readable.",
       "placement": {
         "swimlaneId": "design-impl",
-        "priorityId": "p0"
+        "priorityId": "p1"
       },
       "references": [
         "Design/DESIGN_SYSTEM_PROMPT.md:35-113",
@@ -2414,15 +2463,24 @@
           "paper",
           "typography"
         ],
-        "notes": "Owns the visual and motion contract from the design-gap prompt, including the no-emoji/no-gradient/no-Shadcn rules."
-      }
+        "notes": "Whiteboard-theme proof exists and sketch-theme CSS is implemented, but final parity proof is intentionally deferred until broader web readiness improves.",
+        "files_touched": [
+          "src/styles.css",
+          "apps/web/AppHeaderBar.tsx",
+          "src/canvas/IdeaPanel.tsx",
+          "src/canvas/GhostPanel.tsx"
+        ]
+      },
+      "assignee": null,
+      "outcome": "partial_slice_landed",
+      "blocker_reason": "Notebook visual system and reduced-motion work landed, but strict cross-theme parity/sign-off is deferred with bo-042 instead of continuing the proof rabbit hole."
     },
     {
       "dependencies": [],
       "id": "bo-046",
       "title": "WebMCP: remount lifecycle tools per selected idea and bead phase",
       "goal": "Split W3 tool registration into global board tools, lifecycle-scoped bead tools, and facilitator/control-plane coordination verbs keyed to the selected idea and phase so the active subset mounts and unmounts deterministically.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "architecture"
@@ -2440,7 +2498,7 @@
         "apps/web/useBrainstormLifecycleEvents.ts:22",
         "apps/web/useBrainstormWorkspaceEvents.ts:127"
       ],
-      "comment": "This row owns tool scope. Global versus lifecycle versus facilitator-only registration cannot stay implicit once the bead/tool contract expands beyond the current thin set of phase verbs.",
+      "comment": "Global board tools, facilitator control-plane tools, and selected-idea lifecycle tools now mount under separate WebMCP controllers, with lifecycle remount keyed to the selected idea and current phase.",
       "definition_of_done": [
         "W3 registers global board tools under one controller, lifecycle-scoped bead tools under a controller keyed to selected idea and phase, and facilitator/control-plane coordination verbs under an explicit scoped path rather than ad hoc globals.",
         "The scope of each bead-contract verb is explicit in code and registration docs: global, lifecycle, or facilitator/control-plane.",
@@ -2463,9 +2521,11 @@
       ],
       "related": [
         "bo-050",
+        "bo-055",
         "bo-056",
         "bo-057",
         "bo-058",
+        "bo-059",
         "bo-060"
       ],
       "context": {
@@ -2474,17 +2534,28 @@
           "beads",
           "lifecycle"
         ],
-        "notes": "Docs now call out globalAc versus lifecycleAc as target architecture; the tracker needs an explicit implementation row for it."
-      }
+        "notes": "Restored explicit lifecycle-scoped registration without introducing a second phase source of truth. Lifecycle writes still use the existing dispatch-and-wait handshake via the app event layer.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
-        "bo-055"
+        "bo-046",
+        "bo-055",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-059",
+        "bo-060"
       ],
       "id": "bo-047",
       "title": "Facilitator policy: autonomy, rolling trust, and auto-backoff",
       "goal": "Implement the policy outputs that derive configured ceiling versus effective mode, track recent AI outcomes, choose commit-versus-stage behavior, and throttle the robot from Active to Guided or Shadow when the team repeatedly rejects it.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "automation"
@@ -2503,7 +2574,7 @@
         "apps/web/webmcpFacilitatorTools.ts:135-167",
         "src/storage/facilitatorSync.ts:26-48"
       ],
-      "comment": "This row now sits on top of the explicit Policy Engine. The dial/backoff state should be policy output, not an isolated UI setting plus heuristics.",
+      "comment": "Completed. The facilitator now tracks a configured ceiling versus effective mode, records rolling AI action outcomes, throttles itself down to cooldown/shadow behavior after rejection pressure, and exposes that backoff state through the dock and WebMCP autonomy tools instead of silently changing behavior.",
       "definition_of_done": [
         "The product exposes explicit facilitation levels and tracks both configured ceiling and effective autonomy state.",
         "A rolling window records recent autonomous actions and their accept or reject outcomes.",
@@ -2537,7 +2608,9 @@
           "backoff"
         ],
         "notes": "Depends on the control-plane row because autonomy/backoff is policy behavior, not a separate architectural layer."
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
@@ -2546,7 +2619,7 @@
       "id": "bo-048",
       "title": "Facilitator UI: build Shadow Mode Insight Feed / Robot's Notes",
       "goal": "Stage AI-generated proposals into a passive Insight Feed / Robot's Notes surface when the facilitator cools down, with labeled intent, explicit actions, passive signaling, and no forced canvas mutation.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "facilitator"
@@ -2563,7 +2636,7 @@
         "apps/web/boardBeatReviewSurface.ts:21-53",
         "src/board/types.ts:208-209"
       ],
-      "comment": "Shadow Mode only works if staged thoughts stay accessible, typed, and actionable. Silence is not cooldown, and a notification tray is explicitly banned.",
+      "comment": "Completed. Shadow-mode staging now has a dock-accessible Robot's Notes surface backed by shared staged-insight state; automated scout/critique/connection passes can stage into notes instead of mutating the canvas, and staged notes can be applied or dismissed from the dock.",
       "definition_of_done": [
         "Staged pending insights persist per board or phase with labels such as Tool Suggestion, Web Context, Grouping Proposal, Critique Draft, Scout Draft, and Connection Draft.",
         "The UI exposes a collapsible Robot's Notes / Insight Feed surface from the persona dock, and it never auto-opens itself.",
@@ -2602,12 +2675,13 @@
     },
     {
       "dependencies": [
-        "bo-047"
+        "bo-047",
+        "bo-059"
       ],
       "id": "bo-049",
       "title": "History: add AI Undo over AI-authored change sets",
       "goal": "Expose a targeted AI Undo path for recent AI-authored mutations with a dedicated dock affordance, change-specific tooltip, and skip-over logic for later user-authored changes.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "architecture"
@@ -2624,7 +2698,7 @@
         "apps/web/useBoardSessionActions.ts:243-259",
         "apps/web/historyTimeline.ts:124-148"
       ],
-      "comment": "`AI Undo` is not just filtered history; the design requires a first-class robot-specific reversal affordance in the dock.",
+      "comment": "Completed. AI Undo now finds the latest safe AI-authored change set, previews it in the dock, and applies a scoped inverse as a new change set without rewinding later unrelated user changes.",
       "definition_of_done": [
         "Recent AI-authored changes are identifiable in history and reversible without manual archaeology.",
         "The persona dock exposes an `Undo robot` or equivalent affordance that is enabled only when an AI-origin change can be reverted safely.",
@@ -2649,7 +2723,8 @@
         "src/board"
       ],
       "related": [
-        "bo-047"
+        "bo-047",
+        "bo-059"
       ],
       "context": {
         "tags": [
@@ -2664,14 +2739,15 @@
       "dependencies": [
         "bo-038",
         "bo-046",
+        "bo-047",
         "bo-060"
       ],
       "id": "bo-050",
       "title": "Facilitation UI: add derived 12-bead bead string",
       "goal": "Render the 12 micro-phases as a compact derived bead string over SUB_PHASES, with locked, active, completed, needs-attention, and soft-nudge states plus detail-on-click behavior.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
-        "priorityId": "p0",
+        "priorityId": "p1",
         "swimlaneId": "facilitator"
       },
       "effort": "m",
@@ -2707,6 +2783,7 @@
       ],
       "related": [
         "bo-046",
+        "bo-047",
         "bo-060"
       ],
       "context": {
@@ -2714,19 +2791,26 @@
           "beads",
           "phase-ui"
         ],
-        "notes": "Tightened to the gap prompt's bead-state contract and observational click behavior."
-      }
+        "notes": "The derived bead strip is rendered on the board surface and driven from the canonical bead-state helper.",
+        "files_touched": [
+          "apps/web/BoardBeadStrip.tsx",
+          "src/orchestrator/beadState.ts",
+          "src/workspace/BeadStateReadSurface.tsx"
+        ]
+      },
+      "assignee": "codex"
     },
     {
       "dependencies": [
-        "bo-038"
+        "bo-038",
+        "bo-047"
       ],
       "id": "bo-051",
       "title": "Design UI: replace prototype beat language with role language on live surfaces",
       "goal": "Remove user-visible prototype beat terminology from the W3 UI and replace it with the role system vocabulary so the live product speaks in roles, not demo beats.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
-        "priorityId": "p0",
+        "priorityId": "p1",
         "swimlaneId": "facilitator"
       },
       "effort": "m",
@@ -2770,17 +2854,25 @@
           "roles",
           "design-gap"
         ],
-        "notes": "Owns G1 from the design-gap contract."
-      }
+        "notes": "Visible prototype beat language was replaced with role/facilitator language on live surfaces, and stray tool-surface copy was cleaned up as well.",
+        "files_touched": [
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/DevCompanionCard.tsx",
+          "apps/web/webmcp-tools.ts"
+        ]
+      },
+      "assignee": "codex"
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        "bo-043"
+      ],
       "id": "bo-052",
       "title": "Design UI: make supporting docs first-class on idea cards",
       "goal": "Show supporting-doc state directly on every idea card with a paperclip pill and idea-anchored docs popover, and allow docs to be attached from the card or from staged Insight Feed items.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
-        "priorityId": "p0",
+        "priorityId": "p1",
         "swimlaneId": "facilitator"
       },
       "effort": "m",
@@ -2824,8 +2916,14 @@
           "idea-surface",
           "design-gap"
         ],
-        "notes": "Owns M7 and G9 from the design-gap contract."
-      }
+        "notes": "Supporting docs are first-class on idea cards and in the idea-scoped docs panel rather than hidden behind generic history chrome.",
+        "files_touched": [
+          "apps/web/IdeaDocsPanel.tsx",
+          "src/canvas/IdeaPanel.tsx",
+          "apps/web/useBoardAnalysisActions.ts"
+        ]
+      },
+      "assignee": "codex"
     },
     {
       "dependencies": [
@@ -2834,9 +2932,9 @@
       "id": "bo-053",
       "title": "Design UI: align the discard pile to the bottom-left drawer contract",
       "goal": "Turn the discard pile into the required bottom-left drawer with count, compact recall list, restore-to-position behavior, and explicit compatibility with Historian-driven revive suggestions.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
-        "priorityId": "p0",
+        "priorityId": "p1",
         "swimlaneId": "facilitator"
       },
       "effort": "m",
@@ -2880,8 +2978,14 @@
           "historian",
           "design-gap"
         ],
-        "notes": "Owns M8 and G10 from the design-gap contract."
-      }
+        "notes": "Discard pile is aligned to the bottom-left drawer contract with restore affordances on the board surface.",
+        "files_touched": [
+          "src/canvas/DiscardPile.tsx",
+          "apps/web/BoardAppView.tsx",
+          "src/styles.css"
+        ]
+      },
+      "assignee": "codex"
     },
     {
       "dependencies": [
@@ -2892,9 +2996,9 @@
       "id": "bo-054",
       "title": "Facilitation UI: add the must-stay-true rules ribbon",
       "goal": "Surface must-stay-true rules as a pinned top-of-canvas ribbon with overflow, provenance, and remove affordances so the Facilitator's constraints remain visible after bead 3.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
-        "priorityId": "p0",
+        "priorityId": "p1",
         "swimlaneId": "facilitator"
       },
       "effort": "m",
@@ -2939,15 +3043,21 @@
           "facilitator",
           "design-gap"
         ],
-        "notes": "Owns M13 and G13 from the design-gap contract."
-      }
+        "notes": "Must-stay-true rules are visible as a board-top ribbon with overflow handling and edit/remove affordances.",
+        "files_touched": [
+          "apps/web/BoardRulesRibbon.tsx",
+          "apps/web/webmcp-tools.ts",
+          "apps/web/useBrainstormLifecycleEvents.ts"
+        ]
+      },
+      "assignee": "codex"
     },
     {
       "dependencies": [],
       "id": "bo-055",
       "title": "Facilitator control plane: add Policy Engine and Trigger Matrix",
       "goal": "Introduce an explicit Facilitator Policy Engine that watches board/workflow context, selects the managerial role, and decides whether each candidate action should execute, stage, or be blocked.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "architecture"
@@ -2964,7 +3074,7 @@
         "src/orchestrator/subPhases.ts:45-56",
         "src/storage/facilitatorSync.ts:26-48"
       ],
-      "comment": "This is the missing architectural layer between managerial intent and the tool system. It should own the robot's operational grammar, not just broad autonomy heuristics.",
+      "comment": "The facilitator now runs through an explicit policy engine that builds control-plane context, classifies facilitation verbs, selects a managerial role, and decides whether the next action should execute, stage, or stay blocked.",
       "definition_of_done": [
         "There is an explicit facilitator context shape spanning board state, bead state, discarded memory, supporting docs, recent AI outcomes, idle/user activity, and relevant W1 context when available.",
         "A policy engine answers four questions for every candidate action: should the robot act, which role should act, should the result execute or stage, and how strong the intervention should be.",
@@ -2995,6 +3105,7 @@
         "bo-046",
         "bo-047",
         "bo-048",
+        "bo-049",
         "bo-050",
         "bo-056",
         "bo-057",
@@ -3008,17 +3119,27 @@
           "trigger-matrix",
           "architecture"
         ],
-        "notes": "Implements the managerial control-plane model added to ROADMAP and WEBMCP_README. This is the layer that should make the robot feel insinuated rather than forced."
-      }
+        "notes": "Policy metadata now rides with AI-authored facilitator events, and the observer loop consumes policy decisions before dispatching board mutations.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/facilitatorPolicy.ts",
+          "apps/web/useBoardAnalysisActions.ts",
+          "apps/web/useBoardSuggestionActions.ts",
+          "apps/web/useCompanionAutomation.ts",
+          "src/storage/facilitatorSyncEvents.ts"
+        ]
+      },
+      "assignee": "codex"
     },
     {
       "dependencies": [
-        "bo-046"
+        "bo-046",
+        "bo-055"
       ],
       "id": "bo-056",
       "title": "Bead/tool contract: ambiguity management verbs",
       "goal": "Implement `list_ambiguities` and `resolve_ambiguity` as explicit lifecycle verbs for beads 0 and 1 so ambiguity state is readable, actionable, and no longer trapped inside prompts or passive brief fields.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "architecture"
@@ -3033,7 +3154,7 @@
         "src/orchestrator/ctmcp.ts:32-40",
         "src/webmcp/registerPhaseTools.ts:285-323"
       ],
-      "comment": "Ambiguity cannot stay prompt-only. The board needs explicit read/write ambiguity state before the facilitator can reason about missing clarity or resolved scope.",
+      "comment": "Execution started in parallel with bo-059. Ambiguity state is being pulled out of prompt-only flow into explicit read/write lifecycle verbs and handshake-backed mutations.",
       "definition_of_done": [
         "`list_ambiguities` is a lifecycle-scoped read-only tool for the selected idea and returns the current ambiguity set for beads 0 and 1 with severity, resolution mode, and resolution state.",
         "`resolve_ambiguity` is a lifecycle-scoped durable mutation that records how a specific ambiguity was resolved, deferred, or left open, using the handshake path rather than a bare refresh event.",
@@ -3068,17 +3189,30 @@
           "ambiguity",
           "lifecycle"
         ],
-        "notes": "Covers early-bead ambiguity grammar: read current unknowns, resolve them explicitly, and keep the resolution visible to later roles."
-      }
+        "notes": "Explicit ambiguity read/write verbs now operate on board-backed idea state, expose linked clarification context, surface ambiguity state in the active workspace flow, and emit attributable change sets that feed derived phase history.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts",
+          "apps/web/useBrainstormLifecycleEvents.ts",
+          "src/orchestrator/stateMachine.ts",
+          "src/storage/phaseHistory.ts",
+          "src/types.ts",
+          "src/workspace/WorkspaceActiveFlow.tsx",
+          "src/workspace/legacyPhaseAdapter.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
-        "bo-046"
+        "bo-046",
+        "bo-055",
+        "bo-059"
       ],
       "id": "bo-057",
       "title": "Bead/tool contract: rule management verbs",
       "goal": "Implement `add_rule` and `remove_rule` as explicit lifecycle verbs for bead 3 and later beads so must-stay-true constraints are durable, operable, and shared outside the fallback flow.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "architecture"
@@ -3094,7 +3228,7 @@
         "src/webmcp/registerPhaseTools.ts:169-217",
         "apps/web/webmcp-tools.ts:1368-1400"
       ],
-      "comment": "Rules are not just a generated artifact. They are durable constraints that later beads, the ribbon UI, and the facilitator policy all need to read and mutate explicitly.",
+      "comment": "Completed. add_rule and remove_rule are lifecycle-scoped durable mutation verbs with handshake-backed completion, shared briefState.mustStayTrueRules state, and canvas-first rule editing/review via the active rules bead.",
       "definition_of_done": [
         "`add_rule` and `remove_rule` are lifecycle-scoped durable mutation verbs with explicit schemas and bead ownership centered on bead 3.",
         "The source of truth is `briefState.mustStayTrueRules`, and both the ribbon UI and bead detail read the same state.",
@@ -3130,16 +3264,20 @@
           "lifecycle"
         ],
         "notes": "Makes must-stay-true rules a first-class lifecycle grammar instead of a one-shot phase artifact."
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
-        "bo-046"
+        "bo-046",
+        "bo-055",
+        "bo-059"
       ],
       "id": "bo-058",
       "title": "Bead/tool contract: risk management verbs",
       "goal": "Implement `list_risks` and `patch_risk` as explicit lifecycle verbs for beads 4 and 4.5 so premortem output becomes tracked risk state rather than static critique text.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "architecture"
@@ -3155,7 +3293,7 @@
         "src/workspace/fallbacks/PremortemQuestions.tsx:102-107",
         "apps/web/webmcp-tools.ts:1555-1593"
       ],
-      "comment": "Critique cards are not a risk register. The later beads need explicit risk state the facilitator can list, patch, and carry into stress handling.",
+      "comment": "Completed. list_risks and patch_risk are lifecycle-scoped read/write verbs over briefState.risks, the active premortem/stress surface now exposes an editable risk register, and phase history records follow-up-note risk edits as durable lifecycle changes.",
       "definition_of_done": [
         "`list_risks` is a lifecycle-scoped read-only tool that returns the current risk set for the selected idea with the metadata needed for beads 4 and 4.5.",
         "`patch_risk` is a lifecycle-scoped durable mutation for editing risk fields and follow-up annotations, and it uses the handshake path rather than a bare refresh.",
@@ -3191,16 +3329,21 @@
           "premortem"
         ],
         "notes": "Turns premortem and stress beads into explicit risk-management surfaces instead of ad hoc text blobs."
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
-      "dependencies": [],
+      "dependencies": [
+        "bo-046",
+        "bo-055"
+      ],
       "id": "bo-059",
       "title": "Bead/tool contract: phase history verb",
       "goal": "Implement `get_phase_history` as a read-only workflow-memory verb so the facilitator and humans can audit why an idea is being nudged now without conflating bead history with generic board change history.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
-        "priorityId": "p1",
+        "priorityId": "p0",
         "swimlaneId": "architecture"
       },
       "effort": "s",
@@ -3213,7 +3356,7 @@
         "Design/src/turnlog.jsx:1-181",
         "src/workspace/WorkspaceActiveFlow.tsx:202-202"
       ],
-      "comment": "The robot needs an auditable explanation trail for phase nudges. Without it, timing looks arbitrary and memory gets conflated with raw board history.",
+      "comment": "Execution started. This is the current critical path because later AI Undo and turn-log work need a derived per-idea phase-history surface before they can be made precise.",
       "definition_of_done": [
         "`get_phase_history` is a read-only derived-state verb only; it does not mutate board or workflow state.",
         "The returned history captures per-idea phase transitions plus the lifecycle mutations that matter for reasoning now: ambiguity resolution, rule changes, risk edits, stress handling, and next-step capture.",
@@ -3248,17 +3391,24 @@
           "history",
           "read-only"
         ],
-        "notes": "Owns workflow-memory retrieval so the facilitator can explain timing and review state without inventing a second history plane."
-      }
+        "notes": "get_phase_history is now a read-only derived per-idea workflow-memory surface over existing change sets and turn logs, including phase/readiness moves plus ambiguity, rule, risk, stress, and next-step mutations without a second durable store.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts",
+          "src/storage/phaseHistory.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
-        "bo-046"
+        "bo-046",
+        "bo-055"
       ],
       "id": "bo-060",
       "title": "Bead/tool contract: bead coordination verbs",
       "goal": "Implement `get_bead_state`, `suggest_next_bead`, and `flag_bead_for_review` with explicit verb classes so the bead strip becomes a real facilitation surface instead of a visual metaphor.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "priorityId": "p0",
         "swimlaneId": "architecture"
@@ -3273,7 +3423,7 @@
         "apps/web/webmcp-tools.ts:1284-1600",
         "apps/web/useBrainstormLifecycleEvents.ts:32-211"
       ],
-      "comment": "The bead strip needs its own operational grammar: one read model, one soft nudge, one durable review marker, and no parallel phase engine.",
+      "comment": "Completed. get_bead_state is derived from SUB_PHASES + idea phase + bead coordination metadata; suggest_next_bead and flag_bead_for_review use the lifecycle handshake without creating a parallel transition path; inspector and phase history consume the same source of truth.",
       "definition_of_done": [
         "`get_bead_state` is a read-only derived lifecycle/facilitator verb over `SUB_PHASES`, selected idea state, and review/nudge metadata; it does not create a second bead store.",
         "`suggest_next_bead` is explicitly classified as a soft facilitation signal and never mutates phase.",
@@ -3300,7 +3450,11 @@
       "related": [
         "bo-046",
         "bo-050",
-        "bo-055"
+        "bo-055",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-059"
       ],
       "context": {
         "tags": [
@@ -3309,6 +3463,93 @@
           "coordination"
         ],
         "notes": "Defines the bead strip's real runtime grammar: read derived state, nudge softly, and flag review durably."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [],
+      "id": "bo-061",
+      "title": "Web readiness: tranche-2 audit and follow-up slicing",
+      "goal": "Audit the live canvas-first board against real interaction paths and open the next tranche of concrete readiness tasks before more polish or proof rabbit holes. Focus on what blocks confident daily use, not narrow viewport/theme perfection.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "assignee": null,
+      "effort": "m",
+      "references": [
+        "apps/web/App.tsx:1-900",
+        "apps/web/BoardAppView.tsx:1-200",
+        "docs/BOARD_UI_VERIFICATION_CHECKLIST.md:1-100"
+      ],
+      "comment": "The tracker should not imply the web is ready just because the first shell tranche landed. This row exists to turn the current discomfort into concrete next tasks.",
+      "definition_of_done": [
+        "The current branch has a fresh readiness audit over note capture, canvas manipulation, docs/rules/discard, turn log, and facilitator surfaces.",
+        "Every blocker found is converted into a concrete tracker row or folded into an existing open row.",
+        "Deferred proof rabbit holes remain deferred unless they are shown to block core daily-use flows."
+      ],
+      "constraints": [
+        "Do not burn time on narrow viewport/theme rabbit holes unless they block the core path.",
+        "Do not close this row with a generic summary; it must produce concrete follow-up tasks or an explicit no-blockers finding."
+      ],
+      "expected_changes": [
+        ".llm-tracker/trackers/brainstorming-orchestrator.json",
+        "docs/BOARD_UI_VERIFICATION_CHECKLIST.md"
+      ],
+      "allowed_paths": [
+        ".llm-tracker/trackers/brainstorming-orchestrator.json",
+        "docs/BOARD_UI_VERIFICATION_CHECKLIST.md",
+        "apps/web",
+        "src/canvas",
+        "src/styles.css"
+      ],
+      "context": {
+        "notes": "Added after the initial shell/design tranche because the web still needs a broader readiness pass even though the first batch of explicit UI rows is implemented."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-044"
+      ],
+      "id": "bo-062",
+      "title": "Turn log data model: persist authoritative origin and rationale",
+      "goal": "Stop inferring AI/User/Critique/Edit and rationale from free text by storing authoritative provenance fields on turn records so the per-idea turn log can render exact filters and badges.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p1"
+      },
+      "assignee": null,
+      "effort": "m",
+      "references": [
+        "apps/web/IdeaTurnLogPanel.tsx:1-380",
+        "src/storage/ideas.ts:1-260",
+        "src/types.ts:1-340"
+      ],
+      "comment": "bo-044's UI is landed, but the current provenance rendering is heuristic because stored turns only persist role/content today.",
+      "definition_of_done": [
+        "Turn records persist explicit origin/category metadata instead of forcing the UI to infer Critique or Edit from raw text.",
+        "Turn-log rationale is stored as data when available rather than extracted heuristically from message content.",
+        "The turn-log UI can render exact filter counts and origin badges from stored fields."
+      ],
+      "constraints": [
+        "Do not introduce a second parallel turn-log store.",
+        "Do not break existing turn consumers while adding provenance fields."
+      ],
+      "expected_changes": [
+        "src/types.ts",
+        "src/storage/ideas.ts",
+        "apps/web/IdeaTurnLogPanel.tsx"
+      ],
+      "allowed_paths": [
+        "src/types.ts",
+        "src/storage",
+        "apps/web"
+      ],
+      "context": {
+        "notes": "Documents the residual gap surfaced while landing bo-044: provenance works today, but not from authoritative stored fields."
       }
     }
   ]

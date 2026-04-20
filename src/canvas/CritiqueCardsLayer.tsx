@@ -18,6 +18,23 @@ interface Rect {
   height: number;
 }
 
+function critiqueConfidence(text: string): 'early' | 'medium' | 'strong' {
+  const cleanLength = text.trim().length;
+  if (cleanLength >= 170) return 'strong';
+  if (cleanLength >= 90) return 'medium';
+  return 'early';
+}
+
+function critiqueConfidenceClass(level: 'early' | 'medium' | 'strong'): { label: string; classes: string } {
+  if (level === 'strong') {
+    return { label: 'High-confidence', classes: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+  }
+  if (level === 'medium') {
+    return { label: 'Medium-confidence', classes: 'bg-amber-100 text-amber-800 border-amber-200' };
+  }
+  return { label: 'Early signal', classes: 'bg-rose-100 text-rose-800 border-rose-200' };
+}
+
 function intersectionArea(a: Rect, b: Rect): number {
   const overlapWidth = Math.max(0, Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left));
   const overlapHeight = Math.max(0, Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top));
@@ -160,6 +177,8 @@ export function CritiqueCardsLayer({
           const isMuted = !!focusedIdeaId && !isFocused;
           const isReconsidering = editingIdeaId === ideaId;
           const animateIn = animatedIdSet.has(critique.id) && !suppressAnimations;
+          const confidence = critiqueConfidence(critique.critique);
+          const confidenceMeta = critiqueConfidenceClass(confidence);
 
           return (
             <section
@@ -189,6 +208,9 @@ export function CritiqueCardsLayer({
                   <p className="text-[11px] text-rose-900/80">
                     Devil&apos;s advocate{busy.has(ideaId) ? ' · thinking…' : ''}
                   </p>
+                  <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${confidenceMeta.classes}`}>
+                    {confidenceMeta.label}
+                  </span>
                 </div>
                 {onDismiss && (
                   <button

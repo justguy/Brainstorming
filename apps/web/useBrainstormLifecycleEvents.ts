@@ -3,8 +3,9 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { BoardDocument } from '../../src/board/types';
 import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
-import { advance } from '../../src/orchestrator/stateMachine';
-import type { Idea } from '../../src/types';
+import { applyAmbiguityResolution, advance } from '../../src/orchestrator/stateMachine';
+import { isKnownBeadPhase, normalizeBeadCoordination } from '../../src/orchestrator/beadState';
+import type { Idea, AmbiguityResolutionStatus } from '../../src/types';
 
 const TOOL_ACTOR = { type: 'tool', source: 'webmcp' } as const;
 
@@ -35,28 +36,102 @@ export function useBrainstormLifecycleEvents({
       window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail }));
     }
 
-    async function patchBriefState(args: {
+    async function patchIdea(args: {
       ideaId: string;
       requestId?: string;
       summary: string;
-      mutate: (idea: Idea) => Idea['briefState'];
+      mutate: (idea: Idea) => Partial<Idea>;
       errorLabel: string;
+      completion: Record<string, unknown>;
     }): Promise<void> {
+      const idea = ideas.find(entry => entry.id === args.ideaId);
+      if (!idea) {
+        emitToolCompletion(args.requestId, { ok: false, ...args.completion, error: `No idea found with id "${args.ideaId}".` });
+        return;
+      }
+
       try {
-        const idea = ideas.find(entry => entry.id === args.ideaId);
-        if (!idea) return;
+        const patch = args.mutate(idea);
         const committed = await boardController.updateIdea({
           ideaId: args.ideaId,
-          patch: { briefState: args.mutate(idea) },
+          patch,
           actor: TOOL_ACTOR,
           summary: args.summary,
         });
         applyCommittedBoard(committed.document, committed.history);
+        emitToolCompletion(args.requestId, { ok: true, ...args.completion });
       } catch (err) {
+        const error = err instanceof Error ? err.message : 'Update failed';
         console.error(args.errorLabel, err);
-      } finally {
-        emitToolCompletion(args.requestId);
+        emitToolCompletion(args.requestId, { ok: false, ...args.completion, error });
       }
+    }
+
+    function normalizeAmbiguityResolutionInput(status: string | undefined): Exclude<AmbiguityResolutionStatus, 'open'> | 'open' {
+      if (status === 'open' || status === 'resolved' || status === 'deferred' || status === 'dismissed') {
+        return status;
+      }
+      return 'resolved';
+    }
+
+    async function patchAmbiguityResolution(args: {
+      ideaId: string;
+      ambiguityId: string;
+      status: AmbiguityResolutionStatus;
+      note?: string;
+      requestId?: string;
+      resolvedBy?: string;
+    }): Promise<void> {
+      try {
+        const idea = ideas.find(entry => entry.id === args.ideaId);
+        if (!idea) {
+          emitToolCompletion(args.requestId, {
+            ok: false,
+            error: `No idea found with id "${args.ideaId}".`,
+          });
+          return;
+        }
+
+        const nextIdea = applyAmbiguityResolution(idea, {
+          ambiguityId: args.ambiguityId,
+          status: args.status,
+          note: args.note,
+          resolvedBy: args.resolvedBy,
+        });
+
+        await patchIdea({
+          ideaId: args.ideaId,
+          summary: `Marked ambiguity ${args.ambiguityId} as ${args.status}`,
+          mutate: () => ({ ambiguities: nextIdea.ambiguities }),
+          errorLabel: '[App] resolveAmbiguity failed:',
+          completion: {
+            ambiguityId: args.ambiguityId,
+            status: args.status,
+            note: args.note,
+          },
+        });
+      } catch (err) {
+        const error = err instanceof Error ? err.message : 'resolve failed';
+        emitToolCompletion(args.requestId, { ok: false, error });
+      }
+    }
+
+    function listAmbiguitiesForIdea(idea: Idea, status?: AmbiguityResolutionStatus): Idea['ambiguities'] {
+      return idea.ambiguities.filter(ambiguity =>
+        status ? (ambiguity.resolution?.status ?? 'open') === status : true,
+      );
+    }
+
+    function normalizeRuleText(rule: string | undefined): string | null {
+      if (typeof rule !== 'string') return null;
+      const trimmed = rule.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+
+    function normalizeBeadReason(reason: string | undefined): string | null {
+      if (typeof reason !== 'string') return null;
+      const trimmed = reason.trim();
+      return trimmed.length > 0 ? trimmed : null;
     }
 
     const handleSelectIdea = (event: Event) => {
@@ -102,19 +177,22 @@ export function useBrainstormLifecycleEvents({
         requestId?: string;
       }>;
       const { ideaId, lensId, verdict, userNote, requestId } = customEvent.detail;
-      await patchBriefState({
+      await patchIdea({
         ideaId,
         requestId,
         summary: `Updated lens ${lensId} on idea ${ideaId}`,
         errorLabel: '[App] patchLens failed:',
         mutate: idea => ({
-          ...idea.briefState,
-          lenses: idea.briefState.lenses.map(lens =>
-            lens.id === lensId
+          briefState: {
+            ...idea.briefState,
+            lenses: idea.briefState.lenses.map(lens =>
+              lens.id === lensId
               ? { ...lens, ...(verdict ? { verdict } : {}), ...(userNote !== undefined ? { userNote } : {}) }
               : lens,
-          ),
+            ),
+          },
         }),
+        completion: {},
       });
     };
 
@@ -127,19 +205,22 @@ export function useBrainstormLifecycleEvents({
         requestId?: string;
       }>;
       const { ideaId, challengeId, stance, userRebuttal, requestId } = customEvent.detail;
-      await patchBriefState({
+      await patchIdea({
         ideaId,
         requestId,
         summary: `Updated challenge ${challengeId} on idea ${ideaId}`,
         errorLabel: '[App] patchChallenge failed:',
         mutate: idea => ({
-          ...idea.briefState,
-          challenges: idea.briefState.challenges.map(challenge =>
+          briefState: {
+            ...idea.briefState,
+            challenges: idea.briefState.challenges.map(challenge =>
             challenge.id === challengeId
               ? { ...challenge, ...(stance ? { stance } : {}), ...(userRebuttal !== undefined ? { userRebuttal } : {}) }
               : challenge,
-          ),
+            ),
+          },
         }),
+        completion: {},
       });
     };
 
@@ -152,19 +233,22 @@ export function useBrainstormLifecycleEvents({
         requestId?: string;
       }>;
       const { ideaId, stressId, handled, userResponse, requestId } = customEvent.detail;
-      await patchBriefState({
+      await patchIdea({
         ideaId,
         requestId,
         summary: `Updated stress result ${stressId} on idea ${ideaId}`,
         errorLabel: '[App] patchStress failed:',
         mutate: idea => ({
-          ...idea.briefState,
-          stressResults: idea.briefState.stressResults.map(stress =>
+          briefState: {
+            ...idea.briefState,
+            stressResults: idea.briefState.stressResults.map(stress =>
             stress.id === stressId
               ? { ...stress, ...(handled !== undefined ? { handled } : {}), ...(userResponse !== undefined ? { userResponse } : {}) }
               : stress,
-          ),
+            ),
+          },
         }),
+        completion: {},
       });
     };
 
@@ -184,15 +268,86 @@ export function useBrainstormLifecycleEvents({
     const handleChooseNextStep = async (event: Event) => {
       const customEvent = event as CustomEvent<{ ideaId: string; nextStep: string; requestId?: string }>;
       const { ideaId, nextStep, requestId } = customEvent.detail;
-      await patchBriefState({
+      await patchIdea({
         ideaId,
         requestId,
         summary: `Selected next step for idea ${ideaId}`,
         errorLabel: '[App] chooseNextStep failed:',
         mutate: idea => ({
-          ...idea.briefState,
-          nextStep: nextStep as Idea['briefState']['nextStep'],
+          briefState: {
+            ...idea.briefState,
+            nextStep: nextStep as Idea['briefState']['nextStep'],
+          },
         }),
+        completion: {},
+      });
+    };
+
+    const handleAddRule = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ ideaId: string; rule: string; requestId?: string }>;
+      const { ideaId, rule, requestId } = customEvent.detail;
+      const normalizedRule = normalizeRuleText(rule);
+      if (!normalizedRule) {
+        emitToolCompletion(requestId, { ok: false, error: 'Rule text must be a non-empty string.' });
+        return;
+      }
+
+      await patchIdea({
+        ideaId,
+        requestId,
+        summary: `Added rule to idea ${ideaId}`,
+        errorLabel: '[App] addRule failed:',
+        mutate: idea => {
+          if (idea.briefState.mustStayTrueRules.includes(normalizedRule)) {
+            throw new Error(`Rule "${normalizedRule}" already exists on this idea.`);
+          }
+          return {
+            briefState: {
+              ...idea.briefState,
+              mustStayTrueRules: [...idea.briefState.mustStayTrueRules, normalizedRule],
+            },
+          };
+        },
+        completion: {
+          rule: normalizedRule,
+        },
+      });
+    };
+
+    const handleRemoveRule = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        ideaId: string;
+        ruleIndex?: number;
+        rule?: string;
+        requestId?: string;
+      }>;
+      const { ideaId, ruleIndex, rule, requestId } = customEvent.detail;
+      await patchIdea({
+        ideaId,
+        requestId,
+        summary: `Removed rule from idea ${ideaId}`,
+        errorLabel: '[App] removeRule failed:',
+        mutate: idea => {
+          const rules = idea.briefState.mustStayTrueRules;
+          const resolvedIndex = Number.isInteger(ruleIndex)
+            ? (ruleIndex as number)
+            : typeof rule === 'string'
+              ? rules.findIndex(entry => entry === rule)
+              : -1;
+          if (resolvedIndex < 0 || resolvedIndex >= rules.length) {
+            throw new Error('Rule not found on this idea.');
+          }
+          return {
+            briefState: {
+              ...idea.briefState,
+              mustStayTrueRules: rules.filter((_, index) => index !== resolvedIndex),
+            },
+          };
+        },
+        completion: {
+          ruleIndex: Number.isInteger(ruleIndex) ? ruleIndex : null,
+          rule: rule ?? null,
+        },
       });
     };
 
@@ -219,6 +374,219 @@ export function useBrainstormLifecycleEvents({
       emitToolCompletion(requestId, { ideaId, error });
     };
 
+    const handleListRisks = (event: Event) => {
+      const customEvent = event as CustomEvent<{ ideaId: string; requestId?: string }>;
+      const { ideaId, requestId } = customEvent.detail;
+      const idea = ideas.find(entry => entry.id === ideaId);
+      if (!idea) {
+        emitToolCompletion(requestId, { ok: false, error: `No idea found with id "${ideaId}".` });
+        return;
+      }
+
+      emitToolCompletion(requestId, {
+        ok: true,
+        risks: idea.briefState.risks,
+        count: idea.briefState.risks.length,
+        stressResults: idea.briefState.stressResults,
+        rules: idea.briefState.mustStayTrueRules,
+      });
+    };
+
+    const handlePatchRisk = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        ideaId: string;
+        riskId: string;
+        description?: string;
+        likelihood?: Idea['briefState']['risks'][number]['likelihood'];
+        impact?: Idea['briefState']['risks'][number]['impact'];
+        userNote?: string;
+        requestId?: string;
+      }>;
+      const { ideaId, riskId, description, likelihood, impact, userNote, requestId } = customEvent.detail;
+      await patchIdea({
+        ideaId,
+        requestId,
+        summary: `Updated risk ${riskId} on idea ${ideaId}`,
+        errorLabel: '[App] patchRisk failed:',
+        mutate: idea => {
+          if (!idea.briefState.risks.some(risk => risk.id === riskId)) {
+            throw new Error(`No risk found with id "${riskId}".`);
+          }
+          return {
+            briefState: {
+              ...idea.briefState,
+              risks: idea.briefState.risks.map(risk =>
+                risk.id === riskId
+                  ? {
+                    ...risk,
+                    ...(description !== undefined ? { description } : {}),
+                    ...(likelihood !== undefined ? { likelihood } : {}),
+                    ...(impact !== undefined ? { impact } : {}),
+                    ...(userNote !== undefined ? { userNote: userNote.trim() || undefined } : {}),
+                    updatedAt: Date.now(),
+                  }
+                  : risk,
+              ),
+            },
+          };
+        },
+        completion: {
+          riskId,
+          description,
+          likelihood,
+          impact,
+          userNote,
+        },
+      });
+    };
+
+    const handleSuggestNextBead = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        ideaId: string;
+        phaseNumber: number;
+        reason: string;
+        requestId?: string;
+      }>;
+      const { ideaId, phaseNumber, reason, requestId } = customEvent.detail;
+      const normalizedReason = normalizeBeadReason(reason);
+      if (!isKnownBeadPhase(phaseNumber)) {
+        emitToolCompletion(requestId, { ok: false, error: `Unknown bead phase "${phaseNumber}".` });
+        return;
+      }
+      if (!normalizedReason) {
+        emitToolCompletion(requestId, { ok: false, error: 'A non-empty `reason` is required.' });
+        return;
+      }
+
+      await patchIdea({
+        ideaId,
+        requestId,
+        summary: `Suggested bead ${phaseNumber} for idea ${ideaId}`,
+        errorLabel: '[App] suggestNextBead failed:',
+        mutate: idea => {
+          if (phaseNumber <= idea.phase) {
+            throw new Error(`Suggested bead must be ahead of the current phase ${idea.phase}.`);
+          }
+          const coordination = normalizeBeadCoordination(idea.beadCoordination);
+          return {
+            beadCoordination: {
+              ...coordination,
+              suggestedNext: {
+                phase: phaseNumber,
+                reason: normalizedReason,
+                suggestedAt: Date.now(),
+                actorType: TOOL_ACTOR.type,
+                actorSource: TOOL_ACTOR.source,
+              },
+            },
+          };
+        },
+        completion: {
+          phaseNumber,
+          reason: normalizedReason,
+        },
+      });
+    };
+
+    const handleFlagBeadForReview = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        ideaId: string;
+        phaseNumber: number;
+        reason: string;
+        requestId?: string;
+      }>;
+      const { ideaId, phaseNumber, reason, requestId } = customEvent.detail;
+      const normalizedReason = normalizeBeadReason(reason);
+      if (!isKnownBeadPhase(phaseNumber)) {
+        emitToolCompletion(requestId, { ok: false, error: `Unknown bead phase "${phaseNumber}".` });
+        return;
+      }
+      if (!normalizedReason) {
+        emitToolCompletion(requestId, { ok: false, error: 'A non-empty `reason` is required.' });
+        return;
+      }
+
+      await patchIdea({
+        ideaId,
+        requestId,
+        summary: `Flagged bead ${phaseNumber} for review on idea ${ideaId}`,
+        errorLabel: '[App] flagBeadForReview failed:',
+        mutate: idea => {
+          if (phaseNumber >= idea.phase) {
+            throw new Error(`Only completed beads can be flagged for review. Current phase is ${idea.phase}.`);
+          }
+          const coordination = normalizeBeadCoordination(idea.beadCoordination);
+          const existingFlag = coordination.reviewFlags.find(flag => Math.abs(flag.phase - phaseNumber) < 1e-9);
+          const nextFlag = {
+            id: existingFlag?.id ?? crypto.randomUUID(),
+            phase: phaseNumber,
+            reason: normalizedReason,
+            flaggedAt: Date.now(),
+            actorType: TOOL_ACTOR.type,
+            actorSource: TOOL_ACTOR.source,
+          };
+          return {
+            beadCoordination: {
+              ...coordination,
+              reviewFlags: [
+                ...coordination.reviewFlags.filter(flag => Math.abs(flag.phase - phaseNumber) >= 1e-9),
+                nextFlag,
+              ].sort((left, right) => left.phase - right.phase || left.flaggedAt - right.flaggedAt),
+            },
+          };
+        },
+        completion: {
+          phaseNumber,
+          reason: normalizedReason,
+        },
+      });
+    };
+
+    const handleListAmbiguities = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        ideaId: string;
+        status?: AmbiguityResolutionStatus;
+        requestId?: string;
+      }>;
+      const { ideaId, status, requestId } = customEvent.detail;
+      const idea = ideas.find(entry => entry.id === ideaId);
+      if (!idea) {
+        emitToolCompletion(requestId, { ok: false, error: `No idea found with id "${ideaId}".` });
+        return;
+      }
+      const ambiguities = listAmbiguitiesForIdea(idea, status);
+      emitToolCompletion(requestId, {
+        ok: true,
+        ambiguities,
+        count: ambiguities.length,
+      });
+    };
+
+    const handleResolveAmbiguity = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        ideaId: string;
+        ambiguityId: string;
+        status?: AmbiguityResolutionStatus | 'defer';
+        resolution?: string;
+        requestId?: string;
+      }>;
+      const {
+        ideaId,
+        ambiguityId,
+        status,
+        resolution,
+        requestId,
+      } = customEvent.detail;
+      await patchAmbiguityResolution({
+        ideaId,
+        ambiguityId,
+        status: normalizeAmbiguityResolutionInput(status === 'defer' ? 'deferred' : status),
+        resolvedBy: TOOL_ACTOR.type,
+        note: resolution,
+        requestId,
+      });
+    };
+
     const listeners: Array<[string, EventListener]> = [
       ['brainstorm:selectIdea', handleSelectIdea as EventListener],
       ['brainstorm:advancePhase', handleAdvancePhase as EventListener],
@@ -227,7 +595,23 @@ export function useBrainstormLifecycleEvents({
       ['brainstorm:patchStress', handlePatchStress as EventListener],
       ['brainstorm:exportHandoff', handleExportHandoff as EventListener],
       ['brainstorm:chooseNextStep', handleChooseNextStep as EventListener],
+      ['brainstorm:addRule', handleAddRule as EventListener],
+      ['brainstorm:add_rule', handleAddRule as EventListener],
+      ['brainstorm:removeRule', handleRemoveRule as EventListener],
+      ['brainstorm:remove_rule', handleRemoveRule as EventListener],
       ['brainstorm:captureIdea', handleCaptureIdeaEvent as EventListener],
+      ['brainstorm:listRisks', handleListRisks as EventListener],
+      ['brainstorm:list_risks', handleListRisks as EventListener],
+      ['brainstorm:patchRisk', handlePatchRisk as EventListener],
+      ['brainstorm:patch_risk', handlePatchRisk as EventListener],
+      ['brainstorm:suggestNextBead', handleSuggestNextBead as EventListener],
+      ['brainstorm:suggest_next_bead', handleSuggestNextBead as EventListener],
+      ['brainstorm:flagBeadForReview', handleFlagBeadForReview as EventListener],
+      ['brainstorm:flag_bead_for_review', handleFlagBeadForReview as EventListener],
+      ['brainstorm:listAmbiguities', handleListAmbiguities as EventListener],
+      ['brainstorm:list_ambiguities', handleListAmbiguities as EventListener],
+      ['brainstorm:resolveAmbiguity', handleResolveAmbiguity as EventListener],
+      ['brainstorm:resolve_ambiguity', handleResolveAmbiguity as EventListener],
     ];
 
     listeners.forEach(([name, listener]) => window.addEventListener(name, listener));

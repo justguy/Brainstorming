@@ -1,6 +1,4 @@
 import React from 'react';
-import DiscardPile, { type DiscardPileProps } from '../../src/canvas/DiscardPile';
-import DocsModal, { type DocsModalProps } from '../../src/docs/DocsModal';
 import type { Idea } from '../../src/types';
 import {
   CaptureIdeaPopover,
@@ -9,28 +7,19 @@ import {
 
 export interface BoardWorkspaceOverlaysProps {
   ideas: Idea[];
-  discardedIdeas: DiscardPileProps['ideas'];
   selectedBoardIdea: Idea | null;
-  docsIdeaId: string | null;
-  boardId: DocsModalProps['boardId'];
   docCounts: Record<string, number>;
-  supportingDocMutations: DocsModalProps['docMutations'];
   capturePopover: CaptureIdeaPopoverProps;
+  docsPanel?: React.ReactNode;
   selectedIdeaDockContent?: React.ReactNode;
   inspectorContent?: React.ReactNode;
   isInspectorOpen: boolean;
-  onRestoreDiscardedIdea: DiscardPileProps['onRestore'];
-  onPreviewDiscardedIdea?: DiscardPileProps['onPreview'];
-  onCloseDocs: () => void;
-  onDocsChanged?: DocsModalProps['onDocsChanged'];
+  isTurnLogOpen?: boolean;
+  onToggleTurnLog?: () => void;
+  onOpenDocs: (ideaId: string) => void;
   onOpenInspector: () => void;
   onCloseInspector: () => void;
   onCloseSelectedIdea: () => void;
-}
-
-function findDocsIdea(ideas: Idea[], docsIdeaId: string | null): Idea | null {
-  if (!docsIdeaId) return null;
-  return ideas.find(idea => idea.id === docsIdeaId) ?? null;
 }
 
 function formatPhaseLabel(phase: number): string {
@@ -38,49 +27,27 @@ function formatPhaseLabel(phase: number): string {
 }
 
 export function BoardWorkspaceOverlays({
-  ideas,
-  discardedIdeas,
   selectedBoardIdea,
-  docsIdeaId,
-  boardId,
   docCounts,
-  supportingDocMutations,
   capturePopover,
+  docsPanel,
   selectedIdeaDockContent,
   inspectorContent,
   isInspectorOpen,
-  onRestoreDiscardedIdea,
-  onPreviewDiscardedIdea,
-  onCloseDocs,
-  onDocsChanged,
+  isTurnLogOpen = false,
+  onToggleTurnLog,
+  onOpenDocs,
   onOpenInspector,
   onCloseInspector,
   onCloseSelectedIdea,
 }: BoardWorkspaceOverlaysProps): React.ReactElement {
-  const docsIdea = findDocsIdea(ideas, docsIdeaId);
   const selectedIdeaDocCount = selectedBoardIdea ? docCounts[selectedBoardIdea.id] ?? 0 : 0;
 
   return (
     <>
-      <DiscardPile
-        ideas={discardedIdeas}
-        onRestore={onRestoreDiscardedIdea}
-        onPreview={onPreviewDiscardedIdea}
-      />
-
       <CaptureIdeaPopover {...capturePopover} />
 
-      {docsIdeaId && docsIdea && (
-        <DocsModal
-          boardId={boardId}
-          ideaId={docsIdeaId}
-          ideaTitle={docsIdea.rawText.slice(0, 80)}
-          open={true}
-          onClose={onCloseDocs}
-          onDocsChanged={onDocsChanged}
-          docMutations={supportingDocMutations}
-        />
-      )}
+      {docsPanel}
 
       {selectedBoardIdea && (
         <aside
@@ -107,19 +74,33 @@ export function BoardWorkspaceOverlays({
             <div className="shrink-0 flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => onOpenDocs(selectedBoardIdea.id)}
+                className="bo-shell-action"
+              >
+                Docs {selectedIdeaDocCount > 0 ? `(${selectedIdeaDocCount})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={onToggleTurnLog}
+                className={`bo-shell-action ${isTurnLogOpen ? 'bo-shell-action--primary' : ''}`}
+              >
+                {isTurnLogOpen ? 'Hide log' : 'Turn log'}
+              </button>
+              <button
+                type="button"
                 onClick={onOpenInspector}
-                className="text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-400 rounded-full px-3 py-1.5"
+                className="bo-shell-action"
               >
                 Open inspector
               </button>
               <button
                 type="button"
                 onClick={onCloseSelectedIdea}
-                className="text-xs text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-400 rounded-full px-2 py-1.5"
+                className="bo-shell-action"
                 aria-label="Back to canvas"
                 title="Back to canvas"
               >
-                ✕
+                Close
               </button>
             </div>
           </div>

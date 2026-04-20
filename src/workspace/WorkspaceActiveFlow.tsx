@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { DEFAULT_BOARD_ID } from '../board/types';
 import { advance } from '../orchestrator/stateMachine';
+import { nextPhaseNumber } from '../orchestrator/subPhases';
 import { getSettings } from '../storage/settings';
 import { createBoardController } from '../storage/boardController';
 import type { Density, Idea } from '../types';
 import Button from '../ui/Button';
 import ChallengesList from './ChallengesList';
 import LensGrid from './LensGrid';
+import { RiskReviewPanel } from './RiskReviewPanel';
+import RulesEditor from './RulesEditor';
 import { createLegacyWorkspaceAdapter, extractPhaseSection } from './legacyPhaseAdapter';
 import Markdown from './markdown';
 import ApproachTemplate from './fallbacks/ApproachTemplate';
@@ -74,6 +77,36 @@ export function WorkspaceActiveFlow({
     }
   }
 
+  async function handleRulesContinue(): Promise<void> {
+    setAdvancing(true);
+    setAdvanceError(null);
+    try {
+      const now = Date.now();
+      const nextPhase = nextPhaseNumber(idea.phase);
+      const committed = await boardController.updateIdea({
+        ideaId: idea.id,
+        patch: {
+          phase: nextPhase,
+          lastTurnAt: now,
+          turnLog: [
+            ...idea.turnLog,
+            {
+              role: 'system',
+              content: `[Step ${activeSpec?.number ?? 3}] Confirmed must-stay-true rules on canvas`,
+            },
+          ],
+        },
+        actor: { type: 'user', source },
+        summary: `${sourceLabel} confirmed rules and advanced`,
+      });
+      handleIdeaUpdate(committed.idea);
+    } catch (err) {
+      setAdvanceError(err instanceof Error ? err.message : 'Failed to advance after rule review.');
+    } finally {
+      setAdvancing(false);
+    }
+  }
+
   function renderAdvanceRow(primaryLabel: string, skipLabel?: string): React.ReactNode {
     return (
       <div className="space-y-2">
@@ -109,6 +142,62 @@ export function WorkspaceActiveFlow({
     );
   }
 
+  function renderAmbiguityState(primaryLabel: string): React.ReactNode {
+    return (
+      <div className="space-y-3">
+        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-800">Ambiguity state</p>
+            <span className="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {idea.ambiguities.length} item{idea.ambiguities.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          {idea.ambiguities.length === 0 ? (
+            <p className="text-sm text-slate-600">No explicit ambiguities recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {idea.ambiguities.map(ambiguity => {
+                const resolutionStatus = ambiguity.resolution?.status ?? 'open';
+                const linkedQuestions = idea.clarifications.filter(question => question.ambiguityId === ambiguity.id);
+                return (
+                  <div key={ambiguity.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+                        {resolutionStatus}
+                      </span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800">
+                        {ambiguity.severity}
+                      </span>
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-800">
+                        {ambiguity.resolutionMode}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-slate-800">{ambiguity.plainLanguage}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{ambiguity.type}</p>
+                    {ambiguity.resolution?.note && (
+                      <p className="mt-2 text-xs text-slate-600">Note: {ambiguity.resolution.note}</p>
+                    )}
+                    {linkedQuestions.length > 0 && (
+                      <div className="mt-2 space-y-1 text-xs text-slate-600">
+                        {linkedQuestions.map(question => (
+                          <p key={question.id}>
+                            Clarification: {question.question}
+                            {question.answer ? ` Answered: ${question.answer}` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {renderAdvanceRow(primaryLabel)}
+      </div>
+    );
+  }
+
   function renderActivePhaseInput(): React.ReactNode {
     if (!activeSpec) return null;
 
@@ -138,10 +227,52 @@ export function WorkspaceActiveFlow({
     if (activeSpec.componentKey === 'stress') {
       return (
         <div className="space-y-3">
+          <RiskReviewPanel
+            idea={idea}
+            onUpdate={handleIdeaUpdate}
+            source={source}
+            emptyMessage="No risks recorded yet. Generate a premortem first, then refine the register while stress-testing the rules."
+          />
           <StressTestTiles idea={idea} onUpdate={handleIdeaUpdate} />
           {renderAdvanceRow('Generate more stress tests', 'Skip stress-test')}
         </div>
       );
+    }
+    if (activeSpec.componentKey === 'premortem') {
+      return (
+        <div className="space-y-3">
+          <RiskReviewPanel
+            idea={idea}
+            onUpdate={handleIdeaUpdate}
+            source={source}
+            emptyMessage="No risks recorded yet. Run the premortem to generate the risk register, then refine it here."
+          />
+          {renderAdvanceRow(idea.briefState.risks.length > 0 ? 'Refresh premortem' : 'Generate risk register')}
+        </div>
+      );
+    }
+    if (activeSpec.componentKey === 'rules') {
+      return (
+        <RulesEditor
+          idea={idea}
+          onUpdate={handleIdeaUpdate}
+          source={source}
+          advancing={advancing}
+          extractError={advanceError}
+          onGenerate={() => {
+            return handleAdvance(false);
+          }}
+          onContinue={() => {
+            return handleRulesContinue();
+          }}
+        />
+      );
+    }
+    if (activeSpec.componentKey === 'ambiguity') {
+      return renderAmbiguityState('Detect ambiguities');
+    }
+    if (activeSpec.componentKey === 'clarify') {
+      return renderAmbiguityState('Generate clarification questions');
     }
 
     if (activeSpec.expectsUserInput) {
@@ -163,9 +294,7 @@ export function WorkspaceActiveFlow({
           <label htmlFor="board-phase-user-input" className="block text-sm font-medium text-slate-700">
             {activeSpec.componentKey === 'approach'
               ? 'Your answers to the clarification questions'
-              : activeSpec.componentKey === 'rules'
-                ? 'Which approach do you prefer, and why?'
-                : 'Your input for this step'}
+              : 'Your input for this step'}
           </label>
           <textarea
             id="board-phase-user-input"
@@ -228,7 +357,6 @@ export function WorkspaceActiveFlow({
               Keep the board visible while you move this idea forward. The inspector is only for deeper review.
             </p>
           </div>
-
           {activeArtifact && (
             <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
               <div className="mb-2 flex items-center justify-between gap-3">

@@ -1,4 +1,14 @@
-import type { Idea, LlmMessage, BriefState, ProviderId, ActiveTabToolContext, LensEntry, ChallengeEntry, StressResult } from '../types';
+import type {
+  Idea,
+  LlmMessage,
+  BriefState,
+  ProviderId,
+  ActiveTabToolContext,
+  LensEntry,
+  ChallengeEntry,
+  StressResult,
+  AmbiguityResolutionStatus,
+} from '../types';
 import { buildPayload, payloadToMessages } from './ctmcp';
 import { getSettings } from '../storage/settings';
 import { callWithRetry } from './retryAndFallback';
@@ -40,6 +50,56 @@ function mergeBriefState(existing: BriefState, update: Partial<BriefState>): Bri
     lenses: update.lenses ?? existing.lenses,
     challenges: update.challenges ?? existing.challenges,
     stressResults: update.stressResults ?? existing.stressResults,
+  };
+}
+
+export interface AmbiguityResolutionInput {
+  ambiguityId: string;
+  status: Exclude<AmbiguityResolutionStatus, 'open'> | 'open';
+  note?: string;
+  resolvedBy?: string;
+  resolvedAt?: number;
+}
+
+export function applyAmbiguityResolution(
+  idea: Idea,
+  input: AmbiguityResolutionInput,
+): Idea {
+  const now = input.resolvedAt ?? Date.now();
+  let updated = false;
+  const nextAmbiguities = idea.ambiguities.map(ambiguity => {
+    if (ambiguity.id !== input.ambiguityId) {
+      return ambiguity;
+    }
+    updated = true;
+    return {
+      ...ambiguity,
+      resolution: {
+        status: input.status,
+        note: input.note,
+        resolvedBy: input.resolvedBy,
+        resolvedAt: now,
+      },
+    };
+  });
+
+  if (!updated) {
+    throw new Error(`No ambiguity found with id "${input.ambiguityId}"`);
+  }
+
+  return {
+    ...idea,
+    ambiguities: nextAmbiguities,
+  };
+}
+
+function normalizeAmbiguity(ambiguity: Idea['ambiguities'][number]): Idea['ambiguities'][number] {
+  if (ambiguity.resolution?.status) return ambiguity;
+  return {
+    ...ambiguity,
+    resolution: {
+      status: 'open',
+    },
   };
 }
 
@@ -163,7 +223,7 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
     case 'ambiguity': {
       updated = {
         ...baseUpdate,
-        ambiguities: result.ambiguities ?? [],
+        ambiguities: (result.ambiguities ?? []).map(normalizeAmbiguity),
         phase: nextPhase,
         status: 'in_progress',
         ...(liveToolContext && !idea.liveToolContext ? { liveToolContext } : {}),

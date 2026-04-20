@@ -3,6 +3,7 @@ import {
   claimFacilitatorAiHost,
   getFacilitatorSnapshot,
   releaseFacilitatorAiHost,
+  setAutonomyConfiguredCeiling,
   setSharedFacilitatorPause,
   type FacilitatorSnapshot,
 } from '../../src/storage/facilitatorSync';
@@ -20,7 +21,10 @@ function mapSnapshot(snapshot: FacilitatorSnapshot) {
     hostClientId: snapshot.hostClientId,
     manualHostClientId: snapshot.manualHostClientId,
     sharedPause: snapshot.sharedPause,
+    autonomyState: snapshot.autonomyState,
     lastBoardActivityAt: snapshot.lastBoardActivityAt,
+    stagedInsightCount: snapshot.stagedInsights?.length ?? 0,
+    recentAiActionCount: snapshot.recentAiActionOutcomes?.length ?? 0,
     peerCount: snapshot.peers.length,
     peers: snapshot.peers.map(peer => ({
       clientId: peer.clientId,
@@ -28,6 +32,35 @@ function mapSnapshot(snapshot: FacilitatorSnapshot) {
       wantsAiHost: peer.wantsAiHost,
     })),
   };
+}
+
+function mapAutonomyModeToStoredValue(mode: unknown): FacilitatorSnapshot['autonomyState']['configuredCeiling'] | null {
+  switch (mode) {
+    case 'passive_observer':
+    case 'passive':
+      return 'passive';
+    case 'guided_copilot':
+    case 'copilot':
+      return 'copilot';
+    case 'active_challenger':
+    case 'challenger':
+      return 'challenger';
+    default:
+      return null;
+  }
+}
+
+function mapStoredModeToApiValue(mode: FacilitatorSnapshot['autonomyState']['configuredCeiling'] | FacilitatorSnapshot['autonomyState']['effectiveMode']) {
+  switch (mode) {
+    case 'passive':
+      return 'passive_observer';
+    case 'copilot':
+      return 'guided_copilot';
+    case 'challenger':
+      return 'active_challenger';
+    case 'shadow':
+      return 'shadow';
+  }
 }
 
 export const listPeersTool: ModelContextTool = {
@@ -164,6 +197,77 @@ export const setAiPausedTool: ModelContextTool = {
     return {
       status: 'ok',
       message: paused ? 'Shared AI facilitator is paused.' : 'Shared AI facilitator is resumed.',
+      snapshot: mapSnapshot(snapshot),
+    };
+  },
+};
+
+export const getAiAutonomyStateTool: ModelContextTool = {
+  name: 'get_ai_autonomy_state',
+  description:
+    'Returns the configured facilitator ceiling, current effective mode, backoff timing, and staged insight counts.',
+  inputSchema: { type: 'object', properties: {} },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      configuredCeiling: { type: 'string' },
+      effectiveMode: { type: 'string' },
+      backoffStatus: { type: 'string' },
+      backoffUntil: { type: 'number' },
+      sharedPause: { type: 'boolean' },
+      stagedInsightCount: { type: 'number' },
+      recentAiActionCount: { type: 'number' },
+    },
+  },
+  annotations: { readOnlyHint: true },
+  execute: async () => {
+    const snapshot = getFacilitatorSnapshot(DEFAULT_BOARD_ID);
+    return {
+      configuredCeiling: mapStoredModeToApiValue(snapshot.autonomyState.configuredCeiling),
+      effectiveMode: mapStoredModeToApiValue(snapshot.autonomyState.effectiveMode),
+      backoffStatus: snapshot.autonomyState.backoffStatus,
+      backoffUntil: snapshot.autonomyState.backoffUntil,
+      sharedPause: snapshot.sharedPause,
+      stagedInsightCount: snapshot.stagedInsights?.length ?? 0,
+      recentAiActionCount: snapshot.recentAiActionOutcomes?.length ?? 0,
+    };
+  },
+};
+
+export const setAiAutonomyModeTool: ModelContextTool = {
+  name: 'set_ai_autonomy_mode',
+  description:
+    'Sets the configured facilitator ceiling. Accepted values are passive_observer, guided_copilot, and active_challenger.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      mode: {
+        type: 'string',
+        enum: ['passive_observer', 'guided_copilot', 'active_challenger'],
+      },
+    },
+    required: ['mode'],
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      status: { type: 'string' },
+      message: { type: 'string' },
+      snapshot: { type: 'object' },
+    },
+  },
+  annotations: { readOnlyHint: false },
+  execute: async input => {
+    const { mode } = input as { mode: string };
+    const nextMode = mapAutonomyModeToStoredValue(mode);
+    if (!nextMode) {
+      return 'ERROR: `mode` must be one of passive_observer, guided_copilot, or active_challenger.';
+    }
+    setAutonomyConfiguredCeiling(DEFAULT_BOARD_ID, nextMode);
+    const snapshot = getFacilitatorSnapshot(DEFAULT_BOARD_ID);
+    return {
+      status: 'ok',
+      message: `Configured facilitator ceiling set to ${mapStoredModeToApiValue(snapshot.autonomyState.configuredCeiling)}.`,
       snapshot: mapSnapshot(snapshot),
     };
   },

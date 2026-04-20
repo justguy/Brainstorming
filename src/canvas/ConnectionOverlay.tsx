@@ -17,6 +17,13 @@ export interface ConnectionOverlayProps {
   onConnectionClick?: (ideaIds: string[]) => void;
 }
 
+type ConnectionStrengthLabel = 'Strong' | 'Medium' | 'Weak';
+
+function clamp(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
 function lineStyle(kind: Connection['kind']): {
   stroke: string;
   flowStroke: string;
@@ -112,6 +119,48 @@ function pathForSegment(x1: number, y1: number, x2: number, y2: number, compactn
   return `M ${x1} ${y1} Q ${controlX} ${controlY} ${x2} ${y2}`;
 }
 
+function connectionStrengthLabel(strength: Connection['strength']): ConnectionStrengthLabel {
+  if (strength === 'strong') return 'Strong';
+  if (strength === 'medium') return 'Medium';
+  return 'Weak';
+}
+
+function connectionKindLabel(kind: Connection['kind']): string {
+  switch (kind) {
+    case 'builds_on':
+      return 'Builds on';
+    case 'contradicts':
+      return 'Contradicts';
+    case 'revives_killed':
+      return 'Revives killed';
+    case 'shared_theme':
+      return 'Shared theme';
+    default:
+      return kind;
+  }
+}
+
+function connectionKindMeaning(kind: Connection['kind']): string {
+  switch (kind) {
+    case 'builds_on':
+      return 'extends';
+    case 'contradicts':
+      return 'conflicts';
+    case 'revives_killed':
+      return 'revisits';
+    case 'shared_theme':
+      return 'aligns';
+    default:
+      return 'relates';
+  }
+}
+
+function truncateForBoard(text: string, maxChars: number): string {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  if (clean.length <= maxChars) return clean;
+  return `${clean.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
 export function ConnectionOverlay({
   ideas,
   connections,
@@ -130,6 +179,9 @@ export function ConnectionOverlay({
 
   const animatedConnectionIdSet = new Set(animatedConnectionIds);
   const ideaById = new Map(ideas.map(idea => [idea.id, idea] as const));
+  const connectionById = new Map(connections.map(connection => [connection.id, connection] as const));
+  const boardWidth = bounds.width || 0;
+  const boardHeight = bounds.height || 0;
 
   return (
     <svg
@@ -163,8 +215,36 @@ export function ConnectionOverlay({
         const targetGroupId = ideaById.get(segment.ideaIds[1])?.panel?.groupId;
         const inSameGroup = !!sourceGroupId && sourceGroupId === targetGroupId;
         const path = pathForSegment(segment.x1, segment.y1, segment.x2, segment.y2, inSameGroup ? 0.45 : 1);
-        const segmentLength = Math.max(1, Math.hypot(segment.x2 - segment.x1, segment.y2 - segment.y1) * (inSameGroup ? 0.92 : 1.08));
+        const segmentLength = Math.max(
+          1,
+          Math.hypot(segment.x2 - segment.x1, segment.y2 - segment.y1) * (inSameGroup ? 0.92 : 1.08),
+        );
         const animateReveal = animatedConnectionIdSet.has(segment.connectionId) && !suppressAnimations;
+
+        const metadata = connectionById.get(segment.connectionId);
+        const rationaleSource = metadata?.rationale ?? segment.rationale;
+        const supportingDocCount = metadata?.supportingDocIds?.length ?? 0;
+        const kindText = connectionKindLabel(segment.kind);
+        const meaningText = connectionKindMeaning(segment.kind);
+        const evidenceText = supportingDocCount > 0
+          ? `${supportingDocCount} supporting ${supportingDocCount === 1 ? 'doc' : 'docs'}`
+          : 'no supporting docs';
+
+        const labelWidth = 216;
+        const labelHeight = 44;
+        const labelX = (segment.x1 + segment.x2) / 2;
+        const labelY = (segment.y1 + segment.y2) / 2;
+        const x = boardWidth > 0 ? clamp(labelX - labelWidth / 2, 4, Math.max(4, boardWidth - labelWidth - 4)) : labelX - labelWidth / 2;
+        const y = boardHeight > 0 ? clamp(labelY - labelHeight / 2, 4, Math.max(4, boardHeight - labelHeight - 4)) : labelY - labelHeight / 2;
+
+        const strengthText = connectionStrengthLabel(segment.strength);
+        const isPrimary = visual.emphasis === 'primary';
+        const textY1 = y + 12;
+        const textY2 = y + 24;
+        const textY3 = y + 35;
+        const title = `${kindText}; ${strengthText} confidence; ${evidenceText}; ${meaningText}`;
+        const rationale = truncateForBoard(rationaleSource, 92);
+
         return (
           <g key={segment.id}>
             <path
@@ -195,16 +275,49 @@ export function ConnectionOverlay({
                 }}
               />
             )}
+            {visual.emphasis !== 'muted' && (
+              <g opacity={isPrimary ? 0.98 : 0.8}>
+                <rect
+                  x={x}
+                  y={y}
+                  width={labelWidth}
+                height={labelHeight}
+                rx={10}
+                fill="#ffffff"
+                fillOpacity={0.96}
+                stroke={style.stroke}
+                strokeWidth={isPrimary ? 1.2 : 1}
+              />
+              <text
+                x={x + 8}
+                y={textY1}
+                fill="#0f172a"
+                fontSize={10}
+                fontFamily="Inter, system-ui, sans-serif"
+                letterSpacing="0.01em"
+              >
+                <tspan x={x + 8} fontWeight={700}>
+                  {kindText} · {strengthText} confidence
+                </tspan>
+                <tspan x={x + 8} y={textY2}>
+                  {meaningText} {connectionKindLabel(segment.kind).toLowerCase()} • {evidenceText}
+                </tspan>
+                <tspan x={x + 8} y={textY3}>
+                  {rationale}
+                </tspan>
+              </text>
+              </g>
+            )}
             {onConnectionClick && (
               <path
                 d={path}
                 fill="none"
                 stroke="transparent"
-                strokeWidth={12}
+                strokeWidth={14}
                 className="pointer-events-auto cursor-pointer"
                 onClick={() => onConnectionClick(segment.ideaIds)}
               >
-                <title>{segment.rationale}</title>
+                <title>{title}</title>
               </path>
             )}
           </g>

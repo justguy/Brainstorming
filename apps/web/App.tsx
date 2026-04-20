@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { Idea, Panel } from '../../src/types';
+import type { Connection, Idea, LlmMessage, Panel } from '../../src/types';
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
 import Workspace, { WorkspacePhaseFlow } from '../../src/workspace/Workspace';
@@ -22,10 +22,17 @@ import { BoardAppView } from './BoardAppView';
 import { useBeatReviewActions } from './useBeatReviewActions';
 import { BeatReviewPanel } from './BeatReviewPanel';
 import { BoardHistoryPanel } from './BoardHistoryPanel';
+import { BoardBeadStrip } from './BoardBeadStrip';
+import { BoardRulesRibbon } from './BoardRulesRibbon';
 import { createBoardHistoryEntries } from './historyTimeline';
+import { IdeaDocsPanel } from './IdeaDocsPanel';
+import { IdeaTurnLogPanel } from './IdeaTurnLogPanel';
+import { PeerPresenceStrip } from './PeerPresenceStrip';
 import { runManualBoardBeat, selectBoardBeatReviewSurface } from './boardBeatReviewSurface';
 import { useBoardTheme } from './useBoardTheme';
 import { useFacilitatorSync } from './useFacilitatorSync';
+import { findLatestSafeAiUndoTarget } from '../../src/storage/boardAiUndo';
+import DiscardPile from '../../src/canvas/DiscardPile';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 const CAPTURE_CANVAS_SELECTOR = '.bo-canvas';
@@ -78,6 +85,8 @@ function centerPanelOnCanvas(canvas: HTMLElement, panel: Panel): void {
   });
 }
 
+const TURN_LOG_TRANSFER_TAGS = ['turn-log'];
+
 export default function App(): React.ReactElement {
   const [hash, navigate] = useHashRoute();
   const { boardTheme, setBoardTheme } = useBoardTheme();
@@ -99,8 +108,10 @@ export default function App(): React.ReactElement {
   const [advancingFromTool, setAdvancingFromTool] = useState(false);
   const [canvasBusy, setCanvasBusy] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [linkModeEnabled, setLinkModeEnabled] = useState(false);
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [turnLogOpen, setTurnLogOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
   const lastSharedBoardMutationIdRef = useRef<string | null>(null);
@@ -113,6 +124,7 @@ export default function App(): React.ReactElement {
   const selectedBoardIdea = ideas.find(i => i.id === selectedId) ?? null;
   const selectedLegacyToolIdea = createLegacyToolIdea(selectedBoardIdea);
   const activeCritiques = critiques.filter(critique => critique.status === 'active');
+  const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
 
   useEffect(() => {
     if (!captureFeedback) return undefined;
@@ -125,6 +137,7 @@ export default function App(): React.ReactElement {
   useEffect(() => {
     if (!selectedBoardIdea) {
       setInspectorOpen(false);
+      setTurnLogOpen(false);
     }
   }, [selectedBoardIdea]);
 
@@ -151,14 +164,36 @@ export default function App(): React.ReactElement {
     animatedCritiqueIds, markConnectionsRunAt, handleHighlight, runConnectionFinder, createManualConnection, runCritiqueIdea,
     handleDismissCritique,
   } = useBoardAnalysisActions({
-    boardId, ideas, connections, boardRepository, boardController, applyCommittedBoard, runBoardBeat,
+    boardId,
+    ideas,
+    connections,
+    boardRepository,
+    boardController,
+    applyCommittedBoard,
+    runBoardBeat,
+    onCritiqueOutcome: ({ critiqueId, outcome }) => {
+      facilitatorSync.setAiActionOutcomeForEntity(critiqueId, outcome);
+    },
   });
   const {
     scouting, lastScoutRunAt, suggestionBusy, animatedSuggestionIds, suggestionsExpanded,
     visibleCanvasSuggestions, suggestionOverflowCount, runScout, runCrossPollinate, handleAdmitSuggestion,
     handleElaborateSuggestion, handleDismissSuggestion, expandSuggestions, collapseSuggestions,
   } = useBoardSuggestionActions({
-    boardId, ideas, suggestions, boardRepository, boardController, applyCommittedBoard, runBoardBeat, markActivity,
+    boardId,
+    ideas,
+    suggestions,
+    boardRepository,
+    boardController,
+    applyCommittedBoard,
+    runBoardBeat,
+    markActivity,
+    onSuggestionOutcome: ({ suggestionId, outcome }) => {
+      facilitatorSync.setAiActionOutcomeForEntity(suggestionId, outcome);
+      if (outcome === 'accepted') {
+        facilitatorSync.recordRecoverySignal(`Suggestion ${suggestionId} was admitted.`);
+      }
+    },
   });
   const { handleMove, handleGroup, handleUngroup, handleMerge } = useCanvasIdeaMutations({
     ideas, boardController, applyCommittedBoard, setCanvasBusy, setSelectedId, markActivity,
@@ -187,7 +222,6 @@ export default function App(): React.ReactElement {
   useBrainstormWorkspaceEvents({
     boardId, ideas, boardController, applyCommittedBoard, loadBoard, loadIdeas, setSelectedId, handleMove, handleGroup, handleUngroup, handleMerge,
   });
-  const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
 
   useEffect(() => {
     const sharedBoardMutation = facilitatorSync.lastBoardMutation;
@@ -227,8 +261,23 @@ export default function App(): React.ReactElement {
     scouting,
     findingConnections,
     critiqueBusyByIdea,
-    visibleIdeas, connectionsCount: connections.length, suggestionsCount: suggestions.length, docCounts,
-    selectedBoardIdea, activeCritiques, runScout, runConnectionFinder, runCritiqueIdea,
+    visibleIdeas,
+    discardedIdeasCount: discardedIdeas.length,
+    connectionsCount: connections.length,
+    suggestionsCount: suggestions.length,
+    docCounts,
+    selectedBoardIdea,
+    activeCritiques,
+    recentSessionEvents: facilitatorSync.recentSessionEvents,
+    autonomyState: facilitatorSync.autonomyState,
+    recentAiActionOutcomes: facilitatorSync.recentAiActionOutcomes,
+    runScout,
+    runConnectionFinder,
+    runCritiqueIdea,
+    setAutonomyEffectiveMode: facilitatorSync.setAutonomyEffectiveMode,
+    setAutonomyBackoffState: facilitatorSync.setAutonomyBackoffState,
+    recordRecoverySignal: facilitatorSync.recordRecoverySignal,
+    addStagedInsight: facilitatorSync.addStagedInsight,
   });
 
   const critiqueFocusIdeaId = hoverIdeaId ?? selectedId ?? null;
@@ -245,6 +294,10 @@ export default function App(): React.ReactElement {
     setCaptureOpen(value => !value);
   };
   const closeCaptureComposer = () => setCaptureOpen(false);
+  const openDocsPanel = (ideaId: string) => {
+    setTurnLogOpen(false);
+    setDocsIdeaId(ideaId);
+  };
   const handleCaptureTextChange = (value: string) => {
     setCaptureFeedback(current => (current?.tone === 'error' ? null : current));
     setNewIdeaText(value);
@@ -264,6 +317,48 @@ export default function App(): React.ReactElement {
     setCaptureHighlightIds([ideaId]);
     return isPanelVisible(canvas, panel);
   };
+
+  async function handleTransferFromTurnLog(entry: LlmMessage): Promise<void> {
+    const rawText = entry.content.trim();
+    if (!rawText) {
+      setCaptureFeedback({
+        tone: 'error',
+        message: 'Turn-log entry is empty.',
+      });
+      return;
+    }
+
+    const sourcePanel = selectedBoardIdea?.panel;
+    const panel = sourcePanel
+      ? {
+          ...sourcePanel,
+          x: sourcePanel.x + sourcePanel.width + 32,
+        }
+      : undefined;
+
+    try {
+      const result = await boardController.captureIdea({
+        rawText,
+        tags: [entry.role, ...TURN_LOG_TRANSFER_TAGS],
+        actor: { type: 'user', source: 'canvas', label: 'turn-log-transfer' },
+        panel,
+      });
+      applyCommittedBoard(result.document, result.history);
+      setSelectedId(result.idea.id);
+      setCaptureHighlightIds([result.idea.id]);
+      markActivity('edit');
+      setCaptureFeedback({
+        tone: 'success',
+        message: 'Turn-log entry transferred to note.',
+      });
+    } catch (err) {
+      console.error('[App] transfer turn log entry failed:', err);
+      setCaptureFeedback({
+        tone: 'error',
+        message: 'Could not transfer turn-log entry.',
+      });
+    }
+  }
 
   useEffect(() => {
     if (!captureReveal) return undefined;
@@ -309,10 +404,97 @@ export default function App(): React.ReactElement {
   }, [captureReveal, setSelectedId, visibleIdeas]);
 
   const historyEntries = createBoardHistoryEntries({ changeSets, historyState, ideas, groups, docs, suggestions, critiques, connections, beatReviewSessions, beatReviewItems });
+  const aiUndoTarget = findLatestSafeAiUndoTarget(changeSets, historyState.cursor);
   const triggerManualBoardBeat = (beat: 'cluster' | 'summarise'): void => {
     void runManualBoardBeat({ beat, boardId, boardTitle, ideas, groups, connections, runBoardBeat, presentBeatReview }).catch(err => {
       console.error(`[App] ${beat} beat failed:`, err);
     });
+  };
+  const applyStagedInsight = (insightId: string): void => {
+    const insight = facilitatorSync.stagedInsights?.find(item => item.id === insightId);
+    if (!insight) return;
+
+    const acceptAndRecover = () => {
+      facilitatorSync.setAiActionOutcomeForPendingInsight(insightId, 'accepted');
+      facilitatorSync.recordRecoverySignal(`Staged insight ${insightId} was adopted.`);
+    };
+
+    if (insight.kind === 'scout') {
+      const drafts = Array.isArray((insight.payload as { drafts?: unknown[] } | undefined)?.drafts)
+        ? (insight.payload as { drafts: Array<Record<string, unknown>> }).drafts
+        : [];
+      const draft = drafts[0];
+      if (!draft) return;
+      void boardController.createSuggestion({
+        rawText: typeof draft.rawText === 'string' ? draft.rawText : insight.summary,
+        rationale: typeof draft.rationale === 'string' ? draft.rationale : insight.summary,
+        source: typeof draft.source === 'string' ? draft.source : 'Robot note',
+        sourceIdeaIds: Array.isArray(draft.sourceIdeaIds) ? draft.sourceIdeaIds.filter((value): value is string => typeof value === 'string') : undefined,
+        relatedIdeaIds: Array.isArray(draft.relatedIdeaIds) ? draft.relatedIdeaIds.filter((value): value is string => typeof value === 'string') : undefined,
+        actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+      }).then(result => (
+        boardController.admitSuggestion({
+          suggestionId: result.suggestion.id,
+          actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+        })
+      )).then(result => {
+        applyCommittedBoard(result.document, result.history);
+        acceptAndRecover();
+      }).catch(err => {
+        console.error('[App] apply staged scout insight failed:', err);
+      });
+      return;
+    }
+
+    if (insight.kind === 'critique') {
+      const payload = insight.payload as { ideaId?: string; critique?: string; evidenceAsk?: string } | undefined;
+      if (!payload?.ideaId || !payload.critique || !payload.evidenceAsk) return;
+      void boardController.createCritique({
+        ideaId: payload.ideaId,
+        critique: payload.critique,
+        evidenceAsk: payload.evidenceAsk,
+        actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+      }).then(result => {
+        applyCommittedBoard(result.document, result.history);
+        acceptAndRecover();
+      }).catch(err => {
+        console.error('[App] apply staged critique insight failed:', err);
+      });
+      return;
+    }
+
+    if (insight.kind === 'connection') {
+      const drafts = Array.isArray((insight.payload as { drafts?: unknown[] } | undefined)?.drafts)
+        ? (insight.payload as { drafts: Array<Record<string, unknown>> }).drafts
+        : [];
+      if (drafts.length === 0) return;
+      const stagedConnections = drafts
+        .filter(draft => Array.isArray(draft.ideaIds) && typeof draft.kind === 'string' && typeof draft.rationale === 'string' && typeof draft.strength === 'string')
+        .map(draft => ({
+          id: crypto.randomUUID(),
+          boardId,
+          ideaIds: (draft.ideaIds as unknown[]).filter((value): value is string => typeof value === 'string'),
+          kind: draft.kind as Connection['kind'],
+          rationale: draft.rationale as string,
+          strength: draft.strength as Connection['strength'],
+          supportingDocIds: Array.isArray(draft.supportingDocIds)
+            ? (draft.supportingDocIds as unknown[]).filter((value): value is string => typeof value === 'string')
+            : undefined,
+          createdAt: Date.now(),
+        }))
+        .filter(connection => connection.ideaIds.length >= 2);
+      if (stagedConnections.length === 0) return;
+      void boardController.replaceConnections({
+        connections: [...connections, ...stagedConnections],
+        actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+        summary: `Accepted ${stagedConnections.length} staged connection${stagedConnections.length === 1 ? '' : 's'}`,
+      }).then(result => {
+        applyCommittedBoard(result.document, result.history);
+        acceptAndRecover();
+      }).catch(err => {
+        console.error('[App] apply staged connection insight failed:', err);
+      });
+    }
   };
 
   if (hash === '#/options') {
@@ -331,6 +513,8 @@ export default function App(): React.ReactElement {
         creating,
         historyState,
         historyOpen,
+        linkModeEnabled,
+        boardTitle,
         onCaptureAction: captureReveal
           ? () => {
             const pending = captureReveal;
@@ -358,12 +542,51 @@ export default function App(): React.ReactElement {
         onOpenCapture: openCaptureComposer,
         onUndo: handleUndo,
         onRedo: handleRedo,
+        onToggleLinkMode: () => setLinkModeEnabled(value => !value),
         onToggleHistory: () => setHistoryOpen(value => !value),
         onSetBoardTheme: setBoardTheme,
         onOpenOptions: openOptions,
       }}
       showApiKeyBanner={hasApiKey === false}
       onOpenOptions={openOptions}
+      beadStrip={(
+        <BoardBeadStrip
+          idea={selectedBoardIdea}
+          onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
+        />
+      )}
+      rulesRibbon={(
+        <BoardRulesRibbon
+          idea={selectedBoardIdea}
+          onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
+        />
+      )}
+      discardPile={(
+        <DiscardPile
+          ideas={discardedIdeas}
+          onRestore={handleRestore}
+          onPreview={id => {
+            setSelectedId(id);
+            setInspectorOpen(true);
+          }}
+        />
+      )}
+      turnLogPanel={turnLogOpen && selectedBoardIdea ? (
+        <IdeaTurnLogPanel
+          idea={selectedBoardIdea}
+          open={turnLogOpen}
+          onClose={() => setTurnLogOpen(false)}
+          onTransfer={handleTransferFromTurnLog}
+          onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
+        />
+      ) : null}
+      peerStrip={(
+        <PeerPresenceStrip
+          hostClientId={facilitatorSync.hostClientId}
+          localClientId={facilitatorSync.localClientId}
+          peers={facilitatorSync.peers}
+        />
+      )}
       historyPanel={historyOpen ? (
         <BoardHistoryPanel
           entries={historyEntries}
@@ -392,16 +615,44 @@ export default function App(): React.ReactElement {
         autoIdleMs: AUTO_IDLE_MS, lastAiAction, lastScoutRunAt, lastConnectionsRunAt, companionActionLabel,
         softModeBusy, lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
         showSoftModeHint, ideas: visibleIdeas, connections, findingConnections, scouting, suggestions, handleSoftModeAction, toggleFacilitatorPause,
-        runConnectionFinder: () => { void runConnectionFinder(); },
-        handleHighlight,
-        onCreateConnection: createManualConnection,
-        runScout: () => { void runScout(); },
+        undoRobotLabel: aiUndoTarget?.tooltip,
+        runConnectionFinder: () => {
+          facilitatorSync.recordRecoverySignal('Direct connection request from the dock.');
+          void runConnectionFinder();
+        },
+        runScout: () => {
+          facilitatorSync.recordRecoverySignal('Direct scout request from the dock.');
+          void runScout();
+        },
         dismissHint,
+        onUndoRobot: aiUndoTarget
+          ? () => {
+            void boardController.undoAiChange({
+              changeSetId: aiUndoTarget.changeSetId,
+              actor: { type: 'user', source: 'canvas', label: 'undoRobot' },
+            }).then(result => {
+              if (result) applyCommittedBoard(result.document, result.history);
+            }).catch(err => {
+              console.error('[App] undo robot failed:', err);
+            });
+          }
+          : undefined,
         boardBeatReviewSession,
         boardBeatReviewItems,
         onOpenBoardBeatReview: boardBeatReviewSession ? () => focusBeatReviewSession(boardBeatReviewSession.id) : undefined,
         onRunClusterBeat: () => triggerManualBoardBeat('cluster'),
         onRunSummariseBeat: () => triggerManualBoardBeat('summarise'),
+        autonomy: {
+          sharedPause: facilitatorSync.sharedPause,
+          autonomyState: facilitatorSync.autonomyState,
+          recentAiActionOutcomes: facilitatorSync.recentAiActionOutcomes,
+          stagedInsightCount: facilitatorSync.stagedInsights?.length ?? 0,
+        },
+        robotNotes: {
+          items: facilitatorSync.stagedInsights ?? [],
+          onApply: applyStagedInsight,
+          onDismiss: insightId => facilitatorSync.setAiActionOutcomeForPendingInsight(insightId, 'rejected'),
+        },
         session: {
           localClientId: facilitatorSync.localClientId,
           hostClientId: facilitatorSync.hostClientId,
@@ -420,24 +671,36 @@ export default function App(): React.ReactElement {
         suggestionOverflowCount, suggestionsExpanded, suggestionBusy,
         onDismissCritique: handleDismissCritique,
         onConnectionClick: handleHighlight, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
+        linkModeEnabled,
         onOpen: id => {
           setInspectorOpen(false);
           setSelectedId(id);
         },
-        onOpenDocs: id => setDocsIdeaId(id),
-        onGroup: handleGroup, onUngroup: handleUngroup, onMerge: handleMerge, onDiscard: handleDiscard, onAdmitSuggestion: handleAdmitSuggestion,
+        onOpenDocs: openDocsPanel,
+        onGroup: handleGroup, onUngroup: handleUngroup, onMerge: handleMerge, onDiscard: handleDiscard, onCreateConnection: createManualConnection, onAdmitSuggestion: handleAdmitSuggestion,
         onElaborateSuggestion: handleElaborateSuggestion,
         onDismissSuggestion: handleDismissSuggestion,
         onExpandSuggestions: expandSuggestions, onCollapseSuggestions: collapseSuggestions,
       }}
       workspaceOverlays={{
-        ideas, discardedIdeas, selectedBoardIdea, docsIdeaId, boardId, docCounts, supportingDocMutations,
+        ideas, selectedBoardIdea, docCounts,
         isInspectorOpen: inspectorOpen,
         capturePopover: {
           open: captureOpen, creating, feedback: captureFeedback, text: newIdeaText, tags: newIdeaTags, onToggle: toggleCaptureComposer,
           onTextChange: handleCaptureTextChange, onTagsChange: handleCaptureTagsChange, onClose: closeCaptureComposer,
           onSubmit: handleCapture,
         },
+        docsPanel: (
+          <IdeaDocsPanel
+            boardId={boardId}
+            idea={ideas.find(idea => idea.id === docsIdeaId) ?? null}
+            open={Boolean(docsIdeaId)}
+            onClose={() => setDocsIdeaId(null)}
+            onDocsChanged={(id, count) => setDocCounts(prev => ({ ...prev, [id]: count }))}
+            docMutations={supportingDocMutations}
+            refineDoc={refineSupportingDoc}
+          />
+        ),
         selectedIdeaDockContent: selectedBoardIdea ? (
           <WorkspacePhaseFlow
             idea={selectedBoardIdea}
@@ -450,20 +713,21 @@ export default function App(): React.ReactElement {
             idea={selectedBoardIdea}
             onUpdate={handleIdeaUpdate}
             docCount={docCounts[selectedBoardIdea.id] ?? 0}
-            onOpenDocs={id => setDocsIdeaId(id)}
+            onOpenDocs={openDocsPanel}
           />
         ) : null,
-        onRestoreDiscardedIdea: handleRestore,
-        onPreviewDiscardedIdea: id => {
-          setSelectedId(id);
-          setInspectorOpen(true);
+        isTurnLogOpen: turnLogOpen,
+        onToggleTurnLog: () => {
+          setDocsIdeaId(null);
+          setTurnLogOpen(value => !value);
         },
-        onCloseDocs: () => setDocsIdeaId(null),
-        onDocsChanged: (id, count) => setDocCounts(prev => ({ ...prev, [id]: count })),
+        onOpenDocs: openDocsPanel,
         onOpenInspector: () => setInspectorOpen(true),
         onCloseInspector: () => setInspectorOpen(false),
         onCloseSelectedIdea: () => {
           setInspectorOpen(false);
+          setTurnLogOpen(false);
+          setDocsIdeaId(null);
           setSelectedId(null);
         },
       }}

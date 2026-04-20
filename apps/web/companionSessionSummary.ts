@@ -44,6 +44,7 @@ export interface CompanionSessionInput {
 export interface CompanionSessionSummary {
   visible: boolean;
   status: string;
+  statusLabel: string;
   headline: string;
   detail: string;
   peerLabels: string[];
@@ -59,6 +60,7 @@ export function buildCompanionSessionSummary(input: CompanionSessionInput): Comp
     return {
       visible: false,
       status: '',
+      statusLabel: '',
       headline: '',
       detail: '',
       peerLabels,
@@ -71,6 +73,7 @@ export function buildCompanionSessionSummary(input: CompanionSessionInput): Comp
   return {
     visible: true,
     status: sessionStatus(input),
+    statusLabel: sessionStatusLabel(input),
     headline: sessionHeadline(input),
     detail: sessionDetail(input),
     peerLabels,
@@ -88,25 +91,33 @@ function sessionStatus(input: CompanionSessionInput): string {
   return 'awaiting host';
 }
 
+function sessionStatusLabel(input: CompanionSessionInput): string {
+  if (input.sharedPause) return 'Paused for all roles';
+  if (input.manualHostClientId !== null) return 'Manual role host';
+  if (input.hostClientId === input.localClientId) return 'You are guiding roles';
+  if (input.hostClientId !== null) return `Peer ${input.hostClientId} guiding roles`;
+  return 'Choosing host role';
+}
+
 function sessionHeadline(input: CompanionSessionInput): string {
   const peerCount = `${input.peers.length} peers in session`;
-  if (input.sharedPause) return `${peerCount}, facilitator paused for everyone`;
-  if (input.hostClientId === input.localClientId) return `${peerCount}, this tab is guiding the shared session`;
-  if (input.hostClientId !== null) return `${peerCount}, peer ${input.hostClientId} is guiding the shared session`;
-  return `${peerCount}, facilitator host still settling`;
+  if (input.sharedPause) return `${peerCount}, role actions are paused for everyone`;
+  if (input.hostClientId === input.localClientId) return `${peerCount}, this tab is guiding shared roles`;
+  if (input.hostClientId !== null) return `${peerCount}, peer ${input.hostClientId} is guiding shared roles`;
+  return `${peerCount}, role host is still settling`;
 }
 
 function sessionDetail(input: CompanionSessionInput): string {
   if (input.sharedPause) {
-    return 'Shared pause is active, so automatic scout and critique nudges stay quiet across the canvas until someone resumes the facilitator.';
+    return 'Shared pause is active; automatic role guidance is muted across the canvas.';
   }
   if (input.lastAiAction) {
-    return `Latest facilitator move: ${beatLabel(input.lastAiAction.kind)} ${formatSince(input.lastAiAction.at)}.`;
+    return `Latest role move: ${beatLabel(input.lastAiAction.kind)} ${formatSince(input.lastAiAction.at)}.`;
   }
   if (input.lastBoardMutation) {
     return `Latest shared board move: ${mutationLabel(input.lastBoardMutation)} ${formatSince(input.lastBoardMutation.at)}.`;
   }
-  return 'Peers are synchronized; the facilitator host is waiting for the next meaningful board change.';
+  return 'Peers are synchronized; the role host is waiting for the next meaningful board change.';
 }
 
 function sessionActionItems(input: CompanionSessionInput): string[] {
@@ -114,24 +125,24 @@ function sessionActionItems(input: CompanionSessionInput): string[] {
   const recentHumanSpeakers = recentSpeakerLabels(input);
 
   if (input.sharedPause) {
-    items.push('Resume the shared facilitator when the group wants automatic beats back.');
+    items.push('Resume the shared role host when the group wants automation back.');
   } else if (input.hostClientId === null) {
-    items.push('Keep one facilitator-enabled peer active long enough for host election to settle.');
+    items.push('Keep one role-enabled peer active long enough for host election to settle.');
   } else if (input.hostClientId === input.localClientId) {
-    items.push('Keep this tab open while the group relies on its facilitator host.');
+    items.push('Keep this tab open while the group relies on this role host.');
   } else {
-    items.push(`Leave peer ${input.hostClientId} active if you want that browser to keep guiding automatic beats.`);
+    items.push(`Keep peer ${input.hostClientId} active if you want that browser to continue role guidance.`);
   }
 
   if (input.manualHostClientId !== null) {
-    items.push(`Manual host override is pinned to peer ${input.manualHostClientId}; release it to return to automatic election.`);
+    items.push(`Manual host override is pinned to peer ${input.manualHostClientId}; clear it to return to auto host election.`);
   }
 
   if (input.pendingBoardChange) {
     items.push(
       input.autoRunReady
-        ? 'The latest shared edit has settled. The host can nudge the board now.'
-        : 'Recent shared edits are still settling. Give the host a clean idle window before expecting a beat.',
+        ? 'The latest shared edit settled. The host can run a role pass now.'
+        : 'Recent shared edits are still settling. Give the host a clean idle window before next role action.',
     );
   }
 
@@ -140,7 +151,7 @@ function sessionActionItems(input: CompanionSessionInput): string[] {
   }
 
   if (items.length < 3 && recentHumanSpeakers.length >= 2 && input.pendingBoardChange && !input.sharedPause) {
-    items.push('Let the current speakers settle before the host publishes the next shared nudge.');
+    items.push('Let active speakers settle before the host publishes the next shared role action.');
   }
 
   return items.slice(0, 3);
@@ -149,14 +160,14 @@ function sessionActionItems(input: CompanionSessionInput): string[] {
 function consensusSummary(input: CompanionSessionInput): string {
   const events = recentEvents(input);
   if (events.length === 0) {
-    return 'The session is synchronized, but it has not produced enough shared movement for a facilitator readout yet.';
+    return 'The session is synchronized, but it has not produced enough shared movement for a role readout yet.';
   }
 
   const counts = countKinds(events);
   const humanSpeakers = recentSpeakerLabels(input);
 
   if (counts.critique > 0) {
-    return 'The group is pressure-testing stronger threads before it commits to a next move.';
+    return 'The group is pressure-testing stronger threads before making the next role move.';
   }
   if (counts.connection + counts.group > 0) {
     return 'The session is converging: peers are turning loose threads into shared structure.';
@@ -165,15 +176,15 @@ function consensusSummary(input: CompanionSessionInput): string {
     return 'The group is grounding the discussion in supporting evidence instead of free-floating speculation.';
   }
   if (counts.suggestion > 0 && counts.idea > 0) {
-    return 'Fresh ideas are landing and the facilitator is immediately widening the option set around them.';
+    return 'Fresh ideas are landing and the role host is immediately widening adjacent options.';
   }
   if (counts.suggestion > 0) {
-    return 'The facilitator is broadening the conversation with adjacent suggestions around the active thread.';
+    return 'The role host is broadening the conversation with adjacent suggestions.';
   }
   if (counts.idea > 0 && humanSpeakers.length >= 2) {
-    return 'Multiple peers are still shaping the board, so the facilitator should wait for a cleaner idle window before synthesizing.';
+    return 'Multiple peers are still shaping the board, so the role host should wait for a cleaner idle window before synthesizing.';
   }
-  return 'The session is active, and the facilitator is tracking the latest shared thread for a clearer group readout.';
+  return 'The session is active, and the role host is tracking the latest shared thread.';
 }
 
 function recentSpeakers(input: CompanionSessionInput): string[] {
@@ -226,9 +237,9 @@ function peerLabel(clientId: number, input: CompanionSessionInput): string {
 function beatLabel(kind: SessionAiAction['kind']): string {
   switch (kind) {
     case 'connect':
-      return 'Connect';
+      return 'Connector';
     case 'critique':
-      return 'Critique';
+      return 'Challenger';
     case 'scout':
       return 'Scout';
   }

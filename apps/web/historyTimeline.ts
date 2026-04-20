@@ -80,7 +80,7 @@ export function createBoardHistoryEntries({
     summary: changeSet.summary,
     actorLabel: actorLabel(changeSet),
     actorTone: changeSet.actor.type,
-    beatLabel: changeSet.actor.beat ? titleCase(changeSet.actor.beat) : undefined,
+    beatLabel: changeSet.actor.beat ? roleTitle(changeSet.actor.beat) : undefined,
     patchCount: changeSet.forward.length,
     committedAt: changeSet.committedAt,
     affected: changeSet.affected.map(target => ({
@@ -124,9 +124,26 @@ function resolveAffectedLabel(
 function actorLabel(changeSet: ChangeSetRecord): string {
   if (changeSet.actor.label) return changeSet.actor.label;
   if (changeSet.actor.type === 'user') return 'User';
-  if (changeSet.actor.type === 'ai') return changeSet.actor.beat ? `${titleCase(changeSet.actor.beat)} beat` : 'AI';
+  if (changeSet.actor.type === 'ai') return changeSet.actor.beat ? `${roleTitle(changeSet.actor.beat)} role` : 'AI';
   if (changeSet.actor.type === 'tool') return 'Tool';
   return 'System';
+}
+
+function roleTitle(value: string): string {
+  switch (value) {
+    case 'scout':
+      return 'Scout';
+    case 'connect':
+      return 'Connector';
+    case 'critique':
+      return 'Challenger';
+    case 'summarise':
+      return 'Synthesiser';
+    case 'cluster':
+      return 'Cluster';
+    default:
+      return titleCase(value);
+  }
 }
 
 function titleCase(value: string): string {

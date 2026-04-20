@@ -4,6 +4,7 @@ import { getSettings } from '../storage/settings';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import ChallengesList from './ChallengesList';
+import { BeadStateReadSurface } from './BeadStateReadSurface';
 import { createLegacyWorkspaceAdapter } from './legacyPhaseAdapter';
 import LensGrid from './LensGrid';
 import Markdown from './markdown';
@@ -159,6 +160,8 @@ export function WorkspaceInspector({
           attached docs, and export when the idea is ready.
         </p>
       </div>
+
+      <BeadStateReadSurface idea={idea} />
 
       {idea.liveToolContext && idea.liveToolContext.tools.length > 0 && (
         <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-3">

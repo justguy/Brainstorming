@@ -1,4 +1,4 @@
-import type { BriefState, BoardId, Idea, Panel } from '../types';
+import type { BeadCoordinationState, BriefState, BoardId, Idea, Panel } from '../types';
 import { DEFAULT_BOARD_ID } from './types';
 
 export const DEFAULT_IDEA_PANEL_WIDTH = 260;
@@ -16,6 +16,12 @@ export function defaultBriefState(): BriefState {
     lenses: [],
     challenges: [],
     stressResults: [],
+  };
+}
+
+export function defaultBeadCoordination(): BeadCoordinationState {
+  return {
+    reviewFlags: [],
   };
 }
 
@@ -66,6 +72,7 @@ export function createCapturedIdea(input: {
     turnLog: [],
     readiness: 'red',
     insights: input.insights ?? [],
+    beadCoordination: defaultBeadCoordination(),
   };
 
   idea.panel = input.panel ?? defaultPanelForIdea(idea);
