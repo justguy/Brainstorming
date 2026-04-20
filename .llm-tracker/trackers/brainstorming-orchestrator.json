@@ -68,9 +68,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "The docs now define the robot as a managerial control plane layered over the board, bead flow, and WebMCP verbs. Tracker work is split accordingly: shell/design must-haves, lifecycle tool remount, and a new policy-engine layer that decides should-act / which-role / execute-vs-stage / intervention-strength before autonomy UI and Shadow-mode surfaces sit on top.",
-    "rev": 79,
-    "updatedAt": "2026-04-20T03:09:56.597Z"
+    "scratchpad": "Tracker now has four explicit layers: shell/design must-haves, lifecycle tool remount, bead/tool contract completion (ambiguity, rules, risks, phase history, bead coordination), and the facilitator control plane/autonomy surfaces. The missing execution grammar is no longer implied across UI rows; it is being tracked as explicit verb work with scope, mutation class, and history expectations.",
+    "rev": 80,
+    "updatedAt": "2026-04-20T03:36:37.290Z"
   },
   "tasks": [
     {
@@ -2421,7 +2421,7 @@
       "dependencies": [],
       "id": "bo-046",
       "title": "WebMCP: remount lifecycle tools per selected idea and bead phase",
-      "goal": "Split W3 tool registration into global board tools and lifecycle-scoped bead tools keyed to the selected idea and phase so the active subset mounts and unmounts deterministically.",
+      "goal": "Split W3 tool registration into global board tools, lifecycle-scoped bead tools, and facilitator/control-plane coordination verbs keyed to the selected idea and phase so the active subset mounts and unmounts deterministically.",
       "status": "not_started",
       "placement": {
         "priorityId": "p0",
@@ -2440,11 +2440,12 @@
         "apps/web/useBrainstormLifecycleEvents.ts:22",
         "apps/web/useBrainstormWorkspaceEvents.ts:127"
       ],
-      "comment": "W3 currently mounts global board-first tools only. The bead flow cannot be real until lifecycle tools remount with active phase context.",
+      "comment": "This row owns tool scope. Global versus lifecycle versus facilitator-only registration cannot stay implicit once the bead/tool contract expands beyond the current thin set of phase verbs.",
       "definition_of_done": [
-        "W3 registers global tools under one controller and lifecycle tools under a separate controller keyed to selected idea and phase.",
+        "W3 registers global board tools under one controller, lifecycle-scoped bead tools under a controller keyed to selected idea and phase, and facilitator/control-plane coordination verbs under an explicit scoped path rather than ad hoc globals.",
+        "The scope of each bead-contract verb is explicit in code and registration docs: global, lifecycle, or facilitator/control-plane.",
         "Bead-local tools mount and unmount as selection or phase changes without stale registrations.",
-        "Lifecycle writes continue to use the dispatch-and-wait handshake rather than the coarse ideasChanged refresh event."
+        "Lifecycle and facilitator writes continue to use the dispatch-and-wait handshake rather than the coarse ideasChanged refresh event."
       ],
       "constraints": [
         "Do not introduce a second phase source of truth; derive from the existing idea phase and SUB_PHASES model.",
@@ -2461,7 +2462,11 @@
         "src/orchestrator"
       ],
       "related": [
-        "bo-050"
+        "bo-050",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-060"
       ],
       "context": {
         "tags": [
@@ -2658,7 +2663,8 @@
     {
       "dependencies": [
         "bo-038",
-        "bo-046"
+        "bo-046",
+        "bo-060"
       ],
       "id": "bo-050",
       "title": "Facilitation UI: add derived 12-bead bead string",
@@ -2700,7 +2706,8 @@
         "src/orchestrator"
       ],
       "related": [
-        "bo-046"
+        "bo-046",
+        "bo-060"
       ],
       "context": {
         "tags": [
@@ -2879,7 +2886,8 @@
     {
       "dependencies": [
         "bo-038",
-        "bo-046"
+        "bo-046",
+        "bo-057"
       ],
       "id": "bo-054",
       "title": "Facilitation UI: add the must-stay-true rules ribbon",
@@ -2922,7 +2930,8 @@
       ],
       "related": [
         "bo-046",
-        "bo-050"
+        "bo-050",
+        "bo-057"
       ],
       "context": {
         "tags": [
@@ -2955,11 +2964,12 @@
         "src/orchestrator/subPhases.ts:45-56",
         "src/storage/facilitatorSync.ts:26-48"
       ],
-      "comment": "This is the missing architectural layer between managerial intent and the tool system. Without it, roles, autonomy, and Shadow mode remain implied rather than enforceable.",
+      "comment": "This is the missing architectural layer between managerial intent and the tool system. It should own the robot's operational grammar, not just broad autonomy heuristics.",
       "definition_of_done": [
         "There is an explicit facilitator context shape spanning board state, bead state, discarded memory, supporting docs, recent AI outcomes, idle/user activity, and relevant W1 context when available.",
         "A policy engine answers four questions for every candidate action: should the robot act, which role should act, should the result execute or stage, and how strong the intervention should be.",
         "A trigger matrix exists for Scout, Synthesizer, Challenger, Historian, and Facilitator with priorities, cooldowns, and execute-versus-stage defaults.",
+        "Every facilitation verb is classified as one of: hard transition, durable mutation, soft facilitation signal, or read-only derived state, and policy consumes that classification instead of treating all tools the same.",
         "The default execution stance is proposal-first rather than mutation-first, with directional or interruptive interventions usually staged before mutation unless the current policy explicitly allows execution.",
         "The control plane does not create a second workflow engine and does not bypass WebMCP verbs or human override paths."
       ],
@@ -2985,7 +2995,12 @@
         "bo-046",
         "bo-047",
         "bo-048",
-        "bo-050"
+        "bo-050",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-059",
+        "bo-060"
       ],
       "context": {
         "tags": [
@@ -2994,6 +3009,306 @@
           "architecture"
         ],
         "notes": "Implements the managerial control-plane model added to ROADMAP and WEBMCP_README. This is the layer that should make the robot feel insinuated rather than forced."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-046"
+      ],
+      "id": "bo-056",
+      "title": "Bead/tool contract: ambiguity management verbs",
+      "goal": "Implement `list_ambiguities` and `resolve_ambiguity` as explicit lifecycle verbs for beads 0 and 1 so ambiguity state is readable, actionable, and no longer trapped inside prompts or passive brief fields.",
+      "status": "not_started",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:341-345",
+        "WEBMCP_README.md:263-273",
+        "WEBMCP_README.md:299-301",
+        "src/types.ts:28-33",
+        "src/orchestrator/stateMachine.ts:163-171",
+        "src/orchestrator/ctmcp.ts:32-40",
+        "src/webmcp/registerPhaseTools.ts:285-323"
+      ],
+      "comment": "Ambiguity cannot stay prompt-only. The board needs explicit read/write ambiguity state before the facilitator can reason about missing clarity or resolved scope.",
+      "definition_of_done": [
+        "`list_ambiguities` is a lifecycle-scoped read-only tool for the selected idea and returns the current ambiguity set for beads 0 and 1 with severity, resolution mode, and resolution state.",
+        "`resolve_ambiguity` is a lifecycle-scoped durable mutation that records how a specific ambiguity was resolved, deferred, or left open, using the handshake path rather than a bare refresh event.",
+        "The source of truth is explicit board/idea state rather than inferred prompt text alone, and clarification questions remain linked back to ambiguity ids.",
+        "Ambiguity state appears in the bead detail / phase inspector and contributes to turn-log or phase-history visibility.",
+        "AI-authored ambiguity resolutions are attributable and reversible through normal history / AI Undo paths."
+      ],
+      "constraints": [
+        "Do not treat answered clarification text alone as a proxy for resolved ambiguity state.",
+        "Do not add a second ambiguity store outside the idea/board source of truth."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "src/types.ts",
+        "src/orchestrator",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-046",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "ambiguity",
+          "lifecycle"
+        ],
+        "notes": "Covers early-bead ambiguity grammar: read current unknowns, resolve them explicitly, and keep the resolution visible to later roles."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-046"
+      ],
+      "id": "bo-057",
+      "title": "Bead/tool contract: rule management verbs",
+      "goal": "Implement `add_rule` and `remove_rule` as explicit lifecycle verbs for bead 3 and later beads so must-stay-true constraints are durable, operable, and shared outside the fallback flow.",
+      "status": "not_started",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:365-369",
+        "WEBMCP_README.md:252-252",
+        "WEBMCP_README.md:325-327",
+        "Design/DESGN_GAPS_PROMPT.md:175-178",
+        "src/types.ts:89-105",
+        "src/orchestrator/stateMachine.ts:236-245",
+        "src/webmcp/registerPhaseTools.ts:169-217",
+        "apps/web/webmcp-tools.ts:1368-1400"
+      ],
+      "comment": "Rules are not just a generated artifact. They are durable constraints that later beads, the ribbon UI, and the facilitator policy all need to read and mutate explicitly.",
+      "definition_of_done": [
+        "`add_rule` and `remove_rule` are lifecycle-scoped durable mutation verbs with explicit schemas and bead ownership centered on bead 3.",
+        "The source of truth is `briefState.mustStayTrueRules`, and both the ribbon UI and bead detail read the same state.",
+        "Rule writes use the dispatch-and-wait handshake, record actor provenance, and do not rely on the workspace fallback form as the only edit path.",
+        "The rules ribbon and later bead inspectors can add, remove, and review rules without leaving the canvas-first flow.",
+        "AI-authored rule mutations are attributable and reversible through normal history / AI Undo paths."
+      ],
+      "constraints": [
+        "Do not leave `confirm_rules` as the only structured path for editing rules.",
+        "Do not hide rule management inside a modal, rail card, or fallback inspector-only flow."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "apps/web",
+        "src/types.ts",
+        "src/orchestrator"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-046",
+        "bo-054",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "rules",
+          "lifecycle"
+        ],
+        "notes": "Makes must-stay-true rules a first-class lifecycle grammar instead of a one-shot phase artifact."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-046"
+      ],
+      "id": "bo-058",
+      "title": "Bead/tool contract: risk management verbs",
+      "goal": "Implement `list_risks` and `patch_risk` as explicit lifecycle verbs for beads 4 and 4.5 so premortem output becomes tracked risk state rather than static critique text.",
+      "status": "not_started",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:353-357",
+        "WEBMCP_README.md:252-252",
+        "WEBMCP_README.md:302-303",
+        "src/types.ts:54-55",
+        "src/types.ts:97-105",
+        "src/orchestrator/stateMachine.ts:248-277",
+        "src/workspace/fallbacks/PremortemQuestions.tsx:102-107",
+        "apps/web/webmcp-tools.ts:1555-1593"
+      ],
+      "comment": "Critique cards are not a risk register. The later beads need explicit risk state the facilitator can list, patch, and carry into stress handling.",
+      "definition_of_done": [
+        "`list_risks` is a lifecycle-scoped read-only tool that returns the current risk set for the selected idea with the metadata needed for beads 4 and 4.5.",
+        "`patch_risk` is a lifecycle-scoped durable mutation for editing risk fields and follow-up annotations, and it uses the handshake path rather than a bare refresh.",
+        "The source of truth is explicit board/idea risk state plus stress linkage, not freeform critique text or fallback-only notes.",
+        "Risk changes appear in premortem/stress detail and phase-history visibility so the facilitator can explain why a review or challenge is still open.",
+        "AI-authored risk mutations are attributable and reversible through normal history / AI Undo paths."
+      ],
+      "constraints": [
+        "Do not collapse risk state into critique cards or board comments only.",
+        "Do not create a separate risk store disconnected from `briefState.risks` and `stressResults`."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "src/types.ts",
+        "src/orchestrator",
+        "src/workspace"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/workspace",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-046",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "risks",
+          "premortem"
+        ],
+        "notes": "Turns premortem and stress beads into explicit risk-management surfaces instead of ad hoc text blobs."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-059",
+      "title": "Bead/tool contract: phase history verb",
+      "goal": "Implement `get_phase_history` as a read-only workflow-memory verb so the facilitator and humans can audit why an idea is being nudged now without conflating bead history with generic board change history.",
+      "status": "not_started",
+      "placement": {
+        "priorityId": "p1",
+        "swimlaneId": "architecture"
+      },
+      "effort": "s",
+      "references": [
+        "WEBMCP_README.md:333-345",
+        "src/types.ts:214-216",
+        "src/orchestrator/stateMachine.ts:150-156",
+        "apps/web/webmcp-tools.ts:185-218",
+        "apps/web/historyTimeline.ts:34-45",
+        "Design/src/turnlog.jsx:1-181",
+        "src/workspace/WorkspaceActiveFlow.tsx:202-202"
+      ],
+      "comment": "The robot needs an auditable explanation trail for phase nudges. Without it, timing looks arbitrary and memory gets conflated with raw board history.",
+      "definition_of_done": [
+        "`get_phase_history` is a read-only derived-state verb only; it does not mutate board or workflow state.",
+        "The returned history captures per-idea phase transitions plus the lifecycle mutations that matter for reasoning now: ambiguity resolution, rule changes, risk edits, stress handling, and next-step capture.",
+        "Phase history is explicitly distinguished from generic board change history and from Shadow / Robot's Notes staging.",
+        "The verb can drive the per-idea turn-log inspector and control-plane reasoning without creating a second durable history store.",
+        "Any indexing or caching remains derived from existing turn-log and change-set data rather than becoming a new source of truth."
+      ],
+      "constraints": [
+        "Do not duplicate the full board history model under a second durable phase-history store unless derivation proves impossible.",
+        "Do not collapse phase history into an unfiltered flat log."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/historyTimeline.ts",
+        "src/storage",
+        "src/types.ts",
+        "apps/web"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-044",
+        "bo-049",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "history",
+          "read-only"
+        ],
+        "notes": "Owns workflow-memory retrieval so the facilitator can explain timing and review state without inventing a second history plane."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-046"
+      ],
+      "id": "bo-060",
+      "title": "Bead/tool contract: bead coordination verbs",
+      "goal": "Implement `get_bead_state`, `suggest_next_bead`, and `flag_bead_for_review` with explicit verb classes so the bead strip becomes a real facilitation surface instead of a visual metaphor.",
+      "status": "not_started",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:325-329",
+        "WEBMCP_README.md:120-134",
+        "WEBMCP_README.md:275-284",
+        "Design/DESGN_GAPS_PROMPT.md:60-68",
+        "src/orchestrator/subPhases.ts:45-56",
+        "apps/web/webmcp-tools.ts:1284-1600",
+        "apps/web/useBrainstormLifecycleEvents.ts:32-211"
+      ],
+      "comment": "The bead strip needs its own operational grammar: one read model, one soft nudge, one durable review marker, and no parallel phase engine.",
+      "definition_of_done": [
+        "`get_bead_state` is a read-only derived lifecycle/facilitator verb over `SUB_PHASES`, selected idea state, and review/nudge metadata; it does not create a second bead store.",
+        "`suggest_next_bead` is explicitly classified as a soft facilitation signal and never mutates phase.",
+        "`flag_bead_for_review` is explicitly classified as a durable review marker for revisiting a completed bead and records reason, source, and provenance.",
+        "All three verbs declare scope, input/output schema, UI surfaces, and history expectations, and the bead strip consumes the same source of truth.",
+        "`advance_phase` remains the only hard transition path, while bead nudge/review writes use the handshake and remain reversible."
+      ],
+      "constraints": [
+        "Do not create `slide_bead` or any parallel phase-transition mutation.",
+        "Do not let bead metadata drift from selected idea and `SUB_PHASES` state."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "apps/web",
+        "src/orchestrator",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/storage"
+      ],
+      "related": [
+        "bo-046",
+        "bo-050",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "beads",
+          "coordination"
+        ],
+        "notes": "Defines the bead strip's real runtime grammar: read derived state, nudge softly, and flag review durably."
       }
     }
   ]
