@@ -28,13 +28,13 @@ export function BoardBeatsCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-            Board beats
+            Manual beats
           </p>
           <h3 className="mt-2 text-sm font-semibold text-slate-900">
-            Manual cluster and summary passes
+            Pull the facilitator into a deliberate pass
           </h3>
           <p className="mt-1 text-sm leading-5 text-slate-600">
-            These beats stay manual, resolve inline on the board, and feed the same review flow as the existing review panel.
+            Cluster or summarise without leaving the canvas. Each pass resolves inline and reuses the existing review flow.
           </p>
         </div>
         {activeBeat && (
@@ -51,7 +51,7 @@ export function BoardBeatsCard({
             void onRunClusterBeat();
           }}
           disabled={activeBeatRun !== null}
-          className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
+          className="rounded-[22px] border border-slate-300 bg-white/95 px-3 py-3 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
           aria-label={isClusterRunning ? 'Cluster beat running' : 'Run board cluster review'}
         >
           <div className="font-semibold text-slate-900">
@@ -67,7 +67,7 @@ export function BoardBeatsCard({
             void onRunSummariseBeat();
           }}
           disabled={activeBeatRun !== null}
-          className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
+          className="rounded-[22px] border border-slate-300 bg-white/95 px-3 py-3 text-left text-sm shadow-sm transition hover:border-slate-400 hover:shadow-md disabled:opacity-60"
           aria-label={isSummariseRunning ? 'Summarise beat running' : 'Run board summary review'}
         >
           <div className="font-semibold text-slate-900">
@@ -80,7 +80,7 @@ export function BoardBeatsCard({
       </div>
 
       {boardBeatReviewSession && (
-        <article className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-3">
+        <article className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">

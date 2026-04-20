@@ -8,6 +8,7 @@ import { createChangeSet, removeIdeaFromGroupRecord, writeGroupRecord } from './
 import { getBoardHistoryState } from './boardHistoryState';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { recordFacilitatorBoardMutation } from './facilitatorSync';
 import { publishIdeaRows } from './ideaSync';
 
 export async function commitMergeIdeas(
@@ -105,6 +106,14 @@ export async function commitMergeIdeas(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'idea',
+    actorType: input.actor.type,
+    at: now,
+    entityId: mergedIdea.id,
+    ideaId: mergedIdea.id,
+    summary: `Merged ideas ${draggedIdea.id} and ${targetIdea.id}`,
+  });
   await publishIdeaRows([mergedIdea, archivedDragged, archivedTarget], boardId);
 
   return {

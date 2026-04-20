@@ -23,6 +23,29 @@ body {
     linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
 }
 
+.bo-companion-rail {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.bo-compact-card {
+  box-shadow: 0 20px 56px -40px rgba(15, 23, 42, 0.38);
+}
+
+.bo-compact-copy {
+  max-width: 34ch;
+}
+
+@media (max-height: 900px) {
+  .bo-compact-stack {
+    gap: 0.625rem;
+  }
+
+  .bo-companion-primary-stack {
+    gap: 0.625rem;
+  }
+}
+
 .bo-topbar,
 .bo-elevated-panel,
 .bo-card-surface,

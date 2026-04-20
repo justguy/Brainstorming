@@ -229,6 +229,7 @@ export default function Canvas({
     [ideas, connectionList, activeIdeaId, flashState],
   );
   const highlightSet = new Set(flashState.ideaIds);
+  const showConnectionHint = connectionList.length === 0 && ideas.length >= 2 && liveDrag === null;
 
   return (
     <div
@@ -249,6 +250,16 @@ export default function Canvas({
         onConnectionClick={onConnectionClick ? handleConnectionClick : undefined}
       />
       {overlayContent}
+      {showConnectionHint && (
+        <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[18rem] rounded-[22px] border border-amber-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+            Connections
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-900">
+            Add one from the companion rail, or ask the facilitator to scan this board.
+          </p>
+        </div>
+      )}
 
       {groups.map(group => {
         const members = ideas.filter(i => i.panel?.groupId === group.id);
@@ -331,10 +342,10 @@ export default function Canvas({
               Empty board
             </p>
             <h2 className="mt-3 text-lg font-semibold text-slate-900">
-              Start with a rough thought.
+              Add the first note.
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Capture an idea and the canvas becomes the source of truth for inline beats, critique, and reversible history.
+              Use <span className="font-semibold text-slate-800">New note</span> to place a card on the canvas. Then run <span className="font-semibold text-slate-800">Connections</span> to link notes and use the <span className="font-semibold text-slate-800">AI facilitator</span> rail to scout and drive beats.
             </p>
           </div>
         </div>

@@ -1,48 +1,139 @@
 # Brainstorming Orchestrator
 
-Brainstorming Orchestrator is a local-first idea workspace with two shipped surfaces:
+A local-first brainstorming workspace where an AI facilitator works directly on your canvas, not in a chat sidebar.
 
-- A Chrome extension for the original 8-phase brainstorming pipeline.
-- A standalone web app with WebMCP tools, a free-form canvas, supporting docs, connection finding, critique cards, ghost suggestions, and a local autonomous facilitator.
+Instead of asking an AI for ideas, the AI participates like a teammate:
 
-## Status
+- it adds ideas
+- it connects them
+- it challenges assumptions
+- it revives discarded paths
+- it helps move the work forward
 
-- `PHASED_IMPL.md`: complete.
-- `ROADMAP.md` shipped local-first work: complete through the UI/UX polish driver.
-- `ROADMAP.md` current sprint: collaborative sync.
-- Remaining roadmap work is still future work: collaborative sync, Yjs, WebRTC multi-peer, and other stretch items in `ROADMAP.md`.
+All through explicit, typed actions, not vague chat responses.
 
-## What Is Shipped
+## What Makes This Different
 
-### Chrome extension
+Most AI tools sit in a sidebar and generate text.
 
-- Manifest V3 extension build.
-- BYOK provider support for Gemini, OpenAI, and Anthropic.
-- 8-phase structured brainstorming pipeline.
-- Popup capture, side panel workspace, readiness-gated export.
+This system is different:
 
-### Standalone web app
+- AI acts on the workspace, not outside it
+- draws connections between ideas
+- drops critique cards onto specific panels
+- proposes new ideas as candidate ideas
+- groups and reshapes the board
+- AI is bounded and controllable
+- operates through explicit tools (`WebMCP`)
+- can be paused or throttled
+- backs off when its suggestions are rejected
+- stages ideas instead of forcing them (`Shadow Mode`)
+- everything is reversible
+- AI actions are tracked and can be undone
+- no hidden mutations
+- no AI drift
+- local-first by default
+- runs fully in-browser
+- no required backend
+- your data stays with you
 
-- Runs at `http://localhost:6611` in dev mode.
-- WebMCP surface with global and lifecycle tools.
-- Free-form canvas with drag, group, merge, discard, and restore flows.
-- Supporting-doc extraction and board-aware idea scouting.
-- Connection finder plus on-canvas connection overlay.
-- Manual `draw_connection` tool.
-- Persisted critiques with anchored critique cards and dismiss flow.
-- Soft-mode inference with subtle timing hints.
-- Signal controls: bounded suggestions, bounded critiques, bounded connections.
-- Paginated turn-log access via `get_turn_log`.
-- Local autonomous facilitator with pause toggle and AI-origin action tagging.
-- Refined interaction polish: clearer active-focus hierarchy, idle-gated sequential AI reveals, stronger critique/suggestion motion, hover-aware related emphasis, and sharper critique copy.
+## What Is Shipped Today
+
+### Standalone Web App
+
+Shipped. This is the primary surface and runs at `http://localhost:6611`.
+
+- Free-form canvas: drag, group, merge, discard, restore
+- Supporting-doc extraction with facts injected into reasoning
+- Connection finder plus on-canvas connection overlay
+- Candidate ideas from outside-knowledge scouting
+- Critique cards for devil's-advocate challenges
+- Signal control for bounded suggestions, critiques, and connections
+- Local autonomous facilitator with idle-gated automation
+- AI-tagged history and undo/redo support
+- Polished timing, motion, and hierarchy
+
+### Chrome Extension
+
+Shipped.
+
+- 8-phase structured brainstorming pipeline
+- BYOK for Gemini, OpenAI, and Anthropic
+- Active-tab tool awareness through WebMCP consumption
+- Side-panel workflow plus export
 
 ## Not Shipped Yet
 
-- Collaborative sync.
-- Yjs storage cutover.
-- WebRTC peer collaboration.
-- Centralized cloud persistence.
-- Cross-session AI memory.
+- Collaborative sync (multi-user)
+- Yjs CRDT storage
+- WebRTC peer collaboration
+- Cross-device persistence
+
+These are actively planned in the roadmap.
+
+## What This Enables
+
+Instead of this:
+
+`Give me ideas for a CSV importer`
+
+You get this:
+
+- you add an idea to the board
+- AI proposes 2 alternative approaches as candidate ideas
+- AI draws a connection between overlapping ideas
+- AI drops a critique:
+  `This breaks with large files — you're assuming memory fits`
+- AI revives a discarded idea when it becomes relevant again
+
+Now you're not brainstorming with a tool.
+You're working with a collaborator.
+
+## Core Concept: AI Through Tools (WebMCP)
+
+The AI does not decide what to do loosely.
+
+It operates through explicit actions like:
+
+- `capture_idea`
+- `draw_connection`
+- `critique_idea`
+- `scout_ideas`
+- `discard_idea` / `restore_idea`
+- `advance_phase`
+
+This makes behavior:
+
+- predictable
+- inspectable
+- controllable
+
+## Autonomous Facilitator
+
+The goal is not an assistant.
+
+It is a facilitator that:
+
+- keeps momentum
+- surfaces risks
+- connects ideas
+- nudges progress
+
+It operates in modes:
+
+- `Passive Observer` — watches, stages insights
+- `Guided Co-Pilot` — acts during idle moments
+- `Active Challenger` — behaves like a full participant
+
+And it adapts:
+
+- repeated rejections -> it backs off
+- accepted ideas -> it ramps up again
+- cooldown does not mean silence; in `Shadow Mode` it keeps tracking, generating, and staging ideas in the `Insight Feed`
+
+Architecturally, this is a managerial control plane layered over the board, bead flow, and WebMCP tool system.
+It observes the workspace, selects a role, emits a structured proposal, and then either executes or stages that proposal under policy control.
+Humans remain the final authority: they can accept, reject, override, advance manually, or undo AI-authored changes at any time.
 
 ## Prerequisites
 
@@ -51,28 +142,14 @@ Brainstorming Orchestrator is a local-first idea workspace with two shipped surf
 - Chromium-based browser for the extension
 - At least one LLM API key for Gemini, OpenAI, or Anthropic
 
-## Install
+## Development
 
 ```bash
 npm install
-```
-
-## Development
-
-### Standalone web app
-
-```bash
 npm run dev:web
 ```
 
-- Dev server: `http://localhost:6611`
-- Primary surface for new feature work
-
-### Chrome extension
-
-```bash
-npm run dev
-```
+Open: `http://localhost:6611`
 
 ## Builds
 
@@ -120,7 +197,7 @@ npm run typecheck
 - `WEBMCP_CAPABILITIES.md`: detailed capability matrix.
 - `WEBMCP_INTEGRATION_NOTES.md`: integration decisions and tradeoffs.
 - `PHASED_IMPL.md`: phased implementation driver that is now complete.
-- `ROADMAP.md`: forward plan beyond the shipped facilitator work.
+- `ROADMAP.md`: forward plan for facilitator evolution and sync.
 - `KILLER_DEMO.md`: demo framing.
 - `EXECUTION.md`: earlier execution and acceptance notes.
 

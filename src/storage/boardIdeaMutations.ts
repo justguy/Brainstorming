@@ -7,6 +7,7 @@ import { getBoardHistoryState } from './boardHistoryState';
 import type { BoardIdeaCommitResult } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { recordFacilitatorBoardMutation } from './facilitatorSync';
 import { publishIdeaRows } from './ideaSync';
 import { syncTurnsForIdea } from './turns';
 
@@ -77,6 +78,14 @@ export async function commitUpdateIdea(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'idea',
+    actorType: input.actor.type,
+    at: now,
+    entityId: ideaAfter.id,
+    ideaId: ideaAfter.id,
+    summary: input.summary ?? `Updated idea ${ideaAfter.id}`,
+  });
 
   if (input.patch.turnLog) {
     await syncTurnsForIdea(boardId, ideaAfter.id, ideaAfter.turnLog, ideaAfter.lastTurnAt ?? ideaAfter.updatedAt);

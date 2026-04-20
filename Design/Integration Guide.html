@@ -1,0 +1,650 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Brainstorm — Integration Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --ink: #1a1814;
+    --ink-soft: #4a4640;
+    --paper: #f6f1e4;
+    --paper-dark: #ece6d6;
+    --accent-builds: #1a1814;
+    --accent-contradict: #c94a3a;
+    --accent-revives: #2f8f5e;
+    --accent-shared: #8a8578;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --sans: "Inter", system-ui, sans-serif;
+    --hand: "Kalam", cursive;
+    --hand-head: "Caveat", cursive;
+  }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+  body {
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(26,24,20,0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 72px 56px 160px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 10px;
+  }
+  h1 {
+    font-family: var(--hand-head);
+    font-size: 68px;
+    line-height: 0.95;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    font-size: 18px;
+    color: var(--ink-soft);
+    max-width: 640px;
+    margin-bottom: 48px;
+  }
+  h2 {
+    font-family: var(--hand-head);
+    font-size: 40px;
+    margin: 72px 0 8px;
+    letter-spacing: -0.01em;
+  }
+  h2::before {
+    content: "§ ";
+    color: var(--accent-contradict);
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 0;
+    vertical-align: 0.18em;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 17px;
+    font-weight: 700;
+    margin: 28px 0 6px;
+    letter-spacing: -0.005em;
+  }
+  h4 { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); margin: 20px 0 6px; }
+  p { margin: 0 0 14px; text-wrap: pretty; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--paper-dark);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: #3b2a1a;
+  }
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    background: #1a1814;
+    color: #f0ead8;
+    padding: 18px 22px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 14px 0 20px;
+    box-shadow: 4px 4px 0 rgba(26,24,20,0.15);
+  }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  .k  { color: #e2a84a; }  /* keyword */
+  .s  { color: #a5d49a; }  /* string */
+  .n  { color: #8bd0e8; }  /* number */
+  .c  { color: #8a8578; font-style: italic; } /* comment */
+  .t  { color: #e8b3c5; }  /* type/name */
+  .p  { color: #cac5b3; }  /* punct */
+  ul, ol { padding-left: 22px; margin: 4px 0 18px; }
+  li { margin-bottom: 6px; }
+  .callout {
+    border-left: 3px solid var(--ink);
+    padding: 8px 16px;
+    background: rgba(26,24,20,0.04);
+    margin: 14px 0 20px;
+    font-size: 14px;
+  }
+  .callout.warn { border-color: var(--accent-contradict); background: rgba(201,74,58,0.06); }
+  .callout.good { border-color: var(--accent-revives); background: rgba(47,143,94,0.06); }
+  .callout .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-right: 8px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 18px;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(26,24,20,0.15);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border-bottom-color: var(--ink);
+  }
+  td code { font-size: 12px; }
+  .swatch-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 18px; }
+  .swatch {
+    width: 88px; height: 88px;
+    border-radius: 6px;
+    border: 1.5px solid var(--ink);
+    position: relative;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #fff;
+    padding: 6px 8px;
+    box-shadow: 3px 3px 0 rgba(26,24,20,0.15);
+  }
+  .swatch .label {
+    position: absolute;
+    left: 6px; bottom: 6px;
+    background: rgba(0,0,0,0.55);
+    padding: 2px 5px;
+    border-radius: 2px;
+  }
+  .tok-table td:first-child { font-family: var(--mono); font-size: 12px; color: var(--accent-contradict); white-space: nowrap; }
+  .tok-table td:nth-child(2) { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+  .flow {
+    border: 1.5px dashed rgba(26,24,20,0.3);
+    border-radius: 8px;
+    padding: 16px 18px;
+    background: rgba(255,255,255,0.4);
+    margin: 10px 0 22px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .flow .arr { color: var(--accent-contradict); }
+  .flow .note { color: var(--ink-soft); font-size: 11px; }
+  .toc {
+    border: 1.5px solid var(--ink);
+    border-radius: 8px;
+    padding: 16px 20px;
+    background: rgba(255,255,255,0.55);
+    margin-bottom: 48px;
+    column-count: 2;
+    column-gap: 32px;
+    font-size: 13.5px;
+    box-shadow: 3px 3px 0 rgba(26,24,20,0.1);
+  }
+  .toc a {
+    display: block;
+    color: var(--ink);
+    text-decoration: none;
+    padding: 3px 0;
+    break-inside: avoid;
+  }
+  .toc a:hover { text-decoration: underline; }
+  .toc .num { font-family: var(--mono); font-size: 10.5px; color: var(--accent-contradict); margin-right: 6px; }
+  .toc .toc-head {
+    grid-column: 1 / -1;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+    column-span: all;
+  }
+  .inline-legend {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+    margin-right: 12px;
+  }
+  .inline-legend .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ink);
+  }
+  .emoji-free { letter-spacing: 0.03em; }
+  .footer-seal {
+    margin-top: 96px;
+    padding-top: 32px;
+    border-top: 1.5px dashed rgba(26,24,20,0.3);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+  .kicker {
+    font-family: var(--hand);
+    font-size: 16px;
+    color: var(--accent-contradict);
+    transform: rotate(-1deg);
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+  .do-dont {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 10px 0 20px;
+  }
+  .do-dont > div {
+    border: 1.5px solid var(--ink);
+    padding: 12px 14px;
+    border-radius: 6px;
+    font-size: 13.5px;
+    background: rgba(255,255,255,0.5);
+  }
+  .do-dont .do  { border-left: 6px solid var(--accent-revives); }
+  .do-dont .dnt { border-left: 6px solid var(--accent-contradict); }
+  .do-dont h4 { margin: 0 0 8px; }
+  .seq {
+    counter-reset: step;
+    margin: 8px 0 20px;
+    padding-left: 0;
+    list-style: none;
+  }
+  .seq li {
+    counter-increment: step;
+    padding-left: 38px;
+    position: relative;
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+  .seq li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--mono);
+    font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="eyebrow">Brainstorm · v0.1 integration guide</div>
+<h1>How to build this thing</h1>
+<p class="sub">Everything a developer needs to take the prototype and wire it into a real app with a real LLM. Design tokens, component contracts, state model, and the LLM hooks that drive the "thinking partner" behaviour.</p>
+
+<div class="toc">
+  <div class="toc-head">Contents</div>
+  <a href="#philosophy"><span class="num">01</span> Design philosophy</a>
+  <a href="#tokens"><span class="num">02</span> Design tokens</a>
+  <a href="#type"><span class="num">03</span> Typography</a>
+  <a href="#components"><span class="num">04</span> Component recipes</a>
+  <a href="#state"><span class="num">05</span> State model</a>
+  <a href="#llm"><span class="num">06</span> LLM integration</a>
+  <a href="#prompts"><span class="num">07</span> Prompt contracts</a>
+  <a href="#beats"><span class="num">08</span> Interaction beats</a>
+  <a href="#persistence"><span class="num">09</span> Persistence</a>
+  <a href="#accessibility"><span class="num">10</span> Accessibility &amp; a11y</a>
+  <a href="#checklist"><span class="num">11</span> Handoff checklist</a>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="philosophy">Design philosophy</h2>
+<div class="kicker">the one rule</div>
+<p><strong>The AI is a second brain that helps think, not a chatbot that answers.</strong> Every interaction should feel like a capable colleague sitting beside you — pointing at a sticky, scratching one out, drawing a line between two ideas — not like a Q&amp;A widget.</p>
+
+<p>This has implications for everything else:</p>
+<ul>
+  <li><strong>AI surfaces are inline.</strong> Ghost stickies, critique bubbles, connection lines, margin notes — all live on the same canvas as user ideas, not in a side panel.</li>
+  <li><strong>AI output is draftable.</strong> Everything the AI produces is dismissible, editable, draggable, or promotable. Nothing is final until the human commits.</li>
+  <li><strong>AI is visibly thinking.</strong> The "thinking beat" (candidates appear, get rejected, survivors solidify) is explicit. Hidden reasoning is untrustworthy reasoning.</li>
+  <li><strong>The canvas is the source of truth.</strong> The turn log is a history view, not a parallel store. Transferring a log entry creates a new sticky on the canvas.</li>
+</ul>
+
+<h3>Two visual themes, one system</h3>
+<p>The prototype ships two interchangeable aesthetics backed by the same tokens:</p>
+<ul>
+  <li><strong>sketch</strong> — warm paper, hand-drawn ink, torn-paper stickies, Kalam font. Evokes moleskine or a whiteboard in a dimly-lit room.</li>
+  <li><strong>whiteboard</strong> — cool cream board, marker-style strokes, translucent colour blocks, cleaner geometry.</li>
+</ul>
+<p>Users switch via the Tweaks panel. Every component must render correctly under <code>body.theme-sketch</code> and <code>body.theme-whiteboard</code>.</p>
+
+<!-- ============================================================ -->
+<h2 id="tokens">Design tokens</h2>
+<p>All tokens are CSS custom properties on <code>:root</code>, overridden by body theme class.</p>
+
+<h3>Colour</h3>
+<div class="swatch-row">
+  <div class="swatch" style="background:#1a1814"><div class="label">--ink</div></div>
+  <div class="swatch" style="background:#4a4640"><div class="label">--ink-soft</div></div>
+  <div class="swatch" style="background:#f6f1e4;color:#1a1814"><div class="label" style="background:rgba(255,255,255,0.65);color:#1a1814">--paper</div></div>
+  <div class="swatch" style="background:#ece6d6;color:#1a1814"><div class="label" style="background:rgba(255,255,255,0.65);color:#1a1814">--paper-dark</div></div>
+  <div class="swatch" style="background:#c94a3a"><div class="label">contradict</div></div>
+  <div class="swatch" style="background:#2f8f5e"><div class="label">revives</div></div>
+  <div class="swatch" style="background:#8a8578"><div class="label">shared-theme</div></div>
+</div>
+
+<h4>Sticky palette (both themes)</h4>
+<table class="tok-table">
+<tr><th>token</th><th>hex</th><th>use</th></tr>
+<tr><td>--sticky-yellow</td><td>#f4d95b</td><td>default / user idea</td></tr>
+<tr><td>--sticky-pink</td>  <td>#f5a3b3</td><td>contested idea</td></tr>
+<tr><td>--sticky-blue</td>  <td>#9ec5e8</td><td>anchor / seed idea</td></tr>
+<tr><td>--sticky-green</td> <td>#9cd4a6</td><td>AI-survived draft</td></tr>
+<tr><td>--sticky-peach</td> <td>#f3c596</td><td>AI scout / ghost</td></tr>
+<tr><td>--sticky-lilac</td> <td>#c7b5e5</td><td>tangent / aside</td></tr>
+</table>
+
+<h4>Semantic accents — connection kinds</h4>
+<table class="tok-table">
+<tr><th>kind</th><th>stroke</th><th>style</th><th>meaning</th></tr>
+<tr><td>builds_on</td>      <td>#1a1814</td><td>solid</td>    <td>A extends B</td></tr>
+<tr><td>contradicts</td>    <td>#c94a3a</td><td>dashed 8 5</td><td>A negates B</td></tr>
+<tr><td>shared_theme</td>   <td>#8a8578</td><td>dotted 1 5</td><td>thematic link</td></tr>
+<tr><td>revives_killed</td> <td>#2f8f5e</td><td>solid+arrow</td><td>A resurrects a dismissed B</td></tr>
+</table>
+
+<h3>Spacing &amp; radii</h3>
+<pre><code><span class="t">:root</span> {
+  --radius-sm: <span class="n">4px</span>;
+  --radius-md: <span class="n">8px</span>;
+  --radius-sticky: <span class="n">10px</span>;  <span class="c">/* soft corners on stickies */</span>
+  --shadow-sticky: <span class="n">0</span> <span class="n">4px</span> <span class="n">10px</span> <span class="t">rgba</span>(<span class="n">0</span>,<span class="n">0</span>,<span class="n">0</span>,<span class="n">0.14</span>),
+                   <span class="n">1px</span> <span class="n">1px</span> <span class="n">0</span> <span class="t">rgba</span>(<span class="n">0</span>,<span class="n">0</span>,<span class="n">0</span>,<span class="n">0.06</span>);
+  --shadow-soft:   <span class="n">3px</span> <span class="n">3px</span> <span class="n">0</span> <span class="t">rgba</span>(<span class="n">26</span>,<span class="n">24</span>,<span class="n">20</span>,<span class="n">0.15</span>);
+}</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="type">Typography</h2>
+<table>
+<tr><th>family</th><th>role</th><th>sizes</th></tr>
+<tr><td><code>"Kalam"</code></td>           <td>body hand-writing on stickies, critiques</td><td>14–16px</td></tr>
+<tr><td><code>"Caveat"</code></td>          <td>large display (titles, section heads)</td>  <td>32–68px</td></tr>
+<tr><td><code>"Inter"</code></td>           <td>UI chrome, settings, data-dense areas</td>  <td>12–17px</td></tr>
+<tr><td><code>"IBM Plex Mono"</code></td>   <td>eyebrows, timestamps, log entries, codes</td><td>10–13px</td></tr>
+</table>
+
+<div class="callout warn"><span class="tag">don't</span> Use the hand-drawn fonts for anything longer than a card or 2-line caption — they tire the eye in paragraphs. Body copy in settings, turn log, modals must be Inter.</div>
+
+<!-- ============================================================ -->
+<h2 id="components">Component recipes</h2>
+<p>All components live in <code>src/*.jsx</code> and expose themselves on <code>window</code>. Inventory below maps spec → file → key props.</p>
+
+<table>
+<tr><th>component</th><th>file</th><th>key props</th></tr>
+<tr><td><code>Sticky</code></td><td>cards.jsx</td><td><code>idea</code>, <code>selected</code>, <code>linkCandidate</code>, <code>onMouseDown</code>, <code>onClick</code></td></tr>
+<tr><td><code>GhostSticky</code></td><td>cards.jsx</td><td><code>idea</code>, <code>onAccept</code>, <code>onDismiss</code></td></tr>
+<tr><td><code>CritiqueBubble</code></td><td>cards.jsx</td><td><code>x</code>, <code>y</code>, <code>text</code>, <code>onDismiss</code> (draggable)</td></tr>
+<tr><td><code>MarginNote</code></td><td>cards.jsx</td><td>same as CritiqueBubble, styled as torn page</td></tr>
+<tr><td><code>ConnectionLayer</code></td><td>connections.jsx</td><td><code>connections[]</code>, <code>onDeleteConnection</code>, <code>interactive</code></td></tr>
+<tr><td><code>ClusterHalo</code></td><td>cards.jsx</td><td><code>ideaIds</code>, <code>label</code> — auto-sizes bbox</td></tr>
+<tr><td><code>PersonaDock</code></td><td>persona.jsx</td><td><code>line</code>, <code>pulsing</code>, <code>thinking</code>, <code>onAct</code>, <code>onOpenLog</code></td></tr>
+<tr><td><code>TurnLog</code></td><td>turnlog.jsx</td><td><code>ideaId</code>, <code>log</code> hook, <code>onTransfer</code></td></tr>
+<tr><td><code>TweaksPanel</code></td><td>tweaks.jsx</td><td><code>visible</code>, <code>tweaks</code>, <code>setTweak</code></td></tr>
+</table>
+
+<h3>Idea data shape</h3>
+<pre><code><span class="k">type</span> <span class="t">Idea</span> = {
+  <span class="t">id</span>: <span class="t">string</span>;
+  <span class="t">x</span>: <span class="t">number</span>; <span class="t">y</span>: <span class="t">number</span>;     <span class="c">// canvas coords</span>
+  <span class="t">w</span>?: <span class="t">number</span>; <span class="t">h</span>?: <span class="t">number</span>;    <span class="c">// defaults 230×96</span>
+  <span class="t">title</span>: <span class="t">string</span>;
+  <span class="t">body</span>?: <span class="t">string</span>;
+  <span class="t">tag</span>?: <span class="t">string</span>;             <span class="c">// "idea", "ai draft", "tangent"…</span>
+  <span class="t">ai</span>?: <span class="t">boolean</span>;            <span class="c">// true if AI authored</span>
+  <span class="t">killed</span>?: <span class="t">boolean</span>;        <span class="c">// visually struck through</span>
+  <span class="t">color</span>?: <span class="s">"yellow"</span>|<span class="s">"pink"</span>|<span class="s">"blue"</span>|<span class="s">"green"</span>|<span class="s">"peach"</span>|<span class="s">"lilac"</span>;
+  <span class="t">turns</span>?: <span class="t">number</span>;          <span class="c">// history length, shown in meta</span>
+};</code></pre>
+
+<h3>Connection data shape</h3>
+<pre><code><span class="k">type</span> <span class="t">Connection</span> = {
+  <span class="t">from</span>: <span class="t">IdeaId</span>;
+  <span class="t">to</span>: <span class="t">IdeaId</span>;
+  <span class="t">kind</span>: <span class="s">"builds_on"</span>|<span class="s">"contradicts"</span>|<span class="s">"shared_theme"</span>|<span class="s">"revives_killed"</span>;
+  <span class="t">rationale</span>?: <span class="t">string</span>;    <span class="c">// short AI-authored why</span>
+};</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="state">State model</h2>
+<p>The canvas keeps one authoritative list of ideas and connections in its own state. Everything else is a view or an overlay.</p>
+
+<pre><code>CanvasScreen {
+  ideas             : Idea[]         <span class="c">// merge of seeded + user-added + AI-committed</span>
+  userConnections   : Connection[]   <span class="c">// user-drawn</span>
+  deletedKeys       : string[]       <span class="c">// tombstones for deleted built-in connections</span>
+  selectedId        : IdeaId | null
+  linkMode          : boolean        <span class="c">// "draw connection" mode</span>
+  linkSource        : IdeaId | null  <span class="c">// first sticky picked</span>
+  thinkingIdeas     : Candidate[]    <span class="c">// live during "thinking beat"</span>
+  aiThinking        : boolean        <span class="c">// locks nudge button</span>
+  dismissedCritiques: string[]
+  dismissedGhosts   : string[]
+  acceptedGhosts    : Idea[]
+}</code></pre>
+
+<h3>Effective visible set (pure function)</h3>
+<pre><code><span class="k">const</span> visibleConnections =
+  [...CONNECTIONS, ...userConnections]
+    .filter(c =&gt; !deletedKeys.includes(connKey(c)));
+
+<span class="k">const</span> visibleCritiques =
+  CRITIQUES.filter(c =&gt; !dismissedCritiques.includes(c.id));
+
+<span class="k">const</span> visibleGhosts =
+  GHOSTS.filter(g =&gt; !dismissedGhosts.includes(g.id));</code></pre>
+
+<div class="callout good"><span class="tag">why</span> This pattern keeps AI output trivially reversible. A dismissed critique is a tombstone, not a mutation — undo is just popping the array.</div>
+
+<!-- ============================================================ -->
+<h2 id="llm">LLM integration</h2>
+<p>The prototype uses local deterministic data. For production, replace the data layer with a call per "beat". Every LLM call is scoped to a single beat — never a general chat.</p>
+
+<h3>The five beats that call the LLM</h3>
+<table>
+<tr><th>beat</th><th>trigger</th><th>response shape</th></tr>
+<tr><td><code>scout</code></td>       <td>user idle 2s with ≥3 ideas, or "nudge me"</td><td><code>Candidate[]</code> (see §07)</td></tr>
+<tr><td><code>connect</code></td>     <td>on every new idea, after debounce</td><td><code>Connection[]</code></td></tr>
+<tr><td><code>critique</code></td>    <td>idea stable 5s &amp; not already critiqued</td><td><code>Critique</code></td></tr>
+<tr><td><code>cluster</code></td>     <td>≥5 ideas with ≥3 shared_theme connections</td><td><code>ClusterHint</code></td></tr>
+<tr><td><code>summarise</code></td>   <td>manual — "one-line takeaway" button</td><td><code>string</code></td></tr>
+</table>
+
+<h3>Contract: request envelope</h3>
+<p>Every call to the LLM goes through one helper, <code>callBeat(name, context)</code>. Context is always the current board state, serialised minimally:</p>
+
+<pre><code><span class="k">type</span> <span class="t">BeatContext</span> = {
+  <span class="t">beat</span>: <span class="s">"scout"</span>|<span class="s">"connect"</span>|<span class="s">"critique"</span>|<span class="s">"cluster"</span>|<span class="s">"summarise"</span>;
+  <span class="t">board</span>: {
+    <span class="t">title</span>: <span class="t">string</span>;
+    <span class="t">ideas</span>: { <span class="t">id</span>: <span class="t">string</span>; <span class="t">title</span>: <span class="t">string</span>; <span class="t">body</span>?: <span class="t">string</span>; <span class="t">killed</span>?: <span class="t">boolean</span> }[];
+    <span class="t">connections</span>: { <span class="t">from</span>: <span class="t">string</span>; <span class="t">to</span>: <span class="t">string</span>; <span class="t">kind</span>: <span class="t">string</span> }[];
+  };
+  <span class="t">focusId</span>?: <span class="t">string</span>;              <span class="c">// which idea the beat is about, if any</span>
+  <span class="t">aggressiveness</span>: <span class="s">"gentle"</span>|<span class="s">"balanced"</span>|<span class="s">"aggressive"</span>;
+  <span class="t">turnsUsed</span>: <span class="t">number</span>;             <span class="c">// respect per-beat token budgets</span>
+};</code></pre>
+
+<h3>Contract: response</h3>
+<p>The LLM must return strict JSON matching the beat's schema. Any free text is an error — wrap it in the appropriate field.</p>
+
+<pre><code><span class="c">// scout response</span>
+{
+  <span class="t">"candidates"</span>: [
+    { <span class="t">"title"</span>: <span class="s">"Decision journal → auto-surface precedent"</span>,
+      <span class="t">"rationale"</span>: <span class="s">"Past decisions are the training data."</span>,
+      <span class="t">"color"</span>: <span class="s">"blue"</span>,
+      <span class="t">"confidence"</span>: <span class="n">0.78</span> },
+    <span class="c">// … up to 5</span>
+  ]
+}</code></pre>
+
+<h3>Client-side filter</h3>
+<p>Before committing any AI output to the canvas, run it through <code>scoreCandidate()</code>. Drop anything below the aggressiveness threshold. This is the "thinking beat" you see visually — <em>the client decides which candidates survive</em>, so the visual animation reflects real filtering, not just choreography.</p>
+
+<pre><code><span class="k">const</span> thresholds = {
+  gentle:     <span class="n">0.75</span>,   <span class="c">// only the confident stuff</span>
+  balanced:   <span class="n">0.55</span>,
+  aggressive: <span class="n">0.30</span>,   <span class="c">// show almost everything</span>
+};
+<span class="k">const</span> survivors = candidates.filter(c =&gt; c.confidence &gt;= thresholds[mode]);</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="prompts">Prompt contracts</h2>
+
+<h3>System prompt (persona — keep short)</h3>
+<pre><code>You are Dev, a staff-level engineering manager pair-thinking
+with a colleague on a brainstorm board.
+
+Tone: concise, pragmatic, a little dry. Never upbeat-cheerful.
+Never sycophantic. Never say "great idea".
+
+You do not have opinions until asked. You do not summarise.
+You scout, connect, critique, cluster, summarise — exactly one
+at a time. Return valid JSON only.</code></pre>
+
+<h3>Per-beat prompts</h3>
+
+<h4>scout</h4>
+<pre><code>Given the board state, propose 3–5 adjacent ideas the
+colleague might have missed. For each:
+  - title: ≤ 9 words, no period
+  - rationale: ≤ 16 words, why this follows
+  - color: pick from {blue, green, peach, lilac, pink}
+  - confidence: 0.0–1.0 of how relevant you believe it is
+
+Return { "candidates": [...] }. Nothing else.</code></pre>
+
+<h4>connect</h4>
+<pre><code>Return only connections that are NOT already in the board.
+For each, pick exactly one kind from:
+  builds_on     — A strictly extends or implements B
+  contradicts   — A negates B's premise
+  shared_theme  — both orbit the same abstraction, weakly
+  revives_killed — A makes a previously killed B viable again
+
+Give a ≤ 10-word rationale.
+
+Return { "connections": [...] }. Empty array is a valid answer.</code></pre>
+
+<h4>critique</h4>
+<pre><code>Critique the focus idea ONLY — not the board.
+Pick the single sharpest angle (devil's advocate, NOT cheerleader).
+Max 22 words. End with a question OR a "you're assuming…" frame.
+
+Return { "text": "...", "strength": 0–1 }.</code></pre>
+
+<div class="callout"><span class="tag">pro-tip</span> Use <code>response_format: { type: "json_schema" }</code> on the API call and pass the matching schema. Any time the model free-forms text, reject the entire response — don't parse.</div>
+
+<!-- ============================================================ -->
+<h2 id="beats">Interaction beats</h2>
+<p>The UI reveals AI output over time. These choreographies are not decoration — they give the user a chance to interrupt and make the AI feel like it's thinking, not answering.</p>
+
+<h3>Thinking beat (scout)</h3>
+<ol class="seq">
+  <li>Persona dock: avatar starts pulsing, <code>thinking=true</code> shows sliding bar. Line changes to "Drafting a few candidates."</li>
+  <li>Candidates enter one-by-one (stagger 280ms) near the focus idea. CSS class <code>.thinking-candidate</code>.</li>
+  <li>After all revealed, rejections scratch out with ink strokes (class <code>.thinking-reject</code>) one by one (420ms each).</li>
+  <li>Survivors pulse blue (<code>.thinking-survive</code>) then commit as real <code>Idea</code> entries with <code>ai: true</code>.</li>
+  <li>Persona bar hides, thinking=false.</li>
+</ol>
+
+<h3>Connection beat</h3>
+<ol class="seq">
+  <li>AI returns <code>Connection[]</code>; ConnectionLayer animates them in with <code>draw-line 700ms</code> per path, staggered 120ms.</li>
+  <li>Hover any line → mid-point × button appears for deletion (class <code>.hover-delete</code>). User can also delete kills the tombstone so it doesn't come back.</li>
+  <li>User can draw their own: toolbar link button → rubber-band line → click two stickies → new <code>Connection</code> with <code>kind: "builds_on"</code>.</li>
+</ol>
+
+<h3>Critique beat</h3>
+<ol class="seq">
+  <li>AI returns one critique; it fades in as a <code>CritiqueBubble</code> or <code>MarginNote</code> anchored to the focus idea.</li>
+  <li>User can drag critique anywhere on the board (persistent position).</li>
+  <li>User dismisses → tombstoned into <code>dismissedCritiques</code>. Same critique can't be re-suggested for 90s.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="persistence">Persistence</h2>
+<p>The prototype uses <code>localStorage</code>. For production, use IndexedDB with this shape:</p>
+
+<table>
+<tr><th>store</th><th>key</th><th>value</th></tr>
+<tr><td><code>boards</code></td>        <td>boardId</td>            <td>Board metadata</td></tr>
+<tr><td><code>ideas</code></td>         <td>[boardId, ideaId]</td>  <td>Idea</td></tr>
+<tr><td><code>connections</code></td>   <td>[boardId, connId]</td>  <td>Connection</td></tr>
+<tr><td><code>critiques</code></td>     <td>[boardId, critId]</td>  <td>Critique + dismissed flag</td></tr>
+<tr><td><code>turns</code></td>         <td>[ideaId, turnId]</td>   <td>Turn entry (AI or user)</td></tr>
+<tr><td><code>tweaks</code></td>        <td><code>"global"</code></td><td>TweaksState</td></tr>
+</table>
+
+<h3>Turn log entry</h3>
+<pre><code><span class="k">type</span> <span class="t">Turn</span> = {
+  <span class="t">id</span>: <span class="t">string</span>;
+  <span class="t">ideaId</span>: <span class="t">string</span>;
+  <span class="t">at</span>: <span class="t">number</span>;                  <span class="c">// unix ms</span>
+  <span class="t">origin</span>: <span class="s">"ai"</span>|<span class="s">"user"</span>|<span class="s">"edit"</span>|<span class="s">"critique"</span>;
+  <span class="t">text</span>: <span class="t">string</span>;
+  <span class="t">rationale</span>?: <span class="t">string</span>;         <span class="c">// only for ai-origin</span>
+  <span class="t">pinned</span>?: <span class="t">boolean</span>;
+  <span class="t">dismissed</span>?: <span class="t">boolean</span>;
+};</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+  <li>All draggable elements must be keyboard-reachable. Provide arrow-key nudging as a fallback.</li>
+  <li>Connection × delete control must have a text equivalent in the right-click menu for each sticky.</li>
+  <li>AI thinking bar must not be the only indicator — pair with text ("drafting…").</li>
+  <li>Colour-only distinction of connection kinds fails WCAG. Include the kind as a tooltip and in the connection's micro-label on hover.</li>
+  <li><code>prefers-reduced-motion</code>: shorten thinking beat to 400ms total, skip scratch-out animation.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="checklist">Handoff checklist</h2>
+<div class="do-dont">
+  <div class="do">
+    <h4>ship-gate — do</h4>
+    <ul>
+      <li>All 5 beats wired to real LLM with JSON schema validation</li>
+      <li>Client-side confidence filter matches <code>aggressiveness</code> setting</li>
+      <li>Tweaks panel persists to IndexedDB, not localStorage</li>
+      <li>Both <code>theme-sketch</code> and <code>theme-whiteboard</code> tested</li>
+      <li>Prefers-reduced-motion respected for thinking beat</li>
+      <li>Every AI output is tombstone-removable, not hard-deleted</li>
+      <li>Turn log drag-to-transfer creates a real new idea</li>
+    </ul>
+  </div>
+  <div class="dnt">
+    <h4>ship-gate — don't</h4>
+    <ul>
+      <li>Don't add a sidebar chat. The persona dock is the chat.</li>
+      <li>Don't let the AI call more than one beat per user event</li>
+      <li>Don't summarise the board without user asking — it breaks trust</li>
+      <li>Don't auto-commit AI candidates — they go through the thinking beat</li>
+      <li>Don't let critique tone become upbeat; keep it devil's-advocate</li>
+      <li>Don't use emoji in persona lines — plain prose only</li>
+    </ul>
+  </div>
+</div>
+
+<div class="footer-seal">
+  <div>Brainstorm · a thinking partner</div>
+  <div>v0.1 · integration guide</div>
+</div>
+
+</div>
+</body>
+</html>

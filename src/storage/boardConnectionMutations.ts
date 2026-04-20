@@ -74,7 +74,12 @@ export async function commitReplaceConnections(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'connection', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'connection',
+    actorType: input.actor.type,
+    at: now,
+    summary: input.summary ?? `Replaced ${nextRows.length} connection${nextRows.length === 1 ? '' : 's'}`,
+  });
 
   return {
     document: await loadBoardDocument(boardId),

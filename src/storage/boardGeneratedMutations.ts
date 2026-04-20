@@ -1,15 +1,11 @@
-import { createCapturedIdea } from '../board/ideaFactory';
 import type { ChangeActor } from '../board/types';
-import type { BoardId, Idea, IdeaCritique, ScoutSuggestion } from '../types';
+import type { BoardId, IdeaCritique, ScoutSuggestion } from '../types';
 import { createEntityPatches, hydrateBoardState, supersedeFutureChanges } from './boardJournal';
+import { createIdeaFromSuggestion, findDuplicateAiCritique, findDuplicateAiSuggestion, nextBoardRecord } from './boardGeneratedMutationHelpers';
 import { createChangeSet } from './boardGroupMutationHelpers';
 import { loadBoardDocument } from './boardDocument';
 import { getBoardHistoryState } from './boardHistoryState';
-import type {
-  BoardCritiqueCommitResult,
-  BoardSuggestionAdmitCommitResult,
-  BoardSuggestionCommitResult,
-} from './boardControllerTypes';
+import type { BoardCritiqueCommitResult, BoardSuggestionAdmitCommitResult, BoardSuggestionCommitResult } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
 import { recordFacilitatorBoardMutation } from './facilitatorSync';
@@ -17,7 +13,7 @@ import { publishIdeaRows } from './ideaSync';
 
 export async function commitCreateCritique(
   boardId: BoardId,
-  input: { ideaId: string; critique: string; evidenceAsk: string; actor: ChangeActor },
+  input: { ideaId: string; critique: string; evidenceAsk: string; actor: ChangeActor; automationKey?: string },
 ): Promise<BoardCritiqueCommitResult> {
   await ensureBoard(boardId);
   const db = await getDb();
@@ -27,6 +23,17 @@ export async function commitCreateCritique(
   const changeSetsStore = tx.objectStore('changeSets');
   const currentBoard = hydrateBoardState(await boardsStore.get(boardId));
   if (!currentBoard) throw new Error(`Board not found: ${boardId}`);
+  if (input.actor.type === 'ai') {
+    const duplicateCritique = findDuplicateAiCritique(
+      (await critiquesStore.index('byIdeaId').getAll(input.ideaId))
+        .filter((critique: IdeaCritique) => (critique.boardId ?? boardId) === boardId),
+      { critiqueText: input.critique, automationKey: input.automationKey },
+    );
+    if (duplicateCritique) {
+      await tx.done;
+      return { critique: duplicateCritique, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId) };
+    }
+  }
 
   const now = Date.now();
   const critique: IdeaCritique = {
@@ -35,6 +42,7 @@ export async function commitCreateCritique(
     ideaId: input.ideaId,
     critique: input.critique,
     evidenceAsk: input.evidenceAsk,
+    automationKey: input.automationKey,
     status: 'active',
     source: 'devils_advocate',
     createdAt: now,
@@ -64,14 +72,16 @@ export async function commitCreateCritique(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'critique', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'critique',
+    actorType: input.actor.type,
+    at: now,
+    entityId: critique.id,
+    ideaId: critique.ideaId,
+    summary: `Created critique ${critique.id}`,
+  });
 
-  return {
-    critique,
-    document: await loadBoardDocument(boardId),
-    history: await getBoardHistoryState(boardId),
-    changeSet,
-  };
+  return { critique, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId), changeSet };
 }
 
 export async function commitCreateSuggestion(
@@ -84,6 +94,7 @@ export async function commitCreateSuggestion(
     relatedIdeaIds?: string[];
     panel?: ScoutSuggestion['panel'];
     actor: ChangeActor;
+    automationKey?: string;
   },
 ): Promise<BoardSuggestionCommitResult> {
   await ensureBoard(boardId);
@@ -94,6 +105,16 @@ export async function commitCreateSuggestion(
   const changeSetsStore = tx.objectStore('changeSets');
   const currentBoard = hydrateBoardState(await boardsStore.get(boardId));
   if (!currentBoard) throw new Error(`Board not found: ${boardId}`);
+  if (input.actor.type === 'ai') {
+    const duplicateSuggestion = findDuplicateAiSuggestion(
+      (await suggestionsStore.index('byBoardId').getAll(boardId)) as ScoutSuggestion[],
+      { rawText: input.rawText, automationKey: input.automationKey },
+    );
+    if (duplicateSuggestion) {
+      await tx.done;
+      return { suggestion: duplicateSuggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId) };
+    }
+  }
 
   const now = Date.now();
   const suggestion: ScoutSuggestion = {
@@ -102,6 +123,7 @@ export async function commitCreateSuggestion(
     rawText: input.rawText,
     rationale: input.rationale,
     source: input.source,
+    automationKey: input.automationKey,
     status: 'pending',
     sourceIdeaIds: input.sourceIdeaIds,
     relatedIdeaIds: input.relatedIdeaIds,
@@ -133,14 +155,15 @@ export async function commitCreateSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'suggestion',
+    actorType: input.actor.type,
+    at: now,
+    entityId: suggestion.id,
+    summary: `Created suggestion ${suggestion.id}`,
+  });
 
-  return {
-    suggestion,
-    document: await loadBoardDocument(boardId),
-    history: await getBoardHistoryState(boardId),
-    changeSet,
-  };
+  return { suggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId), changeSet };
 }
 
 export async function commitElaborateSuggestion(
@@ -165,11 +188,7 @@ export async function commitElaborateSuggestion(
   const suggestionPatches = createEntityPatches('suggestions', suggestion.id, suggestionBefore, suggestion);
   if (suggestionPatches.forward.length === 0) {
     await tx.done;
-    return {
-      suggestion,
-      document: await loadBoardDocument(boardId),
-      history: await getBoardHistoryState(boardId),
-    };
+    return { suggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId) };
   }
 
   const nextBoard = nextBoardRecord(currentBoard, now);
@@ -195,14 +214,15 @@ export async function commitElaborateSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'suggestion',
+    actorType: input.actor.type,
+    at: now,
+    entityId: suggestion.id,
+    summary: `Elaborated suggestion ${suggestion.id}`,
+  });
 
-  return {
-    suggestion,
-    document: await loadBoardDocument(boardId),
-    history: await getBoardHistoryState(boardId),
-    changeSet,
-  };
+  return { suggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId), changeSet };
 }
 
 export async function commitAdmitSuggestion(
@@ -254,36 +274,15 @@ export async function commitAdmitSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'suggestion',
+    actorType: input.actor.type,
+    at: now,
+    entityId: suggestion.id,
+    ideaId: idea.id,
+    summary: `Admitted suggestion ${suggestion.id} as idea ${idea.id}`,
+  });
   await publishIdeaRows([idea], boardId);
 
-  return {
-    idea,
-    suggestion,
-    document: await loadBoardDocument(boardId),
-    history: await getBoardHistoryState(boardId),
-    changeSet,
-  };
-}
-
-function nextBoardRecord(board: { updatedAt: number; changeCursor: number; nextChangeSeq: number }, now: number) {
-  return {
-    ...board,
-    updatedAt: now,
-    changeCursor: board.nextChangeSeq,
-    nextChangeSeq: board.nextChangeSeq + 1,
-  };
-}
-
-function createIdeaFromSuggestion(boardId: BoardId, suggestion: ScoutSuggestion, createdAt: number): Idea {
-  const bodyParts = [suggestion.rawText];
-  if (suggestion.elaboration) bodyParts.push('', '## Scout elaboration', suggestion.elaboration);
-  if (suggestion.rationale) bodyParts.push('', `_Scout rationale:_ ${suggestion.rationale}`);
-  return createCapturedIdea({
-    boardId,
-    rawText: bodyParts.join('\n'),
-    tags: ['from-scout', suggestion.source.split(':')[0]?.trim() || 'scout'],
-    panel: suggestion.panel ? { ...suggestion.panel } : undefined,
-    createdAt,
-  });
+  return { idea, suggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId), changeSet };
 }

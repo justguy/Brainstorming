@@ -62,7 +62,14 @@ export async function commitDismissCritique(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'critique', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'critique',
+    actorType: input.actor.type,
+    at: now,
+    entityId: critiqueAfter.id,
+    ideaId: critiqueAfter.ideaId,
+    summary: `Dismissed critique ${critiqueAfter.id}`,
+  });
 
   const document = await loadBoardDocument(boardId);
   return { document, history: await getBoardHistoryState(boardId), changeSet };
@@ -122,7 +129,13 @@ export async function commitDismissSuggestion(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'suggestion', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'suggestion',
+    actorType: input.actor.type,
+    at: now,
+    entityId: suggestionAfter.id,
+    summary: `Dismissed suggestion ${suggestionAfter.id}`,
+  });
 
   const document = await loadBoardDocument(boardId);
   return { document, history: await getBoardHistoryState(boardId), changeSet };

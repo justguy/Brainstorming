@@ -1,4 +1,3 @@
-import type { ChangeActor } from '../board/types';
 import type { BoardId } from '../types';
 import {
   AI_SYNC_ORIGIN,
@@ -10,33 +9,31 @@ import {
   startIdeaSync,
   transactIdeaSync,
 } from './ideaSync';
+import {
+  appendRecentFacilitatorEvent,
+  createFacilitatorEventFromAiAction,
+  createFacilitatorEventFromBoardMutation,
+  readAiAction,
+  readBoardMutation,
+  readRecentFacilitatorEvents,
+  type FacilitatorAiAction,
+  type FacilitatorBoardMutation,
+  type FacilitatorSessionEvent,
+} from './facilitatorSyncEvents';
+export type { FacilitatorAiAction, FacilitatorBoardMutation, FacilitatorSessionEvent } from './facilitatorSyncEvents';
 
 const PEER_PREFIX = 'peer:';
 const SHARED_PAUSE_KEY = 'sharedPause';
 const MANUAL_HOST_KEY = 'manualHostClientId';
 const LAST_AI_ACTION_KEY = 'lastAiAction';
 const LAST_BOARD_MUTATION_KEY = 'lastBoardMutation';
+const RECENT_SESSION_EVENTS_KEY = 'recentSessionEvents';
 const PEER_STALE_MS = 6_000;
 
 export interface FacilitatorPeerState {
   clientId: number;
   heartbeatAt: number;
   wantsAiHost: boolean;
-}
-
-export interface FacilitatorAiAction {
-  id: string;
-  kind: 'connect' | 'critique' | 'scout';
-  at: number;
-  ideaId?: string;
-}
-
-export interface FacilitatorBoardMutation {
-  id: string;
-  kind: 'connection' | 'critique' | 'doc' | 'suggestion';
-  at: number;
-  actorType: ChangeActor['type'];
-  clientId: number | null;
 }
 
 export interface FacilitatorSnapshot {
@@ -48,6 +45,7 @@ export interface FacilitatorSnapshot {
   lastBoardActivityAt: number;
   lastAiAction: FacilitatorAiAction | null;
   lastBoardMutation: FacilitatorBoardMutation | null;
+  recentSessionEvents?: FacilitatorSessionEvent[];
   peers: FacilitatorPeerState[];
 }
 
@@ -135,14 +133,23 @@ export function releaseFacilitatorAiHost(boardId: BoardId): FacilitatorSnapshot 
 
 export function recordFacilitatorAiAction(
   boardId: BoardId,
-  action: Omit<FacilitatorAiAction, 'at' | 'id'> & { at?: number; id?: string },
+  action: Omit<FacilitatorAiAction, 'at' | 'id' | 'clientId'> & { at?: number; id?: string },
 ): void {
-  transactIdeaSync(boardId, (_innerDoc, facilitatorMap) => {
-    facilitatorMap.set(LAST_AI_ACTION_KEY, {
+  transactIdeaSync(boardId, (doc, facilitatorMap) => {
+    const nextAction = {
       ...action,
       id: action.id ?? crypto.randomUUID(),
       at: action.at ?? Date.now(),
-    } satisfies FacilitatorAiAction);
+      clientId: doc.clientID,
+    } satisfies FacilitatorAiAction;
+    facilitatorMap.set(LAST_AI_ACTION_KEY, nextAction);
+    facilitatorMap.set(
+      RECENT_SESSION_EVENTS_KEY,
+      appendRecentFacilitatorEvent(
+        facilitatorMap.get(RECENT_SESSION_EVENTS_KEY),
+        createFacilitatorEventFromAiAction(nextAction),
+      ),
+    );
   }, AI_SYNC_ORIGIN);
 }
 
@@ -151,12 +158,20 @@ export function recordFacilitatorBoardMutation(
   mutation: Omit<FacilitatorBoardMutation, 'at' | 'id' | 'clientId'> & { at?: number; id?: string },
 ): void {
   transactIdeaSync(boardId, (doc, facilitatorMap) => {
-    facilitatorMap.set(LAST_BOARD_MUTATION_KEY, {
+    const nextMutation = {
       ...mutation,
       id: mutation.id ?? crypto.randomUUID(),
       at: mutation.at ?? Date.now(),
       clientId: doc.clientID,
-    } satisfies FacilitatorBoardMutation);
+    } satisfies FacilitatorBoardMutation;
+    facilitatorMap.set(LAST_BOARD_MUTATION_KEY, nextMutation);
+    facilitatorMap.set(
+      RECENT_SESSION_EVENTS_KEY,
+      appendRecentFacilitatorEvent(
+        facilitatorMap.get(RECENT_SESSION_EVENTS_KEY),
+        createFacilitatorEventFromBoardMutation(nextMutation),
+      ),
+    );
   }, mutation.actorType === 'ai' ? AI_SYNC_ORIGIN : FACILITATOR_SYNC_ORIGIN);
 }
 
@@ -214,6 +229,7 @@ function buildFacilitatorSnapshot(
   const hostClientId = sharedPause ? null : manualHostClientId ?? peers[0]?.clientId ?? null;
   const lastAiAction = readAiAction(facilitatorMap?.get(LAST_AI_ACTION_KEY));
   const lastBoardMutation = readBoardMutation(facilitatorMap?.get(LAST_BOARD_MUTATION_KEY));
+  const recentSessionEvents = readRecentFacilitatorEvents(facilitatorMap?.get(RECENT_SESSION_EVENTS_KEY));
   const boardActivityAt = lastBoardMutation && lastBoardMutation.actorType !== 'ai'
     ? lastBoardMutation.at
     : 0;
@@ -227,6 +243,7 @@ function buildFacilitatorSnapshot(
     lastBoardActivityAt: Math.max(lastBoardActivityAt, boardActivityAt),
     lastAiAction,
     lastBoardMutation,
+    recentSessionEvents,
     peers,
   };
 }
@@ -260,55 +277,4 @@ function readFreshPeers(
     });
   });
   return peers.sort((left, right) => left.clientId - right.clientId);
-}
-
-function readAiAction(value: unknown): FacilitatorAiAction | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const action = value as Partial<FacilitatorAiAction>;
-  if (typeof action.id !== 'string' || action.id.length === 0) return null;
-  if (typeof action.at !== 'number') return null;
-  if (action.kind !== 'connect' && action.kind !== 'critique' && action.kind !== 'scout') return null;
-  return {
-    id: action.id,
-    kind: action.kind,
-    at: action.at,
-    ...(typeof action.ideaId === 'string' ? { ideaId: action.ideaId } : {}),
-  };
-}
-
-function readBoardMutation(value: unknown): FacilitatorBoardMutation | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const mutation = value as Partial<FacilitatorBoardMutation>;
-  if (typeof mutation.id !== 'string' || mutation.id.length === 0) return null;
-  if (typeof mutation.at !== 'number') return null;
-  if (
-    mutation.kind !== 'connection' &&
-    mutation.kind !== 'critique' &&
-    mutation.kind !== 'doc' &&
-    mutation.kind !== 'suggestion'
-  ) {
-    return null;
-  }
-  if (
-    mutation.actorType !== 'user' &&
-    mutation.actorType !== 'ai' &&
-    mutation.actorType !== 'tool' &&
-    mutation.actorType !== 'system'
-  ) {
-    return null;
-  }
-  if (
-    mutation.clientId !== undefined &&
-    mutation.clientId !== null &&
-    typeof mutation.clientId !== 'number'
-  ) {
-    return null;
-  }
-  return {
-    id: mutation.id,
-    at: mutation.at,
-    kind: mutation.kind,
-    actorType: mutation.actorType,
-    clientId: typeof mutation.clientId === 'number' ? mutation.clientId : null,
-  };
 }

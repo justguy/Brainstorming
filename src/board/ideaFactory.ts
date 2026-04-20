@@ -1,6 +1,9 @@
 import type { BriefState, BoardId, Idea, Panel } from '../types';
 import { DEFAULT_BOARD_ID } from './types';
 
+export const DEFAULT_IDEA_PANEL_WIDTH = 260;
+export const DEFAULT_IDEA_PANEL_HEIGHT = 180;
+
 export function defaultBriefState(): BriefState {
   return {
     mustStayTrueRules: [],
@@ -16,15 +19,25 @@ export function defaultBriefState(): BriefState {
   };
 }
 
-export function defaultPanelForIdea(idea: Pick<Idea, 'createdAt'>): Panel {
-  const seed = Math.floor((idea.createdAt ?? Date.now()) % 10000) / 10000;
-  const col = Math.floor(seed * 6);
-  const row = Math.floor(seed * 4);
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+export function defaultPanelForIdea(idea: Pick<Idea, 'id'>): Panel {
+  const hash = hashString(idea.id);
+  const col = hash % 6;
+  const row = Math.floor(hash / 6) % 5;
+  const xJitter = hash % 48;
+  const yJitter = Math.floor(hash / 13) % 36;
   return {
-    x: 40 + col * 60 + row * 20,
-    y: 40 + row * 80 + col * 15,
-    width: 260,
-    height: 180,
+    x: 72 + col * 288 + xJitter,
+    y: 72 + row * 216 + yJitter,
+    width: DEFAULT_IDEA_PANEL_WIDTH,
+    height: DEFAULT_IDEA_PANEL_HEIGHT,
   };
 }
 

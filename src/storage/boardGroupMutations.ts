@@ -17,6 +17,7 @@ import { getBoardHistoryState } from './boardHistoryState';
 import type { BoardCommitResult, BoardGroupCommitResult } from './boardControllerTypes';
 import { ensureBoard } from './boards';
 import { getDb } from './db';
+import { recordFacilitatorBoardMutation } from './facilitatorSync';
 import { publishIdeaRows } from './ideaSync';
 
 export async function commitGroupIdeas(
@@ -124,6 +125,13 @@ export async function commitGroupIdeas(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'group',
+    actorType: input.actor.type,
+    at: now,
+    entityId: targetGroupId,
+    summary: `Grouped ideas ${ideaA.id} and ${ideaB.id}`,
+  });
   await publishIdeaRows([afterIdeaA, afterIdeaB], boardId);
 
   const document = await loadBoardDocument(boardId);
@@ -194,6 +202,13 @@ export async function commitUngroupIdea(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'group',
+    actorType: input.actor.type,
+    at: afterIdea.updatedAt,
+    entityId: groupId,
+    summary: `Ungrouped idea ${idea.id}`,
+  });
   await publishIdeaRows([afterIdea], boardId);
 
   const document = await loadBoardDocument(boardId);
@@ -266,6 +281,13 @@ export async function commitSetGroupTheme(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'group',
+    actorType: input.actor.type,
+    at: now,
+    entityId: groupAfter.id,
+    summary: `Updated group ${groupAfter.id}`,
+  });
 
   const document = await loadBoardDocument(boardId);
   return { document, history: await getBoardHistoryState(boardId), changeSet, groupId: input.groupId };

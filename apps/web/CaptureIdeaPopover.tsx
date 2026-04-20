@@ -5,18 +5,23 @@ import Button from '../../src/ui/Button';
 export interface CaptureIdeaPopoverProps {
   open: boolean;
   creating: boolean;
+  feedback: {
+    tone: 'success' | 'error';
+    message: string;
+  } | null;
   text: string;
   tags: string;
   onToggle: () => void;
   onTextChange: (value: string) => void;
   onTagsChange: (value: string) => void;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: () => void | boolean | Promise<void | boolean>;
 }
 
 export function CaptureIdeaPopover({
   open,
   creating,
+  feedback,
   text,
   tags,
   onToggle,
@@ -103,6 +108,13 @@ export function CaptureIdeaPopover({
 
   if (typeof document === 'undefined') return null;
 
+  async function handleSubmit(): Promise<void> {
+    const committed = await onSubmit();
+    if (committed !== false) {
+      onClose();
+    }
+  }
+
   return createPortal(
     <>
       <button
@@ -111,13 +123,14 @@ export function CaptureIdeaPopover({
         aria-label="Capture new idea"
         aria-expanded={open}
         onClick={onToggle}
-        className={`fixed bottom-5 right-5 z-[100] h-12 w-12 rounded-full text-2xl leading-none text-white shadow-lg focus:outline-none focus:ring-4 focus:ring-violet-300 ${
+        className={`fixed bottom-[4.75rem] left-5 z-[100] inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-lg focus:outline-none focus:ring-4 focus:ring-violet-300 lg:bottom-5 ${
           open
             ? 'bg-violet-700 hover:bg-violet-800'
             : 'bg-violet-600 hover:bg-violet-700'
         }`}
       >
-        +
+        <span aria-hidden="true" className="text-lg leading-none">+</span>
+        <span>{open ? 'Close note' : 'New note'}</span>
       </button>
 
       {open && (
@@ -130,7 +143,7 @@ export function CaptureIdeaPopover({
         >
           <div className="flex items-start justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-              Capture idea
+              Add a note
             </h2>
             <button
               type="button"
@@ -142,6 +155,18 @@ export function CaptureIdeaPopover({
             </button>
           </div>
           <div className="mt-2 space-y-2">
+            {feedback && (
+              <div
+                className={`rounded-md border px-3 py-2 text-xs ${
+                  feedback.tone === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-rose-200 bg-rose-50 text-rose-700'
+                }`}
+                role="status"
+              >
+                {feedback.message}
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               autoFocus
@@ -159,7 +184,7 @@ export function CaptureIdeaPopover({
                 }
                 if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                   event.preventDefault();
-                  onSubmit();
+                  void handleSubmit();
                 }
               }}
             />
@@ -174,12 +199,18 @@ export function CaptureIdeaPopover({
             <Button
               variant="primary"
               size="sm"
-              onClick={onSubmit}
+              onClick={() => {
+                void handleSubmit();
+              }}
               disabled={creating || !text.trim()}
               className="w-full"
             >
-              {creating ? 'Capturing…' : 'Drop on canvas'}
+              {creating ? 'Adding note…' : 'Add note to canvas'}
             </Button>
+            <p className="text-[11px] leading-5 text-gray-500">
+              New notes are placed near the current viewport and centered into view so they are
+              legible on the board immediately.
+            </p>
           </div>
         </div>
       )}

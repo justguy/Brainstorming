@@ -27,15 +27,20 @@ export function BoardAppView({
   reviewPanel,
 }: BoardAppViewProps): React.ReactElement {
   return (
-    <div className="bo-board-shell flex h-screen flex-col overflow-hidden">
+    <div className="bo-board-shell flex h-screen min-h-0 flex-col overflow-hidden">
       <AppHeaderBar {...header} />
       {showApiKeyBanner && <AppApiKeyBanner onOpenOptions={onOpenOptions} />}
-      <AppCompanionRail {...companionRail} />
-      <BoardCanvasStage {...canvasStage}>
-        {historyPanel}
-        {reviewPanel}
-        <BoardWorkspaceOverlays {...workspaceOverlays} />
-      </BoardCanvasStage>
+      <div className="min-h-0 flex flex-1 flex-col lg:flex-row">
+        <BoardCanvasStage {...canvasStage}>
+          {historyPanel}
+          {reviewPanel}
+          <BoardWorkspaceOverlays {...workspaceOverlays} />
+        </BoardCanvasStage>
+
+        <aside className="shrink-0 overflow-hidden border-t border-slate-200/60 lg:min-h-0 lg:w-[24rem] lg:border-l lg:border-t-0">
+          <AppCompanionRail {...companionRail} />
+        </aside>
+      </div>
     </div>
   );
 }

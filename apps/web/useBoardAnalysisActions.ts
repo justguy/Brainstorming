@@ -8,7 +8,12 @@ import { createBoardController } from '../../src/storage/boardController';
 import type { Connection, Idea, IdeaCritique, SupportingDoc } from '../../src/types';
 import type { BoardRepository } from './boardRepository';
 import { buildConnectBeatContext, buildCritiqueBeatContext } from './beatContext';
-import { materializeConnections, replaceGeneratedConnections } from './connectionState';
+import {
+  makeManualConnection,
+  materializeConnections,
+  replaceGeneratedConnections,
+  upsertConnection,
+} from './connectionState';
 
 const HIGHLIGHT_FLASH_MS = 320;
 const REVEAL_WINDOW_MS = 1_800;
@@ -145,9 +150,54 @@ export function useBoardAnalysisActions({
     }
   }
 
+  async function createManualConnection(input: {
+    fromIdeaId: string;
+    toIdeaId: string;
+    kind: Connection['kind'];
+    rationale: string;
+    source?: 'canvas' | 'webmcp';
+  }): Promise<Connection> {
+    const { fromIdeaId, toIdeaId, kind, rationale } = input;
+    const trimmedRationale = rationale.trim();
+    const visibleIdeaIds = new Set(
+      ideas
+        .filter(idea => idea.status !== 'archived' && idea.status !== 'discarded')
+        .map(idea => idea.id),
+    );
+
+    if (!visibleIdeaIds.has(fromIdeaId) || !visibleIdeaIds.has(toIdeaId)) {
+      throw new Error('Choose two notes that are currently visible on the board.');
+    }
+    if (fromIdeaId === toIdeaId) {
+      throw new Error('Choose two different notes to create a connection.');
+    }
+    if (!trimmedRationale) {
+      throw new Error('Add a short explanation for why these notes belong together.');
+    }
+
+    const connection = makeManualConnection({
+      fromIdeaId,
+      toIdeaId,
+      kind,
+      rationale: trimmedRationale,
+    });
+    const committed = await boardController.replaceConnections({
+      connections: upsertConnection(connections, connection),
+      actor: input.source === 'webmcp'
+        ? { type: 'tool', source: 'webmcp' }
+        : { type: 'user', source: 'canvas', label: 'connectionsPanel' },
+      summary: `Added board connection ${connection.id}`,
+    });
+    applyCommittedBoard(committed.document, committed.history);
+    setLastConnectionsRunAt(connection.createdAt);
+    handleHighlight(connection.ideaIds);
+    revealConnections([connection.id]);
+    return connection;
+  }
+
   async function runCritiqueIdea(
     ideaId: string,
-    options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat' } = {},
+    options: { origin?: RevealOrigin; source?: 'canvas' | 'webmcp' | 'beat'; automationKey?: string } = {},
   ): Promise<IdeaCritique | null> {
     setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: true }));
     try {
@@ -196,6 +246,7 @@ export function useBoardAnalysisActions({
         critique: nextChallenge.critique,
         evidenceAsk: nextChallenge.evidenceAsk,
         actor: critiqueActorFor(options),
+        automationKey: options.automationKey,
       });
       applyCommittedBoard(critiqueResult.document, critiqueResult.history);
       handleHighlight([ideaId]);
@@ -231,6 +282,7 @@ export function useBoardAnalysisActions({
     markConnectionsRunAt: setLastConnectionsRunAt,
     handleHighlight,
     runConnectionFinder,
+    createManualConnection,
     runCritiqueIdea,
     handleDismissCritique,
   };

@@ -137,6 +137,7 @@ export interface ScoutSuggestion {
   rawText: string;                      // the suggestion body, in idea-panel shape
   rationale: string;                    // why the scout thinks this is worth considering
   source: string;                       // e.g. "analogy: healthcare triage", "contrarian take", "adjacent field: ops"
+  automationKey?: string;               // deterministic key for AI-triggered dedupe across peers
   status: ScoutSuggestionStatus;
   sourceIdeaIds?: string[];             // exact source pair for cross-pollinated suggestions when applicable
   relatedIdeaIds?: string[];            // ids of board ideas the scout leaned on
@@ -172,6 +173,7 @@ export interface IdeaCritique {
   ideaId: string;
   critique: string;
   evidenceAsk: string;
+  automationKey?: string;               // deterministic key for AI-triggered dedupe across peers
   status: CritiqueStatus;
   source: 'devils_advocate';
   createdAt: number;

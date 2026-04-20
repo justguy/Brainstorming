@@ -1,6 +1,6 @@
 import { createCapturedIdea } from '../board/ideaFactory';
 import type { ChangeActor, ChangeSetKind, ChangeSetRecord } from '../board/types';
-import type { BoardId, Idea } from '../types';
+import type { BoardId, Idea, Panel } from '../types';
 import { createEntityPatches, hydrateBoardState, supersedeFutureChanges } from './boardJournal';
 import { listChangeSets } from './changeSets';
 import { loadBoardDocument } from './boardDocument';
@@ -31,7 +31,7 @@ import {
 export function createBoardController(boardId: BoardId) {
   return {
     boardId,
-    captureIdea(input: { rawText: string; tags: string[]; actor: ChangeActor; insights?: Idea['insights'] }) {
+    captureIdea(input: { rawText: string; tags: string[]; actor: ChangeActor; insights?: Idea['insights']; panel?: Panel }) {
       return commitCapturedIdea(boardId, input);
     },
     moveIdeaPanel(input: { ideaId: string; x: number; y: number; actor: ChangeActor }) {
@@ -105,7 +105,7 @@ export function createBoardController(boardId: BoardId) {
     dismissSuggestion(input: { suggestionId: string; actor: ChangeActor }) {
       return commitDismissSuggestion(boardId, input);
     },
-    createCritique(input: { ideaId: string; critique: string; evidenceAsk: string; actor: ChangeActor }) {
+    createCritique(input: { ideaId: string; critique: string; evidenceAsk: string; actor: ChangeActor; automationKey?: string }) {
       return commitCreateCritique(boardId, input);
     },
     createSuggestion(input: {
@@ -116,6 +116,7 @@ export function createBoardController(boardId: BoardId) {
       relatedIdeaIds?: string[];
       panel?: import('../types').ScoutSuggestion['panel'];
       actor: ChangeActor;
+      automationKey?: string;
     }) {
       return commitCreateSuggestion(boardId, input);
     },
@@ -246,7 +247,7 @@ async function commitIdeaMutation(
 
 async function commitCapturedIdea(
   boardId: BoardId,
-  input: { rawText: string; tags: string[]; actor: ChangeActor; insights?: Idea['insights'] },
+  input: { rawText: string; tags: string[]; actor: ChangeActor; insights?: Idea['insights']; panel?: Panel },
 ): Promise<BoardIdeaCommitResult> {
   await ensureBoard(boardId);
   const db = await getDb();
@@ -263,6 +264,7 @@ async function commitCapturedIdea(
     boardId,
     rawText: input.rawText,
     tags: input.tags,
+    panel: input.panel,
     createdAt: now,
     insights: input.insights,
   });

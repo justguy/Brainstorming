@@ -83,6 +83,7 @@ export function useBoardSuggestionActions({
     origin?: RevealOrigin;
     limitNew?: number;
     source?: SuggestionMutationSource;
+    automationKey?: string;
   } = {}): Promise<ScoutSuggestion[]> {
     setScouting(true);
     try {
@@ -133,6 +134,7 @@ export function useBoardSuggestionActions({
           relatedIdeaIds: suggestion.relatedIdeaIds?.filter(id => allIdeaIds.has(id)),
           panel: ghostPanelFor(suggestions.length + index),
           actor: suggestionActorFor(options),
+          automationKey: options.automationKey,
         });
         created.push(lastCommit.suggestion);
       }

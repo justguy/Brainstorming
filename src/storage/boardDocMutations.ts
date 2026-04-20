@@ -61,7 +61,14 @@ export async function commitCreateDoc(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'doc', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'doc',
+    actorType: input.actor.type,
+    at: now,
+    entityId: doc.id,
+    ideaId: doc.ideaId,
+    summary: `Created supporting doc ${doc.id}`,
+  });
 
   return {
     doc,
@@ -128,7 +135,14 @@ export async function commitUpdateDoc(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'doc', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'doc',
+    actorType: input.actor.type,
+    at: now,
+    entityId: doc.id,
+    ideaId: doc.ideaId,
+    summary: input.summary ?? `Updated supporting doc ${doc.id}`,
+  });
 
   return {
     doc,
@@ -178,7 +192,14 @@ export async function commitDeleteDoc(
   await boardsStore.put(nextBoard);
   await changeSetsStore.put(changeSet);
   await tx.done;
-  recordFacilitatorBoardMutation(boardId, { kind: 'doc', actorType: input.actor.type, at: now });
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'doc',
+    actorType: input.actor.type,
+    at: now,
+    entityId: doc.id,
+    ideaId: doc.ideaId,
+    summary: `Deleted supporting doc ${doc.id}`,
+  });
 
   return {
     doc,
