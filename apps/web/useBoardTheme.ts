@@ -1,18 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { BoardThemeMode } from '../../src/types';
-import { getSettings, setSettings } from '../../src/storage/settings';
+import { setSettings } from '../../src/storage/settings';
 
 export function useBoardTheme(): {
   boardTheme: BoardThemeMode;
   setBoardTheme: (theme: BoardThemeMode) => Promise<void>;
 } {
   const [boardTheme, setBoardThemeState] = useState<BoardThemeMode>('whiteboard');
-
-  useEffect(() => {
-    void getSettings().then(settings => {
-      setBoardThemeState(settings.boardTheme);
-    });
-  }, []);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;

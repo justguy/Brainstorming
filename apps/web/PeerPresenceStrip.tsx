@@ -17,35 +17,21 @@ export function PeerPresenceStrip({
   localClientId,
   peers,
 }: PeerPresenceStripProps): React.ReactElement {
-  if (peers.length === 0) {
+  const peerCount = peers.length;
+  const localIsHost = localClientId !== null && hostClientId === localClientId;
+  const hostLabel = localIsHost ? 'host local' : hostClientId !== null ? `host peer ${hostClientId}` : 'host unset';
+
+  if (peerCount <= 1) {
     return (
-      <div className="bo-shell-inline-card">
-        <p className="bo-shell-eyebrow">Peers</p>
-        <p className="mt-1 text-sm text-[color:var(--bo-paper-ink-soft)]">Solo board.</p>
+      <div className="rounded-full border border-[#313432] bg-[#272d2a] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.18em] text-[#f2eadb] shadow-[0_18px_32px_-24px_rgba(17,24,20,0.72)]">
+        Local-first · IndexedDB · {hostLabel}
       </div>
     );
   }
 
   return (
-    <div className="bo-shell-inline-card">
-      <div className="flex items-center justify-between gap-3">
-        <p className="bo-shell-eyebrow">Peers</p>
-        <span className="bo-rules-ribbon__meta">{peers.length} live</span>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {peers.map(peer => {
-          const label = `Peer ${String(peer.clientId).padStart(2, '0')}`;
-          const isHost = hostClientId === peer.clientId || peer.wantsAiHost;
-          const isLocal = peer.clientId === localClientId;
-          return (
-            <span key={peer.clientId} className={`bo-peer-chip ${isHost ? 'is-host' : ''}`}>
-              {label}
-              {isLocal ? ' • you' : ''}
-              {isHost ? ' • host' : ''}
-            </span>
-          );
-        })}
-      </div>
+    <div className="rounded-full border border-[#313432] bg-[#272d2a] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.18em] text-[#f2eadb] shadow-[0_18px_32px_-24px_rgba(17,24,20,0.72)]">
+      {peerCount} peers · {hostLabel}
     </div>
   );
 }

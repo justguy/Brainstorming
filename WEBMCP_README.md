@@ -32,7 +32,7 @@ Concretely, the agent can:
 - **Patch micro-step outputs.** Pin/dismiss/note lenses, accept/defer/rebut challenges, mark stress tests handled.
 - **Feed in context.** Attach supporting docs (PRD excerpts, notes) that get refined by an LLM into facts and auto-injected into every future phase prompt.
 - **Find connections.** Ask the LLM connection finder to surface links across live ideas, discarded ideas, and ready docs — `builds_on`, `contradicts`, `revives_killed`, or `shared_theme`.
-- **Scout outside-in.** Run the outside-knowledge scout to propose candidate ideas drawn from analogies, adjacent fields, contrarian readings, or the user's own docs. Admit one onto the canvas, ask for elaboration, or dismiss.
+- **Scout outside-in.** Run the outside-knowledge scout to propose candidate ideas drawn from analogies, adjacent fields, contrarian readings, or the user's own docs. Move them on the canvas, admit one, ask for elaboration, or dismiss.
 - **Export.** Pull the markdown handoff when readiness goes green.
 
 And the extension can *consume* WebMCP tools from whatever tab the user is looking at (W1) — so Phase 0/1 ambiguity extraction can reason about what the current page can actually do.
@@ -49,12 +49,15 @@ Full descriptions and schemas live in `apps/web/webmcp-tools.ts`. Tracking gaps 
 Ideas / capture / export
   list_ideas                read
   get_idea                  read
+  get_turn_log              read
   capture_idea              write
   export_handoff            write
 
 Canvas / groups
   get_canvas                read
+  get_board                 read
   move_panel                write
+  move_suggestion           write
   group_ideas               write
   ungroup_idea              write
   merge_ideas               write
@@ -73,9 +76,15 @@ Discard pile (soft-delete with recall)
 
 Cross-board synthesis
   find_connections          write   (runs connectionFinder; results are ephemeral)
+  draw_connection           write
+  critique_idea             write
+  list_critiques            read
+  dismiss_critique          write
 
 Outside-knowledge scout (candidate ideas)
   scout_ideas               write   (runs outsideKnowledgeScout; materializes candidate ideas)
+  cross_pollinate           write
+  run_beat                  write
   list_suggestions          read
   admit_suggestion          write   (promotes a candidate idea to a real idea)
   elaborate_suggestion      write   (runs suggestionElaborator; stores elaboration)
@@ -83,12 +92,14 @@ Outside-knowledge scout (candidate ideas)
 
 Facilitator coordination
   list_peers                read
+  get_ai_autonomy_state     read
   claim_ai_host             write
   release_ai_host           write
+  set_ai_autonomy_mode      write
   set_ai_paused             write
 ```
 
-Important current-state note: as of `2026-04-19`, the W3 web app mounts the global board-first tool surface. The lifecycle tools below are the canonical bead-flow interface, but that phase-local registration layer still needs to be re-mounted on W3.
+Important current-state note: as of `2026-04-20`, the W3 web app mounts the global board-first tool surface including critique, scout, beat, autonomy, and board-read tools. The lifecycle tools below are the canonical bead-flow interface, but that phase-local registration layer still needs to be re-mounted on W3.
 
 ### Lifecycle (canonical bead-flow surface; target W3 remount)
 
@@ -287,8 +298,8 @@ This model maps cleanly onto the existing board verbs:
 
 - **Dumping and reviving ideas.** `discard_idea` shelves a stalling idea into the bottom-left pile; `restore_idea` pulls it back when a later connection or roadblock makes it relevant again.
 - **Making connections.** `find_connections` reasons in the background and `draw_connection` makes the relationship visible with an on-canvas line instead of a chat message.
-- **Challenging the room.** `critique_idea` drops a red-bordered devil's-advocate card directly onto the board so the team has to answer the hidden assumption.
-- **Providing alternatives.** `scout_ideas` materializes teal candidate ideas from outside knowledge or adjacent domains, letting the team admit or dismiss them on the board itself.
+- **Challenging the room.** `critique_idea` attaches a devil's-advocate card to the host note so the team can expand it, answer it, and tuck it back behind the note.
+- **Providing alternatives.** `scout_ideas` materializes movable violet scout cards from outside knowledge or adjacent domains, letting the team reposition, admit, or dismiss them on the board itself.
 
 ### 4e. LLM job descriptions — role-to-tool map
 
@@ -461,18 +472,20 @@ Open http://localhost:6611. Visit `#/options`, paste an API key (Gemini / OpenAI
 A quick manual script you can run from the inspector on W3 today:
 1. `capture_idea` with `rawText: "Ship a CSV importer for Q3"`.
 2. `attach_supporting_doc` with pasted product context — watch the supporting-doc pill update on the canvas.
-3. `scout_ideas` — teal candidate ideas should appear as adjacent alternatives.
-4. `critique_idea` on the main idea — a red critique card should land on the board.
-5. `find_connections` — connection candidates should populate the board-facing connection surfaces.
-6. `draw_connection` on a high-signal pair — the relationship becomes visible directly on the canvas.
-7. `discard_idea` on a weak idea, then `restore_idea` — confirm the robot can shelve and revive work without leaving the board metaphor.
+3. `scout_ideas` — violet scout cards should appear as adjacent alternatives.
+4. `move_suggestion` on one scout card — confirm the new position sticks after the board re-renders.
+5. `critique_idea` on the main idea — an attached critique tab should land on the board.
+6. Click the critique tab in the UI once — the full critique card should come forward.
+7. `find_connections` — connection candidates should populate the board-facing connection surfaces.
+8. `draw_connection` on a high-signal pair — the relationship becomes visible directly on the canvas.
+9. `discard_idea` on a weak idea, then `restore_idea` — confirm the robot can shelve and revive work without leaving the board metaphor.
 
 The lifecycle bead-flow tools (`advance_phase`, `submit_clarifications`, `select_approach`, and the micro-step patch tools) remain the canonical interface for the 12-step flow, but the W3 remount is still pending.
 
 ### Try the cross-idea tools
 Build up a handful of ideas first, then:
-1. `scout_ideas` — candidate ideas appear in teal along the right of the canvas.
-2. `list_suggestions` — confirm the rawText / rationale / source fields.
+1. `scout_ideas` — candidate ideas appear as movable violet scout cards on the canvas.
+2. `list_suggestions` — confirm the rawText / rationale / source / panel fields.
 3. `elaborate_suggestion` on one — the candidate idea card gains a "Show elaboration" expander.
 4. `admit_suggestion` — a real idea replaces the candidate idea, tagged `from-scout`.
 5. `discard_idea` on a live idea — it leaves the canvas and lands in the bottom-left pile.
@@ -492,7 +505,7 @@ apps/web/
   webmcp-tools.ts           All W3 tool registrations + safeRegisterTool + dispatchAndWait
   App.tsx                   Event listeners that wire tools to React state
   chrome-shim.ts            chrome.* polyfills so src/ runs unchanged in the web context
-  main.tsx                  Entry point (installs shim, mounts App)
+  main.tsx                  Entry point (installs shim first, then mounts App)
 
 src/webmcp/
   contextBridge.ts          queryActiveTabTools + invokeActiveTabTool (W1)
@@ -522,10 +535,10 @@ src/docs/
 
 src/canvas/
   IdeaPanel.tsx             Draggable panel + 📎 docs pill + right-click Discard menu + flash highlight
-  Canvas.tsx                Proximity grouping + merge-hold UX + candidate-idea rendering
+  Canvas.tsx                Proximity grouping + merge-hold UX + settled-drop rendering for ideas and scout cards
   DiscardPile.tsx           Bottom-left collapsible drawer for discarded ideas (preview / restore)
   ConnectionsPanel.tsx      Top-right collapsible drawer for LLM connection results (click-to-flash)
-  GhostPanel.tsx            Dashed teal card for pending candidate ideas (Admit / Elaborate / Dismiss)
+  GhostPanel.tsx            Dashed movable scout card for pending candidate ideas (Move / Admit / Elaborate / Dismiss)
 ```
 
 ## 7. Patterns and Conventions

@@ -45,6 +45,12 @@ interface UseBrainstormSuggestionEventsArgs {
     result: BeatResult<'cluster'> | BeatResult<'summarise'>,
     source?: 'canvas' | 'webmcp' | 'beat',
   ) => Promise<{ sessionId: string; itemCount: number } | null>;
+  handleMoveSuggestion: (
+    id: string,
+    x: number,
+    y: number,
+    source?: 'canvas' | 'webmcp',
+  ) => Promise<void>;
   handleAdmitSuggestion: (id: string, source?: 'canvas' | 'webmcp') => Promise<void>;
   handleElaborateSuggestion: (id: string, source?: 'canvas' | 'webmcp') => Promise<void>;
   handleDismissSuggestion: (id: string, source?: 'canvas' | 'webmcp') => Promise<void>;
@@ -63,6 +69,7 @@ export function useBrainstormSuggestionEvents({
   runCrossPollinate,
   runBoardBeat,
   presentBeatReview,
+  handleMoveSuggestion,
   handleAdmitSuggestion,
   handleElaborateSuggestion,
   handleDismissSuggestion,
@@ -246,10 +253,28 @@ export function useBrainstormSuggestionEvents({
       emitToolCompletion(requestId, { ok: !error, error });
     };
 
+    const handleMoveSuggestionEvent = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        suggestionId: string;
+        x: number;
+        y: number;
+        requestId?: string;
+      }>;
+      const { suggestionId, x, y, requestId } = customEvent.detail;
+      let error: string | undefined;
+      try {
+        await handleMoveSuggestion(suggestionId, x, y, 'webmcp');
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'move suggestion failed';
+      }
+      emitToolCompletion(requestId, { ok: !error, error, suggestionId, x, y });
+    };
+
     const listeners: Array<[string, EventListener]> = [
       ['brainstorm:scout', handleScoutEvent as EventListener],
       ['brainstorm:crossPollinate', handleCrossPollinateEvent as EventListener],
       ['brainstorm:runBeat', handleRunBeatEvent as EventListener],
+      ['brainstorm:moveSuggestion', handleMoveSuggestionEvent as EventListener],
       ['brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener],
       ['brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener],
       ['brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener],

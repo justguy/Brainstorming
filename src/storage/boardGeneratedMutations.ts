@@ -225,6 +225,83 @@ export async function commitElaborateSuggestion(
   return { suggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId), changeSet };
 }
 
+export async function commitMoveSuggestion(
+  boardId: BoardId,
+  input: { suggestionId: string; panel: NonNullable<ScoutSuggestion['panel']>; actor: ChangeActor },
+): Promise<BoardSuggestionCommitResult> {
+  await ensureBoard(boardId);
+  const db = await getDb();
+  const tx: any = db.transaction(['boards', 'suggestions', 'changeSets'], 'readwrite');
+  const boardsStore = tx.objectStore('boards');
+  const suggestionsStore = tx.objectStore('suggestions');
+  const changeSetsStore = tx.objectStore('changeSets');
+  const currentBoard = hydrateBoardState(await boardsStore.get(boardId));
+  if (!currentBoard) throw new Error(`Board not found: ${boardId}`);
+
+  const suggestionBefore = await suggestionsStore.get(input.suggestionId);
+  if (!suggestionBefore) throw new Error(`Suggestion not found: ${input.suggestionId}`);
+
+  const nextPanel = {
+    ...input.panel,
+    groupId: undefined,
+  };
+  const currentPanel = suggestionBefore.panel;
+  const panelUnchanged = currentPanel
+    && currentPanel.x === nextPanel.x
+    && currentPanel.y === nextPanel.y
+    && currentPanel.width === nextPanel.width
+    && currentPanel.height === nextPanel.height;
+  if (panelUnchanged) {
+    await tx.done;
+    return { suggestion: suggestionBefore, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId) };
+  }
+
+  const now = Date.now();
+  const suggestion: ScoutSuggestion = {
+    ...suggestionBefore,
+    panel: nextPanel,
+    updatedAt: now,
+  };
+  const suggestionPatches = createEntityPatches('suggestions', suggestion.id, suggestionBefore, suggestion);
+  if (suggestionPatches.forward.length === 0) {
+    await tx.done;
+    return { suggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId) };
+  }
+
+  const nextBoard = nextBoardRecord(currentBoard, now);
+  const boardPatches = createEntityPatches('boards', boardId, currentBoard, nextBoard);
+  const changeSet = createChangeSet({
+    boardId,
+    seq: currentBoard.nextChangeSeq,
+    baseSeq: currentBoard.changeCursor,
+    actor: input.actor,
+    kind: 'move_suggestion',
+    summary: `Moved suggestion ${suggestion.id}`,
+    affected: [
+      { store: 'boards', id: boardId },
+      { store: 'suggestions', id: suggestion.id },
+    ],
+    forward: [...suggestionPatches.forward, ...boardPatches.forward],
+    inverse: [...boardPatches.inverse, ...suggestionPatches.inverse],
+    committedAt: now,
+  });
+
+  await supersedeFutureChanges(changeSetsStore, boardId, currentBoard.changeCursor + 1);
+  await suggestionsStore.put(suggestion);
+  await boardsStore.put(nextBoard);
+  await changeSetsStore.put(changeSet);
+  await tx.done;
+  recordFacilitatorBoardMutation(boardId, {
+    kind: 'suggestion',
+    actorType: input.actor.type,
+    at: now,
+    entityId: suggestion.id,
+    summary: `Moved suggestion ${suggestion.id}`,
+  });
+
+  return { suggestion, document: await loadBoardDocument(boardId), history: await getBoardHistoryState(boardId), changeSet };
+}
+
 export async function commitAdmitSuggestion(
   boardId: BoardId,
   input: { suggestionId: string; actor: ChangeActor },

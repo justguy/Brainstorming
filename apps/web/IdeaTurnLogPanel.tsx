@@ -53,6 +53,7 @@ export function IdeaTurnLogPanel({
   const [workflow, setWorkflow] = useState<WorkflowState>({ events: [], nextCursor: null, totalEvents: 0 });
   const [turnLog, setTurnLog] = useState<TurnLogState>({ entries: [], nextCursor: null, totalTurns: 0 });
   const [dismissedTurnKeys, setDismissedTurnKeys] = useState<Set<string>>(new Set());
+  const [pinnedTurnKeys, setPinnedTurnKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState<'workflow' | 'turns' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +82,7 @@ export function IdeaTurnLogPanel({
         });
         setTurnLog(turnPage);
         setDismissedTurnKeys(new Set());
+        setPinnedTurnKeys(new Set());
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Failed to load turn log.');
@@ -169,6 +171,12 @@ export function IdeaTurnLogPanel({
   }
 
   function handlePin(entry: LlmMessage, turnIndex: number): void {
+    const key = `${entry.role}-${turnIndex}-${entry.content.slice(0, 40)}`;
+    setPinnedTurnKeys(current => {
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
     if (onPin) {
       onPin(entry, turnIndex);
       return;
@@ -182,30 +190,38 @@ export function IdeaTurnLogPanel({
       next.add(key);
       return next;
     });
+    setPinnedTurnKeys(current => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
     onDismiss?.(entry, turnIndex);
   }
 
   if (!open || !idea) return null;
 
   const currentIdea = idea;
+  const aiTurnCount = visibleTurnRows.filter(row => row.origin === 'ai' || row.origin === 'critique').length;
+  const userTurnCount = visibleTurnRows.filter(row => row.origin === 'user').length;
+  const pinnedCount = pinnedTurnKeys.size;
+  const footerCursorLabel = turnLog.totalTurns > 0 ? `${Math.min(turnLog.entries.length, turnLog.totalTurns)}/${turnLog.totalTurns}` : '0/0';
 
   return (
     <aside className="bo-turn-log-panel bo-elevated-panel" aria-label="Turn log">
       <div className="bo-turn-log-panel__header">
         <div className="min-w-0">
-          <p className="bo-shell-eyebrow">Turn log</p>
-          <h2 className="mt-1 text-sm font-semibold text-slate-900">
+          <p className="bo-shell-eyebrow">Turn log · idea</p>
+          <h2 className="bo-turn-log-panel__title">
             {currentIdea.rawText.slice(0, 64)}{currentIdea.rawText.length > 64 ? '…' : ''}
           </h2>
+          <p className="bo-turn-log-panel__meta">
+            {aiTurnCount} AI · {userTurnCount} you · {pinnedCount} pinned
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          {onOpenInspector && (
-            <button type="button" onClick={onOpenInspector} className="bo-shell-action">
-              Pin
-            </button>
-          )}
-          <button type="button" onClick={onClose} className="bo-shell-action">
-            Dismiss
+          <button type="button" onClick={onClose} className="bo-turn-log-panel__close" aria-label="Close turn log">
+            ×
           </button>
         </div>
       </div>
@@ -234,10 +250,10 @@ export function IdeaTurnLogPanel({
         )}
 
         {!loading && visibleWorkflow.length > 0 && (
-          <section className="space-y-2">
+          <section className="space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <p className="bo-shell-eyebrow">Workflow memory</p>
-              <span className="text-[11px] text-slate-500">
+              <span className="bo-turn-log-panel__section-meta">
                 {visibleWorkflow.length} / {workflow.totalEvents}
               </span>
             </div>
@@ -245,7 +261,7 @@ export function IdeaTurnLogPanel({
               <article key={`${event.source}-${event.sourceId ?? event.sourceSeq ?? event.at}`} className="bo-turn-entry">
                 <div className="flex items-center justify-between gap-2">
                   <span className="bo-turn-entry__tag">{event.changeKinds.join(' + ')}</span>
-                  <span className="text-[11px] text-slate-500">{formatWhen(event.at)}</span>
+                  <span className="bo-turn-entry__time">{formatWhen(event.at)}</span>
                 </div>
                 <p className="mt-2 text-sm font-semibold text-slate-900">{event.summary}</p>
                 <p className="mt-1 text-xs text-slate-600">
@@ -262,10 +278,10 @@ export function IdeaTurnLogPanel({
         )}
 
         {!loading && activeTurnRows.length > 0 && (
-          <section className="space-y-2">
+          <section className="space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <p className="bo-shell-eyebrow">Conversation trail</p>
-              <span className="text-[11px] text-slate-500">
+              <span className="bo-turn-log-panel__section-meta">
                 {activeTurnRows.length} / {visibleTurnsWithMeta.length}
               </span>
             </div>
@@ -273,33 +289,38 @@ export function IdeaTurnLogPanel({
               <article key={key} className="bo-turn-entry">
                 <div className="flex items-center justify-between gap-2">
                   <span className="bo-turn-entry__tag">{turnOriginLabel(origin)}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-500">Turn {index + 1}</span>
-                    <span className="text-[11px] text-slate-500">Origin: {turnOriginLabel(origin)}</span>
-                    <span className="text-[11px] text-slate-500">Rationale: {rationale ?? 'Not stored'}</span>
-                    {onTransfer && (
-                      <button type="button" onClick={() => { handleTransfer(entry); }} className="bo-shell-action">
-                        Transfer
-                      </button>
-                    )}
-                    <button type="button" onClick={() => { handlePin(entry, index); }} className="bo-shell-action">
-                      Pin
-                    </button>
-                    <button type="button" onClick={() => { handleDismiss(entry, key, index); }} className="bo-shell-action">
-                      Dismiss
-                    </button>
-                  </div>
+                  <span className="bo-turn-entry__time">{formatRelativeTurn(index, turnLog.totalTurns)}</span>
                 </div>
+                <p className="bo-turn-entry__origin">
+                  {origin === 'user' ? 'You' : origin === 'critique' ? 'Dev · critique' : origin === 'ai' ? 'Dev · facilitator' : 'System'} · {turnOriginLabel(origin)}
+                </p>
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
                   {entry.content}
                 </p>
+                {rationale && (
+                  <div className="bo-turn-entry__rationale">
+                    <p className="bo-turn-entry__rationale-label">Why</p>
+                    <p>{rationale}</p>
+                  </div>
+                )}
+                <div className="bo-turn-entry__actions">
+                  <button type="button" onClick={() => { handlePin(entry, index); }} className="bo-shell-action">
+                    {pinnedTurnKeys.has(key) ? '★ pinned' : '☆ pin'}
+                  </button>
+                  {onTransfer && (
+                    <button type="button" onClick={() => { handleTransfer(entry); }} className="bo-shell-action">
+                      Transfer →
+                    </button>
+                  )}
+                  <button type="button" onClick={() => { handleDismiss(entry, key, index); }} className="bo-shell-action">
+                    Dismiss
+                  </button>
+                  {onOpenInspector && (
+                    <span className="bo-turn-entry__board-hint">Open note workspace</span>
+                  )}
+                </div>
               </article>
             ))}
-            {turnLog.nextCursor && (
-              <button type="button" onClick={() => { void loadMoreTurns(); }} className="bo-shell-action">
-                {loadingMore === 'turns' ? 'Loading…' : 'Load earlier'}
-              </button>
-            )}
           </section>
         )}
 
@@ -308,6 +329,36 @@ export function IdeaTurnLogPanel({
             No entries match the current filter yet.
           </div>
         )}
+      </div>
+
+      <div className="bo-turn-log-panel__footer">
+        <p className="bo-turn-log-panel__footer-meta">
+          Paginated · cursor {footerCursorLabel}
+        </p>
+        <div className="flex items-center gap-2">
+          {onOpenInspector && (
+            <button type="button" onClick={onOpenInspector} className="bo-shell-action">
+              Open note
+            </button>
+          )}
+          {(workflow.nextCursor || turnLog.nextCursor) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (turnLog.nextCursor) {
+                  void loadMoreTurns();
+                  return;
+                }
+                if (workflow.nextCursor) {
+                  void loadMoreWorkflow();
+                }
+              }}
+              className="bo-shell-action"
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );
@@ -367,4 +418,12 @@ function extractRationale(content: string): string | null {
     return becauseClause[1].trim();
   }
   return null;
+}
+
+function formatRelativeTurn(index: number, totalTurns: number): string {
+  if (totalTurns <= 0) return 'now';
+  const remaining = Math.max(0, totalTurns - index - 1);
+  if (remaining <= 0) return 'now';
+  if (remaining === 1) return '1 turn ago';
+  return `${remaining} turns ago`;
 }

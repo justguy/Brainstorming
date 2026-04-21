@@ -284,6 +284,29 @@ export function useBoardSuggestionActions({
     }
   }
 
+  async function handleMoveSuggestion(
+    id: string,
+    x: number,
+    y: number,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
+    const suggestion = suggestions.find(entry => entry.id === id);
+    const panel = suggestion?.panel;
+    if (!suggestion || !panel) return;
+
+    const result = await boardController.moveSuggestion({
+      suggestionId: id,
+      panel: {
+        ...panel,
+        x,
+        y,
+      },
+      actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
+    });
+    applyCommittedBoard(result.document, result.history);
+    markActivity('edit');
+  }
+
   const visibleCanvasSuggestions = suggestionsExpanded
     ? suggestions
     : suggestions.slice(0, Math.min(COLLAPSED_SUGGESTION_COUNT, suggestions.length));
@@ -302,6 +325,7 @@ export function useBoardSuggestionActions({
     handleAdmitSuggestion,
     handleElaborateSuggestion,
     handleDismissSuggestion,
+    handleMoveSuggestion,
     expandSuggestions: () => setSuggestionsExpanded(true),
     collapseSuggestions: () => setSuggestionsExpanded(false),
   };

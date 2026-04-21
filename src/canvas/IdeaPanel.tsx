@@ -17,6 +17,106 @@ import type { Idea } from '../types';
 import Badge from '../ui/Badge';
 import type { IdeaTone } from './canvasFocus';
 
+const NOTE_CLIP_PATHS = [
+  'polygon(0 0, 97% 0, 100% 11%, 100% 94%, 97% 100%, 0 100%, 0 0)',
+  'polygon(0 0, 99% 2%, 100% 7%, 100% 95%, 93% 100%, 0 100%, 1% 88%, 0 0)',
+  'polygon(0 0, 100% 0, 100% 100%, 92% 100%, 100% 90%, 100% 11%, 5% 0)',
+  'polygon(0 0, 100% 2%, 98% 12%, 100% 22%, 100% 100%, 0 100%, 3% 84%, 0 14%)',
+  'polygon(0 0, 100% 0, 100% 99%, 83% 100%, 78% 88%, 0 89%, 0 12%)',
+];
+
+function hashSeed(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function pickPaperClip(id: string): string {
+  const index = hashSeed(id) % NOTE_CLIP_PATHS.length;
+  return NOTE_CLIP_PATHS[index];
+}
+
+function paperRotationDeg(id: string): number {
+  return ((hashSeed(id) % 18) - 9) / 7;
+}
+
+function notePaletteFromTags(tags: string[]): {
+  borderColor: string;
+  backgroundColor: string;
+  inkColor: string;
+  shadow: string;
+} | null {
+  if (tags.includes('paper-blue')) {
+    return {
+      borderColor: '#4d9cdd',
+      backgroundColor: '#bfe4fa',
+      inkColor: '#23384d',
+      shadow: '0 18px 34px -28px rgba(47, 101, 155, 0.5)',
+    };
+  }
+  if (tags.includes('paper-yellow')) {
+    return {
+      borderColor: '#efb736',
+      backgroundColor: '#ffe986',
+      inkColor: '#3a2f18',
+      shadow: '0 18px 34px -28px rgba(164, 124, 32, 0.5)',
+    };
+  }
+  if (tags.includes('paper-pink')) {
+    return {
+      borderColor: '#ea7b9d',
+      backgroundColor: '#f8bfd1',
+      inkColor: '#442534',
+      shadow: '0 18px 34px -28px rgba(152, 68, 98, 0.45)',
+    };
+  }
+  if (tags.includes('paper-peach')) {
+    return {
+      borderColor: '#df955e',
+      backgroundColor: '#ffd0ad',
+      inkColor: '#432b1f',
+      shadow: '0 18px 34px -28px rgba(153, 95, 43, 0.46)',
+    };
+  }
+  if (tags.includes('paper-lavender')) {
+    return {
+      borderColor: '#8f79d3',
+      backgroundColor: '#d9c7fb',
+      inkColor: '#33294d',
+      shadow: '0 18px 34px -28px rgba(88, 67, 153, 0.45)',
+    };
+  }
+  if (tags.includes('paper-green')) {
+    return {
+      borderColor: '#7ab85e',
+      backgroundColor: '#cdeca0',
+      inkColor: '#243d1d',
+      shadow: '0 18px 34px -28px rgba(78, 129, 53, 0.45)',
+    };
+  }
+  return null;
+}
+
+function defaultNotePalette(id: string): {
+  borderColor: string;
+  backgroundColor: string;
+  inkColor: string;
+  shadow: string;
+} {
+  const palettes = [
+    { borderColor: '#4d9cdd', backgroundColor: '#bfe4fa', inkColor: '#23384d', shadow: '0 18px 34px -28px rgba(47, 101, 155, 0.5)' },
+    { borderColor: '#efb736', backgroundColor: '#ffe986', inkColor: '#3a2f18', shadow: '0 18px 34px -28px rgba(164, 124, 32, 0.5)' },
+    { borderColor: '#ea7b9d', backgroundColor: '#f8bfd1', inkColor: '#442534', shadow: '0 18px 34px -28px rgba(152, 68, 98, 0.45)' },
+    { borderColor: '#7ab85e', backgroundColor: '#cdeca0', inkColor: '#243d1d', shadow: '0 18px 34px -28px rgba(78, 129, 53, 0.45)' },
+    { borderColor: '#8f79d3', backgroundColor: '#d9c7fb', inkColor: '#33294d', shadow: '0 18px 34px -28px rgba(88, 67, 153, 0.45)' },
+    { borderColor: '#df955e', backgroundColor: '#ffd0ad', inkColor: '#432b1f', shadow: '0 18px 34px -28px rgba(153, 95, 43, 0.46)' },
+  ];
+  return palettes[hashSeed(id) % palettes.length];
+}
+
 export interface IdeaPanelProps {
   idea: Idea;
   /** Live x override during drag (ignores idea.panel.x while dragging). */
@@ -149,7 +249,7 @@ export default function IdeaPanel({
 
   const title = idea.rawText.slice(0, 80) + (idea.rawText.length > 80 ? '…' : '');
   const ringClass = beingMergedInto
-    ? 'ring-4 ring-amber-400'
+    ? 'ring-4 ring-sky-400'
     : highlight
     ? 'ring-2 ring-sky-300 bo-highlight-flash'
     : groupColor
@@ -159,21 +259,32 @@ export default function IdeaPanel({
   const panelOpacity = tone === 'muted' ? 0.9 : tone === 'related' ? 0.98 : 1;
   const panelFilter = tone === 'muted' ? 'saturate(0.78)' : tone === 'active' ? 'saturate(1.04)' : undefined;
   const surfaceClass = tone === 'active'
-    ? 'border-sky-300 shadow-xl'
+    ? 'border-sky-300/85 shadow-[0_26px_60px_-36px_rgba(49,87,129,0.24)]'
     : tone === 'related'
-    ? 'border-slate-200 shadow-md'
+    ? 'border-slate-300/85 shadow-[0_18px_42px_-34px_rgba(49,87,129,0.16)]'
     : tone === 'muted'
-    ? 'border-gray-200 shadow-sm'
-    : 'border-gray-200 shadow-md hover:shadow-lg';
+    ? 'border-slate-200/80 shadow-[0_12px_28px_-28px_rgba(49,87,129,0.14)]'
+    : 'border-slate-300/80 shadow-[0_16px_40px_-32px_rgba(49,87,129,0.16)]';
   const insightCount = idea.insights?.length ?? 0;
   const linkStartEnabled = typeof onLinkStart === 'function';
   const linkCompleteEnabled = typeof onLinkComplete === 'function';
   const showLinkAffordance = linkModeEnabled || linkStartEnabled || linkCompleteEnabled;
   const docPillLabel = docCount > 0 ? `${docCount}` : '0';
   const docPillAria = docCount > 0 ? `${docCount} supporting docs` : 'Open supporting docs';
+  const paperSeed = `${idea.id}:${idea.panel?.x ?? ''}:${idea.panel?.y ?? ''}:${panel.height}`;
+  const notePalette = notePaletteFromTags(idea.tags) ?? defaultNotePalette(idea.id);
+  const paperRotation = paperRotationDeg(paperSeed);
+  const noteRotation = dragging ? paperRotation + 0.8 : paperRotation * 0.25;
+  const noteBorderColor = notePalette.borderColor;
+  const noteBackgroundColor = notePalette.backgroundColor;
+  const noteShadow = notePalette.shadow;
+  const noteFilter = panelFilter;
+  const noteZIndex = dragging ? 50 : beingMergedInto ? 40 : tone === 'active' ? 20 : tone === 'related' ? 10 : 8;
 
   return (
     <div
+      data-artifact-surface="idea-note"
+      data-artifact-tone={tone}
       role="button"
       tabIndex={0}
       onPointerDown={handlePointerDown}
@@ -201,16 +312,30 @@ export default function IdeaPanel({
         top: y,
         width: panel.width,
         height: panel.height,
-        zIndex: dragging ? 50 : beingMergedInto ? 40 : tone === 'active' ? 20 : tone === 'related' ? 10 : 1,
+        zIndex: noteZIndex,
         touchAction: 'none',
         opacity: panelOpacity,
-        filter: panelFilter,
-        transform: `scale(${scale})`,
-        ...(groupColor ? { borderColor: groupColor, borderWidth: 2 } : {}),
+        filter: noteFilter,
+        transform: `rotate(${noteRotation}deg) scale(${scale})`,
+        borderWidth: 1.8,
+        borderColor: noteBorderColor,
+        backgroundColor: noteBackgroundColor,
+        boxShadow: noteShadow,
+        ...(groupColor ? { borderColor: groupColor } : {}),
       }}
-      className={`select-none cursor-grab ${dragging ? 'cursor-grabbing shadow-2xl' : ''} bg-white rounded-lg border transition-[opacity,transform,box-shadow,border-color] duration-200 ${surfaceClass} ${ringClass}`}
+      className={`bo-note-artifact relative select-none overflow-hidden cursor-grab rounded-[20px] border transition-[transform,box-shadow,filter] duration-200 ${dragging ? 'cursor-grabbing' : ''} ${surfaceClass} ${ringClass}`}
       aria-label={`Idea: ${title}`}
     >
+      <div
+        className="pointer-events-none absolute -top-2 left-4 h-4 w-14 rounded-sm"
+        style={{
+          transform: `rotate(${paperRotation * -1.6}deg)`,
+          background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.84), rgba(214, 228, 242, 0.76), rgba(255, 255, 255, 0.45))',
+          opacity: 0.92,
+          boxShadow: 'inset 0 -1px 0 rgba(106, 134, 163, 0.24)',
+        }}
+        aria-hidden="true"
+      />
       <div className="absolute inset-y-0 -left-2 flex items-center">
         {showLinkAffordance && (
           <button
@@ -220,8 +345,8 @@ export default function IdeaPanel({
               e.stopPropagation();
               onLinkStart?.(idea.id);
             }}
-            className={`w-4 h-7 rounded-l-full border border-gray-300/80 bg-white/95 px-1 text-[10px] font-semibold tracking-[0.14em] text-gray-500 uppercase transition-opacity ${
-              linkStartEnabled ? 'cursor-pointer hover:border-sky-400 hover:text-sky-700' : 'opacity-60'
+            className={`w-4.5 h-9 rounded-l-full border border-[#a8bed2]/80 bg-[#f8fbff]/94 px-1 text-[9px] font-semibold tracking-[0.18em] text-[#597185] uppercase transition-opacity ${
+              linkStartEnabled ? 'cursor-pointer hover:bg-[#edf5fb]/95 hover:border-[#6e91b1]' : 'opacity-55'
             }`}
             title={linkStartEnabled ? 'Start link mode from this idea' : 'Link mode affordance'}
             aria-label="Start linking from this idea"
@@ -239,8 +364,8 @@ export default function IdeaPanel({
               e.stopPropagation();
               onLinkComplete?.(idea.id);
             }}
-            className={`w-4 h-7 rounded-r-full border border-gray-300/80 bg-white/95 px-1 text-[10px] font-semibold tracking-[0.14em] text-gray-500 uppercase transition-opacity ${
-              linkCompleteEnabled ? 'cursor-pointer hover:border-sky-400 hover:text-sky-700' : 'opacity-60'
+            className={`w-4.5 h-9 rounded-r-full border border-[#a8bed2]/80 bg-[#f8fbff]/94 px-1 text-[9px] font-semibold tracking-[0.18em] text-[#597185] uppercase transition-opacity ${
+              linkCompleteEnabled ? 'cursor-pointer hover:bg-[#edf5fb]/95 hover:border-[#6e91b1]' : 'opacity-55'
             }`}
             title={linkCompleteEnabled ? 'Finish link mode on this idea' : 'Link mode affordance'}
             aria-label="Complete linking to this idea"
@@ -259,7 +384,7 @@ export default function IdeaPanel({
             e.stopPropagation();
             onOpenDocs(idea.id);
           }}
-          className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 border border-gray-300 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-sky-400 hover:bg-slate-100"
+          className="bo-note-doc-chip absolute top-1.5 right-1.5 z-10 flex items-center gap-1 border border-[#9fb2c5]/75 bg-[#f8fbff]/88 px-1.5 py-0.5 text-[10px] font-medium text-[#54697c] focus:outline-none focus:ring-2 focus:ring-sky-400 hover:bg-[#edf5fb]/88"
           aria-label={docPillAria}
           title={docPillAria}
         >
@@ -280,13 +405,18 @@ export default function IdeaPanel({
       )}
 
       <div className="h-full flex flex-col p-3 overflow-hidden">
-        <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-3 pr-10">{title}</p>
+        <p
+          className="bo-note-title text-sm font-semibold leading-snug line-clamp-3 pr-10"
+          style={{ color: notePalette.inkColor }}
+        >
+          {title}
+        </p>
 
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <Badge color={idea.readiness}>{idea.readiness}</Badge>
-          <span className="text-xs text-gray-500">Step {idea.phase}/8</span>
+          <span className="text-xs text-[#5f503b]">Step {idea.phase}/8</span>
           {insightCount > 0 && (
-            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <span className="rounded-full border border-emerald-200/80 bg-emerald-50/80 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
               Insight {insightCount}
             </span>
           )}
@@ -295,43 +425,43 @@ export default function IdeaPanel({
         {idea.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {idea.tags.slice(0, 3).map(tag => (
-              <span key={tag} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+              <span key={tag} className="text-[10px] rounded-full border border-[#bfd0de]/75 bg-white/70 px-1.5 py-0.5 text-[#586c7d]">
                 {tag}
               </span>
             ))}
             {idea.tags.length > 3 && (
-              <span className="text-[10px] text-gray-400">+{idea.tags.length - 3}</span>
+              <span className="text-[10px] text-[#73869a]">+{idea.tags.length - 3}</span>
             )}
           </div>
         )}
 
         {idea.mergedFrom && idea.mergedFrom.length > 0 && (
           <div className="mt-auto pt-2">
-            <span className="text-[10px] text-violet-700 bg-violet-50 rounded px-1.5 py-0.5 font-semibold">
+            <span className="text-[10px] border border-violet-300/70 bg-violet-50/80 rounded px-1.5 py-0.5 font-semibold text-violet-700">
               Merged from {idea.mergedFrom.length}
             </span>
           </div>
         )}
 
         {linkModeAnchor && (
-          <div className="mt-2 text-[10px] text-gray-500">
+          <div className="mt-2 text-[10px] uppercase tracking-[0.17em] text-[#69583f]">
             Anchor selected for linking
           </div>
         )}
 
         {/* Merge-hold progress bar (only visible when hovering to merge) */}
         {mergeProgress > 0 && !beingMergedInto && (
-          <div className="absolute inset-x-2 bottom-2 h-1 bg-gray-200 rounded overflow-hidden">
+          <div className="absolute inset-x-2 bottom-2 h-1 rounded bg-[#cad9e7]/70 overflow-hidden">
             <div
-              className="h-full bg-amber-500 transition-all"
+              className="h-full bg-[#4f93d1] transition-all"
               style={{ width: `${mergeProgress * 100}%` }}
             />
           </div>
         )}
 
         {beingMergedInto && (
-          <div className="absolute inset-0 flex items-center justify-center bg-amber-50/80 rounded-lg pointer-events-none">
-            <span className="text-xs font-bold text-amber-800 uppercase tracking-wide">
+          <div className="absolute inset-0 flex items-center justify-center bg-sky-50/86 pointer-events-none">
+            <span className="bo-note-merge-overlay text-[10px] font-semibold uppercase tracking-wide text-sky-900">
               Hold to merge
             </span>
           </div>
@@ -342,7 +472,7 @@ export default function IdeaPanel({
       {menu && onDiscard && (
         <div
           style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 60 }}
-          className="min-w-[140px] rounded-md border border-gray-200 bg-white shadow-lg text-sm"
+          className="min-w-[140px] rounded-md border border-[#b7cade]/75 bg-[#fbfdff] text-sm shadow-lg"
           onPointerDown={e => e.stopPropagation()}
           role="menu"
         >
@@ -354,7 +484,7 @@ export default function IdeaPanel({
               setMenu(null);
               onDiscard(idea.id);
             }}
-            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-800 focus:outline-none focus:bg-gray-100 rounded-md"
+            className="bo-note-menu-item w-full text-left px-3 py-2 text-gray-800 focus:outline-none focus:bg-[#edf5fb] rounded-md"
           >
             🗑 Discard idea
           </button>

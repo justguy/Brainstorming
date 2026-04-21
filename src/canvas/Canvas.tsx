@@ -79,6 +79,7 @@ export interface CanvasProps {
   }) => Promise<Connection>;
   suggestions?: ScoutSuggestion[];
   suggestionBusy?: Record<string, 'admit' | 'elaborate' | 'dismiss' | null>;
+  onMoveSuggestion?: (suggestionId: string, x: number, y: number) => void;
   onAdmitSuggestion?: (id: string) => void;
   onElaborateSuggestion?: (id: string) => void;
   onDismissSuggestion?: (id: string) => void;
@@ -112,6 +113,7 @@ export default function Canvas({
   onCreateConnection,
   suggestions,
   suggestionBusy,
+  onMoveSuggestion,
   onAdmitSuggestion,
   onElaborateSuggestion,
   onDismissSuggestion,
@@ -119,6 +121,9 @@ export default function Canvas({
   onCollapseSuggestions,
 }: CanvasProps): React.ReactElement {
   const [liveDrag, setLiveDrag] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [settledDropByIdeaId, setSettledDropByIdeaId] = useState<Record<string, { x: number; y: number; expiresAt: number }>>({});
+  const [liveSuggestionDrag, setLiveSuggestionDrag] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [settledDropBySuggestionId, setSettledDropBySuggestionId] = useState<Record<string, { x: number; y: number; expiresAt: number }>>({});
   const [mergeCandidate, setMergeCandidate] = useState<string | null>(null);
   const [mergeProgress, setMergeProgress] = useState(0);
   const [hoveredIdeaId, setHoveredIdeaId] = useState<string | null>(null);
@@ -152,7 +157,13 @@ export default function Canvas({
     setMergeProgress(0);
   }
 
-  function handleDragStart(_ideaId: string): void {
+  function handleDragStart(ideaId: string): void {
+    setSettledDropByIdeaId(current => {
+      if (!current[ideaId]) return current;
+      const next = { ...current };
+      delete next[ideaId];
+      return next;
+    });
     setHoveredIdea(null);
     onDragStateChange?.(true);
     clearMergeHold();
@@ -193,6 +204,10 @@ export default function Canvas({
     const wasHovering = mergeCandidate;
     clearMergeHold();
     setLiveDrag(null);
+    setSettledDropByIdeaId(current => ({
+      ...current,
+      [ideaId]: { x, y, expiresAt: Date.now() + 1_500 },
+    }));
     onDragStateChange?.(false);
 
     onMove(ideaId, x, y);
@@ -212,6 +227,30 @@ export default function Canvas({
     }
   }
 
+  function handleSuggestionDragStart(suggestionId: string): void {
+    setSettledDropBySuggestionId(current => {
+      if (!current[suggestionId]) return current;
+      const next = { ...current };
+      delete next[suggestionId];
+      return next;
+    });
+    onDragStateChange?.(true);
+  }
+
+  function handleSuggestionDrag(suggestionId: string, x: number, y: number): void {
+    setLiveSuggestionDrag({ id: suggestionId, x, y });
+  }
+
+  function handleSuggestionDragEnd(suggestionId: string, x: number, y: number): void {
+    setLiveSuggestionDrag(null);
+    setSettledDropBySuggestionId(current => ({
+      ...current,
+      [suggestionId]: { x, y, expiresAt: Date.now() + 1_500 },
+    }));
+    onDragStateChange?.(false);
+    onMoveSuggestion?.(suggestionId, x, y);
+  }
+
   useEffect(() => {
     return () => {
       if (mergeTimerRef.current !== null) window.clearInterval(mergeTimerRef.current);
@@ -220,6 +259,98 @@ export default function Canvas({
       onFocusIdeaChange?.(null);
     };
   }, [onDragStateChange, onFocusIdeaChange]);
+
+  useEffect(() => {
+    if (Object.keys(settledDropByIdeaId).length === 0) return;
+
+    const now = Date.now();
+    let changed = false;
+    const nextEntries: Record<string, { x: number; y: number; expiresAt: number }> = {};
+
+    for (const [ideaId, pending] of Object.entries(settledDropByIdeaId)) {
+      const idea = ideas.find(entry => entry.id === ideaId);
+      const panel = idea?.panel;
+
+      if (!idea || !panel) {
+        changed = true;
+        continue;
+      }
+
+      if (panel.x === pending.x && panel.y === pending.y) {
+        changed = true;
+        continue;
+      }
+
+      if (pending.expiresAt <= now) {
+        changed = true;
+        continue;
+      }
+
+      nextEntries[ideaId] = pending;
+    }
+
+    if (changed) {
+      setSettledDropByIdeaId(nextEntries);
+      return;
+    }
+
+    const nextExpiry = Math.min(...Object.values(settledDropByIdeaId).map(entry => entry.expiresAt));
+    const timeout = window.setTimeout(() => {
+      setSettledDropByIdeaId(current => {
+        const currentNow = Date.now();
+        const remainingEntries = Object.entries(current).filter(([, pending]) => pending.expiresAt > currentNow);
+        return Object.fromEntries(remainingEntries);
+      });
+    }, Math.max(0, nextExpiry - now));
+
+    return () => window.clearTimeout(timeout);
+  }, [ideas, settledDropByIdeaId]);
+
+  useEffect(() => {
+    if (Object.keys(settledDropBySuggestionId).length === 0) return;
+
+    const now = Date.now();
+    let changed = false;
+    const nextEntries: Record<string, { x: number; y: number; expiresAt: number }> = {};
+
+    for (const [suggestionId, pending] of Object.entries(settledDropBySuggestionId)) {
+      const suggestion = suggestions?.find(entry => entry.id === suggestionId);
+      const panel = suggestion?.panel;
+
+      if (!suggestion || !panel) {
+        changed = true;
+        continue;
+      }
+
+      if (panel.x === pending.x && panel.y === pending.y) {
+        changed = true;
+        continue;
+      }
+
+      if (pending.expiresAt <= now) {
+        changed = true;
+        continue;
+      }
+
+      nextEntries[suggestionId] = pending;
+    }
+
+    if (changed) {
+      setSettledDropBySuggestionId(nextEntries);
+      return;
+    }
+
+    const nextExpiry = Math.min(...Object.values(settledDropBySuggestionId).map(entry => entry.expiresAt));
+    const timeout = window.setTimeout(() => {
+      setSettledDropBySuggestionId(current => {
+        const currentNow = Date.now();
+        const remainingEntries = Object.entries(current).filter(([, pending]) => pending.expiresAt > currentNow);
+        return Object.fromEntries(remainingEntries);
+      });
+    }, Math.max(0, nextExpiry - now));
+
+    return () => window.clearTimeout(timeout);
+  }, [suggestions, settledDropBySuggestionId]);
 
   function triggerFlash(ideaIds: string[]): void {
     if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
@@ -333,8 +464,8 @@ export default function Canvas({
         </div>
       )}
       {showConnectionHint && (
-        <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[18rem] rounded-[22px] border border-amber-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+        <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
             Connections
           </p>
           <p className="mt-1 text-xs font-semibold text-slate-900">
@@ -346,6 +477,9 @@ export default function Canvas({
       {groups.map(group => {
         const members = ideas.filter(i => i.panel?.groupId === group.id);
         if (members.length === 0) return null;
+        const theme = group.theme?.trim() ?? '';
+        const sharedQuestion = group.sharedQuestion?.trim() ?? '';
+        if (!theme && !sharedQuestion) return null;
         const minX = Math.min(...members.map(m => m.panel!.x));
         const minY = Math.min(...members.map(m => m.panel!.y));
         return (
@@ -361,11 +495,13 @@ export default function Canvas({
             }}
             className="pointer-events-none max-w-[280px]"
           >
-            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 truncate">
-              {group.theme ?? 'Naming…'}
-            </p>
-            {group.sharedQuestion && (
-              <p className="text-[11px] italic text-gray-500 truncate">{group.sharedQuestion}</p>
+            {theme && (
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700 truncate">
+                {theme}
+              </p>
+            )}
+            {sharedQuestion && (
+              <p className="text-[11px] italic text-gray-500 truncate">{sharedQuestion}</p>
             )}
           </div>
         );
@@ -375,12 +511,13 @@ export default function Canvas({
         const isDragging = liveDrag?.id === idea.id;
         const isMergeTarget = mergeCandidate === idea.id;
         const groupColor = idea.panel?.groupId ? colorForGroup(idea.panel.groupId) : undefined;
+        const settledDrop = !isDragging ? settledDropByIdeaId[idea.id] : undefined;
         return (
           <IdeaPanel
             key={idea.id}
             idea={idea}
-            liveX={isDragging ? liveDrag!.x : undefined}
-            liveY={isDragging ? liveDrag!.y : undefined}
+            liveX={isDragging ? liveDrag!.x : settledDrop?.x}
+            liveY={isDragging ? liveDrag!.y : settledDrop?.y}
             groupColor={groupColor}
             mergeProgress={isDragging ? mergeProgress : 0}
             beingMergedInto={isMergeTarget}
@@ -428,16 +565,23 @@ export default function Canvas({
 
       {suggestions?.map((suggestion, index) => {
         const isLastVisible = index === suggestions.length - 1;
+        const isDragging = liveSuggestionDrag?.id === suggestion.id;
+        const settledDrop = !isDragging ? settledDropBySuggestionId[suggestion.id] : undefined;
         return (
           <GhostPanel
             key={suggestion.id}
             suggestion={suggestion}
+            liveX={isDragging ? liveSuggestionDrag!.x : settledDrop?.x}
+            liveY={isDragging ? liveSuggestionDrag!.y : settledDrop?.y}
             busy={suggestionBusy?.[suggestion.id] ?? null}
             animated={!!animatedSuggestionIds?.includes(suggestion.id) && !suppressAnimations}
             overflowCount={isLastVisible ? suggestionOverflowCount ?? 0 : 0}
             expandedList={isLastVisible && !!suggestionsExpanded}
             onExpandOverflow={isLastVisible ? onExpandSuggestions : undefined}
             onCollapseOverflow={isLastVisible ? onCollapseSuggestions : undefined}
+            onDragStart={handleSuggestionDragStart}
+            onDrag={handleSuggestionDrag}
+            onDragEnd={handleSuggestionDragEnd}
             onAdmit={onAdmitSuggestion ?? (() => {})}
             onElaborate={onElaborateSuggestion ?? (() => {})}
             onDismiss={onDismissSuggestion ?? (() => {})}

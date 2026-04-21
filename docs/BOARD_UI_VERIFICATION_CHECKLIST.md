@@ -95,6 +95,42 @@ Fail:
 - The user cannot tell what the AI is doing.
 - The rail acts like a side chat instead of a dock for canvas-first actions.
 
+## Workflow 5: Scout Suggestions And Critiques
+
+1. Trigger `Scout beat` or run `scout_ideas`.
+2. Confirm at least one scout suggestion appears directly on the canvas.
+3. Drag the scout card to a new position and release.
+4. Confirm it does not snap back, and its new position survives normal board re-renders.
+5. Trigger one critique on a visible note.
+6. Confirm the attached critique sits behind the note with only its title/tab visible.
+7. Click the critique tab once and confirm the full card comes forward with action controls.
+8. Click the critique card again and confirm it tucks back behind the note.
+
+Pass:
+- Scout suggestions behave like first-class canvas artifacts, including drag and persisted placement.
+- Critiques default to an attached background state instead of covering the note body.
+- Expanding and collapsing a critique does not cause card flicker or misplaced layering.
+
+Fail:
+- A scout card cannot be repositioned.
+- A scout card snaps back to its old location after release.
+- Critiques always render full-front and obscure their host note.
+- Critique expand/collapse causes z-index glitches or transient jumps.
+
+## Workflow 6: Docs Panel Stability
+
+1. Open supporting docs for a note.
+2. Leave the docs panel open while moving notes, selecting other notes, and triggering facilitator actions.
+3. Watch the panel header/body during unrelated board updates.
+
+Pass:
+- `Loading docs…` appears only on the initial load or an intentional doc refresh.
+- Normal board activity does not remount or flash the docs panel.
+
+Fail:
+- The panel repeatedly flashes `Loading docs…` during unrelated board changes.
+- The docs surface blinks or resets focus while the board updates.
+
 ## Sign-off
 
 Only close `bo-038`, `bo-039`, `bo-040`, `bo-041`, and `bo-042` after this checklist is executed on all listed viewports and the actual outcomes are attached to the tracker close-out.

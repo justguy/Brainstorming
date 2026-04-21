@@ -254,6 +254,7 @@ export type ChangeSetKind =
   | 'dismiss_critique'
   | 'create_critique'
   | 'create_suggestion'
+  | 'move_suggestion'
   | 'elaborate_suggestion'
   | 'admit_suggestion'
   | 'create_doc'

@@ -20,24 +20,17 @@ export function BoardBeadStrip({
   onOpenInspector,
 }: BoardBeadStripProps): React.ReactElement {
   if (!idea) {
-    return (
-      <div className="bo-shell-inline-card">
-        <p className="bo-shell-eyebrow">Bead strip</p>
-        <p className="mt-1 text-sm text-[color:var(--bo-paper-ink-soft)]">
-          Select a note to see the derived bead state, review flags, and next nudge.
-        </p>
-      </div>
-    );
+    return <></>;
   }
 
   const beadState = deriveIdeaBeadState(idea);
 
   return (
-    <div className="bo-shell-inline-card">
+    <div className="rounded-xl border border-slate-200 bg-white/70 px-2 py-2 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="bo-shell-eyebrow">Bead strip</p>
-          <p className="mt-1 text-sm font-semibold text-[color:var(--bo-paper-ink)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Beads</p>
+          <p className="mt-1 text-xs font-medium leading-snug text-slate-700">
             {beadState.summary}
           </p>
         </div>
@@ -45,30 +38,30 @@ export function BoardBeadStrip({
           <button
             type="button"
             onClick={onOpenInspector}
-            className="bo-shell-action"
+            className="rounded-full border border-slate-200 px-2 py-1 text-[10px] text-slate-600"
           >
-            Inspect
+            Open
           </button>
         )}
       </div>
 
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+      <div className="mt-2 flex flex-wrap gap-1">
         {beadState.beads.map(bead => (
           <button
             key={bead.id}
             type="button"
             onClick={onOpenInspector}
-            className={`min-w-[5.7rem] rounded-[18px] border px-3 py-2 text-left transition hover:-translate-y-[1px] ${STATUS_CLASS[bead.status]}`}
+            className={`min-w-0 max-w-[9.5rem] rounded-lg border px-2 py-1.5 text-left text-[11px] transition hover:brightness-95 ${STATUS_CLASS[bead.status]}`}
             title={bead.summary}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em]">
+            <p className="font-semibold tracking-[0.12em] text-[10px]">
               {bead.phaseNumber}
             </p>
-            <p className="mt-1 text-xs font-semibold">
+            <p className="mt-0.5 text-xs font-semibold">
               {bead.shortLabel}
             </p>
-            <p className="mt-1 text-[11px] leading-4 opacity-80 line-clamp-2">
-              {bead.reviewFlag?.reason ?? bead.suggestion?.reason ?? bead.summary}
+            <p className="mt-0.5 text-[11px] leading-4 opacity-80 line-clamp-2">
+              {bead.reviewFlag?.reason ?? bead.suggestion?.reason}
             </p>
           </button>
         ))}

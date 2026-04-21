@@ -7,7 +7,6 @@ import type {
   FacilitatorStagedInsight,
 } from '../../src/storage/facilitatorSync';
 import type { Connection, Idea, ScoutSuggestion } from '../../src/types';
-import { BoardBeatsCard } from './BoardBeatsCard';
 import { CollaborativeSessionCard } from './CollaborativeSessionCard';
 import { DevCompanionCard } from './DevCompanionCard';
 import { RobotNotesSummary, type RobotNotesItem } from './RobotNotesSummary';
@@ -51,6 +50,8 @@ export interface AppCompanionRailProps {
   runScout: () => void | Promise<void>;
   dismissHint: () => void;
   onUndoRobot?: () => void;
+  onOpenTurnLog?: () => void;
+  turnLogCount?: number;
   boardBeatReviewSession: BeatReviewSessionRecord | null;
   boardBeatReviewItems: BeatReviewItemRecord[];
   onOpenBoardBeatReview?: () => void;
@@ -101,6 +102,8 @@ export function AppCompanionRail({
   runScout,
   dismissHint,
   onUndoRobot,
+  onOpenTurnLog,
+  turnLogCount,
   boardBeatReviewSession,
   boardBeatReviewItems,
   onOpenBoardBeatReview,
@@ -115,27 +118,16 @@ export function AppCompanionRail({
         void handleSoftModeAction();
       }
     : undefined;
-  const scoutHeading = scouting
-    ? 'Scout role running'
-    : suggestions.length > 0
-      ? `Review ${suggestions.length} staged scout prompt${suggestions.length === 1 ? '' : 's'}`
-      : 'Ask Scout for new angles';
-  const scoutDetail = suggestions.length > 0
-    ? 'Role notes are already staged on canvas. Clear them first, then open a fresh pass.'
-    : 'Scout reads the current canvas and stages adjacent ideas in place, so context stays on the board.';
-  const scoutBadge = scouting
-    ? 'running'
-    : suggestions.length > 0
-      ? `${suggestions.length} waiting`
-      : lastScoutRunAt
-        ? formatSince(lastScoutRunAt)
-        : 'ready';
-  const scoutStatus = suggestions.length > 0
-    ? `${suggestions.length} staged`
-    : scouting
-      ? 'Running inline'
-      : 'Ready for next pass';
-  const scoutRoleStatus = activeRoleLabel(scouting);
+  const nudgeLabel = companionActionLabel?.trim() || 'Nudge me';
+  const nudgeAction = () => {
+    void runScout();
+  };
+  const reviewItemCount = boardBeatReviewItems.length;
+  const turnLogPendingCount = boardBeatReviewItems.filter(item => item.status === 'pending').length;
+  const turnLogKeptCount = boardBeatReviewItems.filter(item => item.status === 'kept').length;
+  const turnLogScratchedCount = boardBeatReviewItems.filter(item => item.status === 'scratched').length;
+  const reviewItemPreview = boardBeatReviewItems.slice(0, 2);
+  const showReviewPanel = Boolean(onOpenBoardBeatReview || boardBeatReviewItems.length > 0 || boardBeatReviewSession);
   const pendingSuggestionInsights = suggestions.filter(suggestion => suggestion.status === 'pending');
   const fallbackRobotNoteItems: RobotNotesItem[] = pendingSuggestionInsights.map((suggestion, index) => ({
     id: suggestion.id,
@@ -155,7 +147,10 @@ export function AppCompanionRail({
   const robotNoteItems = stagedRobotNoteItems.length > 0 ? stagedRobotNoteItems : fallbackRobotNoteItems;
   const robotNoteCount = autonomy?.stagedInsightCount ?? robotNoteItems.length;
   const robotNoteTitle = robotNotes?.title ?? 'Robot\'s Notes';
-  const robotNotePreviewLimit = robotNotes?.maxVisibleItems;
+  const robotNotePreviewLimit = Math.max(1, robotNotes?.maxVisibleItems ?? 2);
+  const showRobotNotes = robotNoteCount > 0 && robotNoteItems.length > 0;
+  const showSessionCard = session.peers.length > 1 || (session.recentSessionEvents?.length ?? 0) > 0;
+  const focusIdeaText = ideas[2]?.rawText.split('\n')[0] ?? ideas[0]?.rawText.split('\n')[0] ?? '';
 
   return (
     <div
@@ -180,70 +175,92 @@ export function AppCompanionRail({
             pendingBoardChange={pendingBoardChange}
             autoRunReady={autoRunReady}
             autoRunCountdownMs={autoRunCountdownMs}
-            actionLabel={companionActionLabel}
-            onAction={companionAction}
+            actionLabel={nudgeLabel}
+            onAction={nudgeAction}
             undoRobotLabel={undoRobotLabel}
             onUndoRobot={onUndoRobot}
+            focusIdeaText={compactText(focusIdeaText, 44)}
             onTogglePause={toggleFacilitatorPause}
+            actionInProgress={scouting}
+            onOpenTurnLog={onOpenTurnLog ?? onOpenBoardBeatReview}
+            turnLogCount={turnLogCount ?? reviewItemCount}
+            turnLogPendingCount={turnLogPendingCount}
             autonomy={autonomy}
           />
 
-          <RobotNotesSummary
-            title={robotNoteTitle}
-            stagedCount={robotNoteCount}
-            items={robotNoteItems}
-            maxVisibleItems={robotNotePreviewLimit}
-            onPrimaryAction={robotNotes?.onApply}
-            onDismiss={robotNotes?.onDismiss}
-          />
+          {showRobotNotes && (
+            <RobotNotesSummary
+              title={robotNoteTitle}
+              stagedCount={robotNoteCount}
+              items={robotNoteItems}
+              maxVisibleItems={robotNotePreviewLimit}
+              onPrimaryAction={robotNotes?.onApply}
+              onDismiss={robotNotes?.onDismiss}
+            />
+          )}
 
-          <button
-            type="button"
-            onClick={() => {
-              void runScout();
-            }}
-            disabled={scouting}
-            className="bo-card-surface bo-compact-card flex w-full items-start justify-between gap-3 rounded-[20px] border border-teal-200/70 bg-[linear-gradient(180deg,rgba(244,253,248,0.98),rgba(255,255,255,0.98))] px-3 py-2.5 text-left focus:outline-none focus:ring-4 focus:ring-teal-200 disabled:opacity-60"
-            aria-label={scouting ? 'Scout running' : 'Ask the scout to suggest ideas'}
-            title={
-              lastScoutRunAt
-                ? `Last scout pass ${formatSince(lastScoutRunAt)}. Click to refresh.`
-                : 'Ask the Scout role to suggest adjacent moves.'
-            }
-          >
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex h-2.5 w-2.5 rounded-full ${scouting ? 'bg-teal-500 bo-status-pulse' : 'bg-teal-400'}`} aria-hidden="true" />
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">
-                  Scout role
+          {showReviewPanel && (
+            <section className="bo-card-surface space-y-2.5 rounded-[18px] border border-slate-200/80 p-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Review and actions
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {boardBeatReviewSession?.title ?? 'Facilitator review items'}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {turnLogPendingCount > 0 ? `${turnLogPendingCount} pending` : 'No pending'} · {turnLogKeptCount} kept · {turnLogScratchedCount} scratched
+                  </p>
+                </div>
+              </div>
+
+              {reviewItemPreview.length > 0 ? (
+                <div className="space-y-1.5">
+                  {reviewItemPreview.map(item => (
+                    <article key={item.id} className="rounded-xl border border-slate-200 bg-white/90 p-2 text-xs text-slate-600">
+                      <div className="mb-0.5 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          {item.beat}
+                        </span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] ${reviewStatusTone(item.status)}`}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="leading-5">{compactText(reviewItemLine(item), 72)}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+                  No review items staged.
                 </p>
-              </div>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {scoutHeading}
-              </p>
-              <p className="bo-compact-copy mt-1 text-xs leading-5 text-slate-600">
-                {scoutDetail}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                <span className="rounded-full bg-teal-50 px-2 py-0.5 font-medium text-teal-700">
-                  {scoutStatus}
-                </span>
-                <span>{scoutRoleStatus}</span>
-              </div>
-            </div>
-            <span className="shrink-0 rounded-full border border-teal-200 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-teal-700">
-              {scoutBadge}
-            </span>
-          </button>
+              )}
 
-          <BoardBeatsCard
-            activeBeatRun={activeBeatRun}
-            boardBeatReviewSession={boardBeatReviewSession}
-            boardBeatReviewItems={boardBeatReviewItems}
-            onOpenBoardBeatReview={onOpenBoardBeatReview}
-            onRunClusterBeat={onRunClusterBeat}
-            onRunSummariseBeat={onRunSummariseBeat}
-          />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onRunClusterBeat();
+                  }}
+                  disabled={activeBeatRun !== null}
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-400 disabled:opacity-60"
+                >
+                  Run cluster role
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onRunSummariseBeat();
+                  }}
+                  disabled={activeBeatRun !== null}
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-400 disabled:opacity-60"
+                >
+                  Run synthesis
+                </button>
+              </div>
+            </section>
+          )}
         </div>
 
         {showSoftModeHint && (
@@ -256,27 +273,17 @@ export function AppCompanionRail({
           />
         )}
 
-        <CollaborativeSessionCard session={{
-          ...session,
-          pendingBoardChange,
-          autoRunReady,
-          suggestionCount: suggestions.length,
-        }} />
+        {showSessionCard && (
+          <CollaborativeSessionCard session={{
+            ...session,
+            pendingBoardChange,
+            autoRunReady,
+            suggestionCount: suggestions.length,
+          }} />
+        )}
       </div>
     </div>
   );
-}
-
-function activeRoleLabel(isRunning: boolean): string {
-  return isRunning ? 'Role in progress' : 'Role is queued';
-}
-
-function formatSince(timestamp: number | null): string {
-  if (!timestamp) return 'not yet';
-  const delta = Math.max(0, Date.now() - timestamp);
-  if (delta < 60_000) return `${Math.round(delta / 1000)}s ago`;
-  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
-  return `${Math.round(delta / 3_600_000)}h ago`;
 }
 
 function compactText(value: string, maxLength: number): string {
@@ -313,5 +320,34 @@ function stagedInsightPrimaryLabel(kind: FacilitatorStagedInsight['kind']): stri
     case 'generic':
     default:
       return 'Keep';
+  }
+}
+
+function reviewItemLine(item: BeatReviewItemRecord): string {
+  if (item.candidate.kind === 'idea_spawn') {
+    return compactText(item.candidate.summary, 74);
+  }
+
+  if (item.candidate.kind === 'idea_insight') {
+    return compactText(item.candidate.summary, 74);
+  }
+
+  if (item.candidate.kind === 'cluster_hint') {
+    return compactText(`${item.candidate.label}: ${item.candidate.summary}`, 74);
+  }
+
+  return 'Review candidate item';
+}
+
+function reviewStatusTone(status: BeatReviewItemRecord['status']): string {
+  switch (status) {
+    case 'pending':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'kept':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'scratched':
+      return 'border-slate-200 bg-slate-100 text-slate-600';
+    default:
+      return 'border-slate-200 bg-slate-100 text-slate-600';
   }
 }

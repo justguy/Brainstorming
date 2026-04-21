@@ -17,14 +17,7 @@ export function BoardRulesRibbon({
   const [error, setError] = useState<string | null>(null);
 
   if (!idea) {
-    return (
-      <div className="bo-rules-ribbon">
-        <div className="bo-rules-ribbon__header">
-          <p className="bo-shell-eyebrow">Rules</p>
-          <span className="bo-rules-ribbon__meta">Select a note</span>
-        </div>
-      </div>
-    );
+    return <></>;
   }
 
   const currentIdea = idea;
@@ -50,16 +43,17 @@ export function BoardRulesRibbon({
   }
 
   return (
-    <div className="bo-rules-ribbon">
-      <div className="bo-rules-ribbon__header">
-        <p className="bo-shell-eyebrow">Rules</p>
+    <div className="rounded-xl border border-slate-200 bg-white/70 px-2 py-2 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+          Rules
+        </p>
         <div className="flex items-center gap-2">
-          <span className="bo-rules-ribbon__meta">Lifecycle-backed</span>
           {onOpenInspector && (
             <button
               type="button"
               onClick={onOpenInspector}
-              className="bo-shell-action"
+              className="rounded-full border border-slate-200 px-2 py-1 text-[10px] text-slate-600"
             >
               Edit
             </button>
@@ -68,21 +62,21 @@ export function BoardRulesRibbon({
       </div>
 
       {rules.length === 0 ? (
-        <p className="mt-2 text-sm text-[color:var(--bo-paper-ink-soft)]">
+        <p className="mt-1 text-xs text-slate-500">
           No must-stay-true rules yet for this note.
         </p>
       ) : (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {visibleRules.map((rule, index) => (
-            <span key={`${currentIdea.id}-rule-${index}`} className="bo-rule-chip">
-              <span className="truncate">{rule}</span>
+            <span key={`${currentIdea.id}-rule-${index}`} className="flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-900">
+              <span className="max-w-[14rem] truncate">{rule}</span>
               <button
                 type="button"
                 onClick={() => {
                   void handleRemoveRule(index);
                 }}
                 disabled={pendingRuleIndex !== null}
-                className="bo-rule-chip__remove"
+                className="rounded-full px-1 text-[10px] text-emerald-700 transition hover:text-rose-700 disabled:opacity-50"
                 aria-label={`Remove rule ${index + 1}`}
                 title="Remove rule"
               >
@@ -91,13 +85,13 @@ export function BoardRulesRibbon({
             </span>
           ))}
           {overflowCount > 0 && (
-            <span className="bo-rules-ribbon__meta">+{overflowCount} more</span>
+            <span className="text-[10px] text-slate-500">+{overflowCount} more</span>
           )}
         </div>
       )}
 
       {error && (
-        <p className="mt-2 text-xs text-rose-700" role="alert">
+        <p className="mt-1 text-[11px] text-rose-700" role="alert">
           {error}
         </p>
       )}

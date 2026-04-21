@@ -375,13 +375,14 @@ const exportHandoffTool: ModelContextTool = {
 const getCanvasTool: ModelContextTool = {
   name: 'get_canvas',
   description:
-    'Returns the current state of the idea canvas: visible ideas with their panel positions + groupIds, and all groups with their themes. ' +
-    'Use this to understand how ideas are arranged spatially before calling move_panel, group_ideas, or merge_ideas.',
+    'Returns the current state of the board canvas: visible ideas, pending scout suggestions, and groups with their spatial metadata. ' +
+    'Use this before calling move_panel, move_suggestion, group_ideas, or merge_ideas.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: true },
   execute: async () => {
-    const [ideas, groups] = await Promise.all([listIdeas(), listGroups()]);
+    const [ideas, groups, suggestions] = await Promise.all([listIdeas(), listGroups(), listAllSuggestions()]);
     const visible = ideas.filter(i => i.status !== 'archived');
+    const pendingSuggestions = suggestions.filter(suggestion => suggestion.status === 'pending');
     return {
       ideas: visible.map(i => ({
         id: i.id,
@@ -391,6 +392,15 @@ const getCanvasTool: ModelContextTool = {
         groupId: i.panel?.groupId,
         readiness: i.readiness,
         phase: i.phase,
+      })),
+      suggestions: pendingSuggestions.map(suggestion => ({
+        id: suggestion.id,
+        rawText: suggestion.rawText.slice(0, 160),
+        x: suggestion.panel?.x ?? 0,
+        y: suggestion.panel?.y ?? 0,
+        width: suggestion.panel?.width ?? 248,
+        height: suggestion.panel?.height ?? 172,
+        status: suggestion.status,
       })),
       groups: groups.map((g: IdeaGroup) => ({
         id: g.id,
@@ -406,7 +416,7 @@ const getBoardTool: ModelContextTool = {
   name: 'get_board',
   description:
     'Returns the current durable board document: board metadata, ideas, groups, supporting docs, suggestions, critiques, connections, role runs, tweaks, and undo/redo history state. ' +
-    'Use this as the board-first read surface before invoking board automation routines or mutating board entities.',
+    'Use this as the board-first read surface before invoking board automation routines or mutating board entities. Suggestions and ideas include panel geometry when available.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: true },
   execute: async () => {
@@ -443,6 +453,7 @@ const getBoardTool: ModelContextTool = {
         rationale: suggestion.rationale,
         source: suggestion.source,
         status: suggestion.status,
+        panel: suggestion.panel,
         relatedIdeaIds: suggestion.relatedIdeaIds ?? [],
         admittedIdeaId: suggestion.admittedIdeaId,
         updatedAt: suggestion.updatedAt,
@@ -488,6 +499,40 @@ const movePanelTool: ModelContextTool = {
       `Moved idea ${ideaId} to (${x}, ${y}).`,
     );
     return `Panel for idea "${ideaId}" moved to (${x}, ${y}).`;
+  },
+};
+
+const moveSuggestionTool: ModelContextTool = {
+  name: 'move_suggestion',
+  description:
+    'Moves a pending scout suggestion card to a new position on the canvas. Pure positional move for the suggestion card only. ' +
+    'Coordinates are canvas pixels from the top-left, matching get_canvas/get_board panel geometry.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      suggestionId: { type: 'string', minLength: 1 },
+      x: { type: 'number', minimum: 0 },
+      y: { type: 'number', minimum: 0 },
+    },
+    required: ['suggestionId', 'x', 'y'],
+  },
+  annotations: { readOnlyHint: false },
+  execute: async (input) => {
+    const { suggestionId, x, y } = input as { suggestionId: string; x: number; y: number };
+    if (!suggestionId || typeof x !== 'number' || typeof y !== 'number') {
+      return 'ERROR: `suggestionId`, `x`, and `y` are required.';
+    }
+    const suggestion = await getSuggestion(suggestionId);
+    if (!suggestion) return `ERROR: no suggestion with id ${suggestionId}.`;
+    if (suggestion.status !== 'pending') {
+      return `ERROR: suggestion "${suggestionId}" is not pending (status=${suggestion.status}).`;
+    }
+    const detail = await dispatchAndWaitForDetail<{ ok?: boolean; error?: string }>(
+      'brainstorm:moveSuggestion',
+      { suggestionId, x, y },
+    );
+    if (detail.error) return `ERROR: ${detail.error}`;
+    return `Suggestion "${suggestionId}" moved to (${x}, ${y}).`;
   },
 };
 
@@ -669,8 +714,7 @@ const scoutIdeasTool: ModelContextTool = {
   description:
     'Runs the outside-knowledge scout over the full board (live + discarded ideas + ready docs). The scout ' +
     'proposes up to 6 novel suggestions — drawn from analogies, adjacent fields, contrarian readings, or user docs. ' +
-    'New suggestions appear on the canvas as dashed teal ghost panels. The user (or another tool) can then admit, ' +
-    'elaborate, or dismiss each one.',
+    'New suggestions appear on the canvas as dashed scout cards with persisted panel positions. The user (or another tool) can then move, admit, elaborate, or dismiss each one.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: false },
   execute: async () => {
@@ -741,7 +785,7 @@ const listSuggestionsTool: ModelContextTool = {
   name: 'list_suggestions',
   description:
     'Returns scout suggestions filtered by status (default: pending). Pending suggestions live on the canvas ' +
-    'as ghost panels awaiting user judgement; admitted ones link to a real Idea id; dismissed ones stay indexed ' +
+    'as movable scout cards awaiting user judgement; admitted ones link to a real Idea id; dismissed ones stay indexed ' +
     'so the scout can avoid re-proposing them.',
   inputSchema: {
     type: 'object',
@@ -769,9 +813,11 @@ const listSuggestionsTool: ModelContextTool = {
         status: s.status,
         relatedIdeaIds: s.relatedIdeaIds ?? [],
         sourceIdeaIds: s.sourceIdeaIds ?? [],
+        panel: s.panel,
         elaboration: s.elaboration,
         admittedIdeaId: s.admittedIdeaId,
         createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
       })),
     };
   },
@@ -2080,6 +2126,7 @@ const GLOBAL_BOARD_TOOLS: ModelContextTool[] = [
   getCanvasTool,
   getBoardTool,
   movePanelTool,
+  moveSuggestionTool,
   groupIdeasTool,
   ungroupIdeaTool,
   mergeIdeasTool,

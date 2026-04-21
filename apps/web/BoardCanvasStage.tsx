@@ -16,6 +16,7 @@ export interface BoardCanvasStageProps extends Omit<CanvasProps, 'overlayContent
   hoverIdeaId?: string | null;
   editingIdeaId?: string | null;
   animatedCritiqueIds?: string[];
+  onAcceptCritique?: CritiqueCardsLayerProps['onAccept'];
   onDismissCritique?: CritiqueCardsLayerProps['onDismiss'];
 }
 
@@ -36,6 +37,7 @@ export function BoardCanvasStage({
   editingIdeaId = null,
   animatedCritiqueIds = [],
   suppressAnimations = false,
+  onAcceptCritique,
   onDismissCritique,
   ideas,
   ...canvasProps
@@ -43,8 +45,8 @@ export function BoardCanvasStage({
   const busyIdeaIds = getBusyIdeaIds(critiqueBusyByIdea);
 
   return (
-    <div className="relative flex flex-1 overflow-hidden">
-      <main className="flex-1 overflow-hidden" aria-label="Canvas">
+    <div className="relative h-full w-full overflow-hidden">
+      <main className="h-full w-full overflow-hidden" aria-label="Canvas">
         <Canvas
           {...canvasProps}
           ideas={ideas}
@@ -59,6 +61,7 @@ export function BoardCanvasStage({
               editingIdeaId={editingIdeaId}
               animatedCritiqueIds={animatedCritiqueIds}
               suppressAnimations={suppressAnimations}
+              onAccept={onAcceptCritique}
               onDismiss={onDismissCritique}
             />
           }

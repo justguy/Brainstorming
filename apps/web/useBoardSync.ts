@@ -9,11 +9,7 @@ import { DEFAULT_BOARD_ID, DEFAULT_BOARD_TITLE } from '../../src/board/types';
 import type { Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion, Connection } from '../../src/types';
 import { getSettings } from '../../src/storage/settings';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
-import {
-  docFactExtractor,
-  buildDocFactExtractorTask,
-  type DocFactExtractorOutput,
-} from '../../src/orchestrator/roles/docFactExtractor';
+import { docFactExtractor, buildDocFactExtractorTask, type DocFactExtractorOutput } from '../../src/orchestrator/roles/docFactExtractor';
 import { createBoardController } from '../../src/storage/boardController';
 import type {
   BoardBeatReviewItemCommitResult,
@@ -23,11 +19,8 @@ import type {
   BoardHistoryState,
 } from '../../src/storage/boardControllerTypes';
 import type { ChangeSetRecord } from '../../src/board/types';
-import {
-  defaultBoardRepository,
-  mapStandaloneBoardSnapshot,
-  type StandaloneBoardSnapshot,
-} from './boardRepository';
+import { defaultBoardRepository, mapStandaloneBoardSnapshot, type StandaloneBoardSnapshot } from './boardRepository';
+import { seedDemoBoard, shouldSeedDemoBoard } from './demoBoardSeed';
 import { reconcileDisplayGroups } from './reconcileDisplayGroups';
 
 type SupportingDocMutationController = {
@@ -92,10 +85,7 @@ export function useBoardSync() {
     setDocCounts(snapshot.docCounts);
   }
 
-  function applyCommittedBoard(
-    document: Awaited<ReturnType<typeof boardRepository.loadDocument>>,
-    history: BoardHistoryState,
-  ): void {
+  function applyCommittedBoard(document: Awaited<ReturnType<typeof boardRepository.loadDocument>>, history: BoardHistoryState): void {
     applyBoardSnapshot(mapStandaloneBoardSnapshot(document));
     setHistoryState(history);
     setSelectedId(prev => (prev && document.ideas.some(idea => idea.id === prev) ? prev : null));
@@ -189,15 +179,23 @@ export function useBoardSync() {
 
   async function loadBoard(): Promise<void> {
     try {
-      const [snapshot, nextHistory, nextChangeSets] = await Promise.all([
+      let [snapshot, nextHistory, nextChangeSets] = await Promise.all([
         boardRepository.loadSnapshot(),
         boardController.getHistoryState(),
         boardController.listChangeSets(50),
       ]);
+      const seededIdeaId = shouldSeedDemoBoard(snapshot) ? await seedDemoBoard(boardController) : null;
+      if (seededIdeaId) {
+        [snapshot, nextHistory, nextChangeSets] = await Promise.all([
+          boardRepository.loadSnapshot(),
+          boardController.getHistoryState(),
+          boardController.listChangeSets(50),
+        ]);
+      }
       applyBoardSnapshot(snapshot);
       setHistoryState(nextHistory);
       setChangeSets(nextChangeSets);
-      setSelectedId(prev => (prev && snapshot.ideas.some(idea => idea.id === prev) ? prev : null));
+      setSelectedId(prev => (prev && snapshot.ideas.some(idea => idea.id === prev) ? prev : seededIdeaId ?? null));
     } catch {
       // non-fatal
     }

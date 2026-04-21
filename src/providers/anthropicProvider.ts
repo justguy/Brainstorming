@@ -101,6 +101,16 @@ export const anthropicProvider: BaseProvider = {
         }
       : undefined;
 
+    if (!raw.trim() && parsedJson === undefined) {
+      const stopReason = typeof data?.stop_reason === 'string' ? data.stop_reason : 'unknown';
+      const contentTypes = Array.isArray(content)
+        ? content.map(block => block.type).filter((type): type is string => typeof type === 'string')
+        : [];
+      throw new Error(
+        `Anthropic API returned no usable content (stop_reason=${stopReason}, content_types=${contentTypes.join(',') || 'none'}).`,
+      );
+    }
+
     return { raw, parsedJson, usage };
   },
 };

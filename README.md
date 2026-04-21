@@ -20,8 +20,8 @@ This system is different:
 
 - AI acts on the workspace, not outside it
 - draws connections between ideas
-- drops critique cards onto specific panels
-- proposes new ideas as candidate ideas
+- attaches critique cards to specific panels and tucks them behind the host card until expanded
+- proposes new ideas as draggable scout cards on the canvas
 - groups and reshapes the board
 - AI is bounded and controllable
 - operates through explicit tools (`WebMCP`)
@@ -46,8 +46,8 @@ Shipped. This is the primary surface and runs at `http://localhost:6611`.
 - Free-form canvas: drag, group, merge, discard, restore
 - Supporting-doc extraction with facts injected into reasoning
 - Connection finder plus on-canvas connection overlay
-- Candidate ideas from outside-knowledge scouting
-- Critique cards for devil's-advocate challenges
+- Candidate ideas from outside-knowledge scouting, including draggable scout cards
+- Attached critique cards for devil's-advocate challenges with inline accept/dismiss
 - Signal control for bounded suggestions, critiques, and connections
 - Local autonomous facilitator with idle-gated automation
 - AI-tagged history and undo/redo support
@@ -80,7 +80,7 @@ Instead of this:
 You get this:
 
 - you add an idea to the board
-- AI proposes 2 alternative approaches as candidate ideas
+- AI proposes 2 alternative approaches as scout cards on the canvas
 - AI draws a connection between overlapping ideas
 - AI drops a critique:
   `This breaks with large files — you're assuming memory fits`
@@ -96,9 +96,11 @@ The AI does not decide what to do loosely.
 It operates through explicit actions like:
 
 - `capture_idea`
+- `get_board`
 - `draw_connection`
 - `critique_idea`
 - `scout_ideas`
+- `move_suggestion`
 - `discard_idea` / `restore_idea`
 - `advance_phase`
 

@@ -23,7 +23,6 @@ import { useBeatReviewActions } from './useBeatReviewActions';
 import { BeatReviewPanel } from './BeatReviewPanel';
 import { BoardHistoryPanel } from './BoardHistoryPanel';
 import { BoardBeadStrip } from './BoardBeadStrip';
-import { BoardRulesRibbon } from './BoardRulesRibbon';
 import { createBoardHistoryEntries } from './historyTimeline';
 import { IdeaDocsPanel } from './IdeaDocsPanel';
 import { IdeaTurnLogPanel } from './IdeaTurnLogPanel';
@@ -31,6 +30,12 @@ import { PeerPresenceStrip } from './PeerPresenceStrip';
 import { runManualBoardBeat, selectBoardBeatReviewSurface } from './boardBeatReviewSurface';
 import { useBoardTheme } from './useBoardTheme';
 import { useFacilitatorSync } from './useFacilitatorSync';
+import {
+  DEMO_FALLBACK_CONNECTIONS,
+  DEMO_FALLBACK_CRITIQUES,
+  DEMO_FALLBACK_IDEAS,
+  DEMO_FALLBACK_SUGGESTIONS,
+} from './demoBoardFallback';
 import { findLatestSafeAiUndoTarget } from '../../src/storage/boardAiUndo';
 import DiscardPile from '../../src/canvas/DiscardPile';
 
@@ -114,6 +119,8 @@ export default function App(): React.ReactElement {
   const [turnLogOpen, setTurnLogOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
+  const [dismissedDemoSuggestionIds, setDismissedDemoSuggestionIds] = useState<string[]>([]);
+  const [dismissedDemoCritiqueIds, setDismissedDemoCritiqueIds] = useState<string[]>([]);
   const lastSharedBoardMutationIdRef = useRef<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
@@ -121,10 +128,16 @@ export default function App(): React.ReactElement {
 
   const visibleIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
   const discardedIdeas = ideas.filter(i => i.status === 'discarded');
-  const selectedBoardIdea = ideas.find(i => i.id === selectedId) ?? null;
+  const usingDemoBoard = visibleIdeas.length === 0 && connections.length === 0 && critiques.length === 0 && suggestions.length === 0;
+  const demoSuggestions = DEMO_FALLBACK_SUGGESTIONS.filter(suggestion => !dismissedDemoSuggestionIds.includes(suggestion.id));
+  const demoCritiques = DEMO_FALLBACK_CRITIQUES.filter(critique => !dismissedDemoCritiqueIds.includes(critique.id));
+  const canvasIdeas = usingDemoBoard ? DEMO_FALLBACK_IDEAS : visibleIdeas;
+  const canvasConnections = usingDemoBoard ? DEMO_FALLBACK_CONNECTIONS : connections;
+  const selectedBoardIdea = usingDemoBoard ? null : ideas.find(i => i.id === selectedId) ?? null;
   const selectedLegacyToolIdea = createLegacyToolIdea(selectedBoardIdea);
   const activeCritiques = critiques.filter(critique => critique.status === 'active');
   const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
+  const boardSubtitle = `${canvasIdeas.length} ideas \u00b7 ${canvasConnections.length} connections`;
 
   useEffect(() => {
     if (!captureFeedback) return undefined;
@@ -149,12 +162,23 @@ export default function App(): React.ReactElement {
     return () => window.clearTimeout(timeout);
   }, [captureHighlightIds]);
 
+  useEffect(() => {
+    if (!usingDemoBoard) return;
+    const canvas = getCanvasElement();
+    if (!canvas) return;
+    canvas.scrollTo({ left: 0, top: 0, behavior: 'auto' });
+  }, [usingDemoBoard]);
+
   useBrainstormingTools(selectedLegacyToolIdea);
 
   const { handleCapture, handleDiscard, handleRestore, handleUndo, handleRedo } = useBoardSessionActions({
-    ideas: visibleIdeas, newIdeaText, newIdeaTags, boardController, applyCommittedBoard, setCreating, setSelectedId,
+    ideas: visibleIdeas, newIdeaText, newIdeaTags, boardController, applyCommittedBoard, setCreating,
     setNewIdeaText, setNewIdeaTags, markActivity, onCaptureFeedback: setCaptureFeedback,
     onCaptureCommitted: capture => {
+      setSelectedId(null);
+      setInspectorOpen(false);
+      setTurnLogOpen(false);
+      setDocsIdeaId(null);
       setLatestCapture(capture);
       setCaptureReveal({ ...capture, attempts: 0 });
     },
@@ -178,7 +202,7 @@ export default function App(): React.ReactElement {
   const {
     scouting, lastScoutRunAt, suggestionBusy, animatedSuggestionIds, suggestionsExpanded,
     visibleCanvasSuggestions, suggestionOverflowCount, runScout, runCrossPollinate, handleAdmitSuggestion,
-    handleElaborateSuggestion, handleDismissSuggestion, expandSuggestions, collapseSuggestions,
+    handleElaborateSuggestion, handleDismissSuggestion, handleMoveSuggestion, expandSuggestions, collapseSuggestions,
   } = useBoardSuggestionActions({
     boardId,
     ideas,
@@ -217,6 +241,7 @@ export default function App(): React.ReactElement {
   useBrainstormSuggestionEvents({
     boardId, boardTitle, ideas, groups, connections, suggestions, runConnectionFinder, runCritiqueIdea, runScout, runCrossPollinate, runBoardBeat,
     presentBeatReview,
+    handleMoveSuggestion,
     handleAdmitSuggestion, handleElaborateSuggestion, handleDismissSuggestion,
   });
   useBrainstormWorkspaceEvents({
@@ -284,6 +309,8 @@ export default function App(): React.ReactElement {
   const editingIdeaId = textEntryActive ? selectedId : null;
   const suppressRevealAnimations = dragActive || textEntryActive;
   const highlightedIdeaIds = [...new Set([...highlightIds, ...captureHighlightIds])];
+  const canvasSuggestions = usingDemoBoard ? demoSuggestions : visibleCanvasSuggestions;
+  const canvasCritiques = usingDemoBoard ? demoCritiques : critiques;
   const openOptions = () => navigate('#/options');
   const openCaptureComposer = () => {
     setCaptureFeedback(null);
@@ -313,7 +340,6 @@ export default function App(): React.ReactElement {
     if (!canvas || !panel) return false;
 
     centerPanelOnCanvas(canvas, panel);
-    setSelectedId(ideaId);
     setCaptureHighlightIds([ideaId]);
     return isPanelVisible(canvas, panel);
   };
@@ -506,6 +532,7 @@ export default function App(): React.ReactElement {
       header={{
         advancingFromTool,
         boardTheme,
+        boardSubtitle,
         captureActionLabel: latestCapture ? (captureReveal ? 'Centering…' : 'Show note') : null,
         canvasBusy,
         captureFeedback,
@@ -549,19 +576,13 @@ export default function App(): React.ReactElement {
       }}
       showApiKeyBanner={hasApiKey === false}
       onOpenOptions={openOptions}
-      beadStrip={(
+      beadStrip={selectedBoardIdea ? (
         <BoardBeadStrip
           idea={selectedBoardIdea}
-          onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
+          onOpenInspector={() => setInspectorOpen(true)}
         />
-      )}
-      rulesRibbon={(
-        <BoardRulesRibbon
-          idea={selectedBoardIdea}
-          onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
-        />
-      )}
-      discardPile={(
+      ) : null}
+      discardPile={discardedIdeas.length > 0 ? (
         <DiscardPile
           ideas={discardedIdeas}
           onRestore={handleRestore}
@@ -570,7 +591,7 @@ export default function App(): React.ReactElement {
             setInspectorOpen(true);
           }}
         />
-      )}
+      ) : null}
       turnLogPanel={turnLogOpen && selectedBoardIdea ? (
         <IdeaTurnLogPanel
           idea={selectedBoardIdea}
@@ -580,13 +601,13 @@ export default function App(): React.ReactElement {
           onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
         />
       ) : null}
-      peerStrip={(
+      peerStrip={facilitatorSync.peers.length > 0 ? (
         <PeerPresenceStrip
           hostClientId={facilitatorSync.hostClientId}
           localClientId={facilitatorSync.localClientId}
           peers={facilitatorSync.peers}
         />
-      )}
+      ) : null}
       historyPanel={historyOpen ? (
         <BoardHistoryPanel
           entries={historyEntries}
@@ -614,7 +635,7 @@ export default function App(): React.ReactElement {
         hasApiKey, facilitatorPaused, activeBeatRun, softModeAssessment, interactionSuppressed, idleMs,
         autoIdleMs: AUTO_IDLE_MS, lastAiAction, lastScoutRunAt, lastConnectionsRunAt, companionActionLabel,
         softModeBusy, lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
-        showSoftModeHint, ideas: visibleIdeas, connections, findingConnections, scouting, suggestions, handleSoftModeAction, toggleFacilitatorPause,
+        showSoftModeHint, ideas: canvasIdeas, connections: canvasConnections, findingConnections, scouting, suggestions: canvasSuggestions, handleSoftModeAction, toggleFacilitatorPause,
         undoRobotLabel: aiUndoTarget?.tooltip,
         runConnectionFinder: () => {
           facilitatorSync.recordRecoverySignal('Direct connection request from the dock.');
@@ -625,6 +646,13 @@ export default function App(): React.ReactElement {
           void runScout();
         },
         dismissHint,
+        onOpenTurnLog: selectedBoardIdea
+          ? () => {
+            setDocsIdeaId(null);
+            setTurnLogOpen(true);
+          }
+          : undefined,
+        turnLogCount: selectedBoardIdea?.turnLog.length ?? 0,
         onUndoRobot: aiUndoTarget
           ? () => {
             void boardController.undoAiChange({
@@ -665,21 +693,40 @@ export default function App(): React.ReactElement {
         },
       }}
       canvasStage={{
-        ideas: visibleIdeas, groups, connections, critiques, critiqueBusyByIdea, critiqueFocusIdeaId, hoverIdeaId, editingIdeaId,
+        ideas: canvasIdeas, groups, connections: canvasConnections, critiques: canvasCritiques, critiqueBusyByIdea, critiqueFocusIdeaId, hoverIdeaId, editingIdeaId,
         animatedConnectionIds, animatedCritiqueIds, animatedSuggestionIds, suppressAnimations: suppressRevealAnimations, docCounts, highlightIds: highlightedIdeaIds,
-        suggestions: visibleCanvasSuggestions,
+        suggestions: canvasSuggestions,
         suggestionOverflowCount, suggestionsExpanded, suggestionBusy,
-        onDismissCritique: handleDismissCritique,
+        onDismissCritique: usingDemoBoard
+          ? critiqueId => setDismissedDemoCritiqueIds(current => (current.includes(critiqueId) ? current : [...current, critiqueId]))
+          : handleDismissCritique,
+        onAcceptCritique: usingDemoBoard
+          ? (() => {})
+          : critiqueId => {
+            facilitatorSync.setAiActionOutcomeForEntity(critiqueId, 'accepted');
+            facilitatorSync.recordRecoverySignal(`Critique ${critiqueId} was accepted.`);
+          },
         onConnectionClick: handleHighlight, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
         linkModeEnabled,
         onOpen: id => {
+          if (usingDemoBoard) return;
           setInspectorOpen(false);
           setSelectedId(id);
         },
         onOpenDocs: openDocsPanel,
-        onGroup: handleGroup, onUngroup: handleUngroup, onMerge: handleMerge, onDiscard: handleDiscard, onCreateConnection: createManualConnection, onAdmitSuggestion: handleAdmitSuggestion,
-        onElaborateSuggestion: handleElaborateSuggestion,
-        onDismissSuggestion: handleDismissSuggestion,
+        onGroup: usingDemoBoard ? (() => {}) : handleGroup,
+        onUngroup: usingDemoBoard ? (() => {}) : handleUngroup,
+        onMerge: usingDemoBoard ? (() => {}) : handleMerge,
+        onDiscard: usingDemoBoard ? undefined : handleDiscard,
+        onCreateConnection: usingDemoBoard ? undefined : createManualConnection,
+        onAdmitSuggestion: usingDemoBoard
+          ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+          : handleAdmitSuggestion,
+        onElaborateSuggestion: usingDemoBoard ? (() => {}) : handleElaborateSuggestion,
+        onDismissSuggestion: usingDemoBoard
+          ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+          : handleDismissSuggestion,
+        onMoveSuggestion: usingDemoBoard ? (() => {}) : handleMoveSuggestion,
         onExpandSuggestions: expandSuggestions, onCollapseSuggestions: collapseSuggestions,
       }}
       workspaceOverlays={{

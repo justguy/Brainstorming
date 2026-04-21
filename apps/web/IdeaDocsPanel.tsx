@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { ChangeActor } from '../../src/board/types';
 import { listDocsForIdea } from '../../src/storage/docs';
 import type { BoardId, Idea, SupportingDoc } from '../../src/types';
@@ -40,6 +40,11 @@ export function IdeaDocsPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ideaId = idea?.id ?? null;
+  const onDocsChangedRef = useRef(onDocsChanged);
+
+  useEffect(() => {
+    onDocsChangedRef.current = onDocsChanged;
+  }, [onDocsChanged]);
 
   useEffect(() => {
     const currentIdeaId = ideaId;
@@ -53,7 +58,7 @@ export function IdeaDocsPanel({
         const nextDocs = await listDocsForIdea(stableIdeaId, boardId);
         if (!active) return;
         setDocs(nextDocs);
-        onDocsChanged?.(stableIdeaId, nextDocs.length);
+        onDocsChangedRef.current?.(stableIdeaId, nextDocs.length);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Failed to load docs.');
@@ -69,7 +74,7 @@ export function IdeaDocsPanel({
     return () => {
       active = false;
     };
-  }, [boardId, ideaId, onDocsChanged, open]);
+  }, [boardId, ideaId, open]);
 
   if (!open || !idea) return null;
 
@@ -78,7 +83,7 @@ export function IdeaDocsPanel({
   async function reloadDocs(): Promise<void> {
     const nextDocs = await listDocsForIdea(currentIdea.id, boardId);
     setDocs(nextDocs);
-    onDocsChanged?.(currentIdea.id, nextDocs.length);
+    onDocsChangedRef.current?.(currentIdea.id, nextDocs.length);
   }
 
   async function handleSave(): Promise<void> {

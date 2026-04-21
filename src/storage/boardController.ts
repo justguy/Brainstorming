@@ -26,6 +26,7 @@ import {
   commitCreateCritique,
   commitCreateSuggestion,
   commitElaborateSuggestion,
+  commitMoveSuggestion,
 } from './boardGeneratedMutations';
 import { undoAiChange } from './boardAiUndo';
 
@@ -120,6 +121,13 @@ export function createBoardController(boardId: BoardId) {
       automationKey?: string;
     }) {
       return commitCreateSuggestion(boardId, input);
+    },
+    moveSuggestion(input: {
+      suggestionId: string;
+      panel: NonNullable<import('../types').ScoutSuggestion['panel']>;
+      actor: ChangeActor;
+    }) {
+      return commitMoveSuggestion(boardId, input);
     },
     elaborateSuggestion(input: { suggestionId: string; elaboration: string; actor: ChangeActor }) {
       return commitElaborateSuggestion(boardId, input);

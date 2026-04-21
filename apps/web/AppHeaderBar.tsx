@@ -17,6 +17,7 @@ export interface AppHeaderBarProps {
   advancingFromTool: boolean;
   boardTheme: BoardThemeMode;
   boardTitle?: string;
+  boardSubtitle?: string;
   captureActionLabel?: string | null;
   canvasBusy: string | null;
   captureFeedback: AppHeaderBarCaptureFeedback | null;
@@ -38,6 +39,7 @@ export interface AppHeaderBarProps {
 export function AppHeaderBar({
   advancingFromTool,
   boardTheme,
+  boardSubtitle,
   captureActionLabel,
   canvasBusy,
   captureFeedback,
@@ -54,50 +56,68 @@ export function AppHeaderBar({
   onToggleHistory,
   onSetBoardTheme,
   onOpenOptions,
-  boardTitle = 'Brainstorm Canvas',
+  boardTitle = 'AI decision tool',
 }: AppHeaderBarProps): React.ReactElement {
-  const webMcpAvailable = typeof window !== 'undefined' && Boolean(window.navigator.modelContext);
+  const normalizedTitle = boardTitle.trim();
+  const visibleBoardTitle = !normalizedTitle || normalizedTitle === 'Main Board'
+    ? 'AI decision tool'
+    : normalizedTitle;
+  const visibleBoardSubtitle = boardSubtitle?.trim() || `${boardTheme} mode`;
+  const nextTheme = boardTheme === 'whiteboard' ? 'sketch' : 'whiteboard';
   const totalChanges = Math.max(0, historyState.nextSeq - 1);
-  const visibleBoardTitle = boardTitle.trim() || 'Brainstorm Canvas';
+  const statusTone = captureFeedback?.tone
+    ?? (canvasBusy ? 'success' : null)
+    ?? (advancingFromTool ? 'success' : null);
+  const statusMessage = captureFeedback?.message
+    ?? canvasBusy
+    ?? (advancingFromTool ? 'Agent driving the board' : null);
 
   return (
     <header className="bo-topbar">
       <div className="bo-topbar-left">
-        <span className="bo-board-title-chip" title={visibleBoardTitle}>
-          {visibleBoardTitle}
-        </span>
-        <span className="bo-mini-chip">Board shell</span>
-
-        {advancingFromTool && (
-          <span className="bo-mini-chip bo-mini-chip-warning">
-            Agent driving
+        <div className="bo-brand-pill">
+          <span className="bo-brand-lamp" aria-hidden="true">
+            <BrandLampIcon />
           </span>
-        )}
-        {canvasBusy && (
-          <span className="bo-mini-chip bo-mini-chip-muted">
-            {canvasBusy}
+          <span className="bo-brand-copy">
+            <span className="bo-brand-title">Brainstorm</span>
+            <span className="bo-brand-subtitle">A thinking partner</span>
           </span>
-        )}
-        <span className={`bo-mini-chip ${webMcpAvailable ? 'bo-mini-chip-success' : 'bo-mini-chip-muted'}`}>
-          {webMcpAvailable ? 'WebMCP active' : 'WebMCP unavailable'}
-        </span>
+        </div>
 
-        {captureFeedback && (
-          <div
-            className={`rounded-full border px-3 py-1 text-xs ${
-              captureFeedback.tone === 'success'
-                ? 'bo-mini-chip-success'
-                : 'bo-mini-chip-error'
-            }`}
-            role="status"
+        <div className="bo-topbar-util-group">
+          <button
+            type="button"
+            onClick={onToggleHistory}
+            className={`bo-topbar-icon-button ${historyOpen ? 'is-active' : ''}`}
+            title={totalChanges > 0 ? `Board history (${historyState.cursor}/${totalChanges})` : 'Board history'}
+            aria-label="Open board history"
           >
-            <span>{captureFeedback.message}</span>
+            <ClockIcon />
+          </button>
+          <button
+            type="button"
+            onClick={onOpenOptions}
+            className="bo-topbar-icon-button"
+            title="Open options"
+            aria-label="Open options"
+          >
+            <GearIcon />
+          </button>
+        </div>
+      </div>
+
+      <div className="bo-topbar-center">
+        <div className="bo-title-plaque" title={visibleBoardTitle}>
+          <span className="bo-title-main">{visibleBoardTitle}</span>
+          <span className="bo-title-subtitle">{visibleBoardSubtitle}</span>
+        </div>
+
+        {statusMessage && (
+          <div className={`bo-topbar-status ${statusTone === 'error' ? 'is-error' : 'is-success'}`} role="status">
+            <span>{statusMessage}</span>
             {captureActionLabel && onCaptureAction && (
-              <button
-                type="button"
-                onClick={onCaptureAction}
-                className="ml-2 rounded-full bg-black/8 px-2 py-0.5 font-semibold"
-              >
+              <button type="button" onClick={onCaptureAction} className="bo-topbar-status-action">
                 {captureActionLabel}
               </button>
             )}
@@ -106,82 +126,131 @@ export function AppHeaderBar({
       </div>
 
       <div className="bo-topbar-right">
-        <button
-          type="button"
-          onClick={onOpenCapture}
-          aria-pressed={captureOpen}
-          data-capture-anchor="bo-capture-portal-anchor"
-          className="bo-topbar-primary-action"
-        >
-          {creating ? 'Adding...' : 'New note'}
-        </button>
+        <div className="bo-topbar-util-group">
+          <button
+            type="button"
+            onClick={onOpenCapture}
+            aria-pressed={captureOpen}
+            data-capture-anchor="bo-capture-portal-anchor"
+            className="bo-topbar-icon-button"
+            title={creating ? 'Adding note' : 'Add note'}
+            aria-label="Add note"
+          >
+            <PlusIcon />
+          </button>
 
-        <div className="bo-theme-toggle" role="group" aria-label="Board theme">
-          {(['whiteboard', 'sketch'] as const).map(theme => (
-            <button
-              key={theme}
-              type="button"
-              onClick={() => {
-                void onSetBoardTheme(theme);
-              }}
-              className="bo-theme-button"
-              data-active={boardTheme === theme}
-              aria-pressed={boardTheme === theme}
-            >
-              {theme}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={onToggleLinkMode}
+            className={`bo-topbar-icon-button ${linkModeEnabled ? 'is-active' : ''}`}
+            aria-pressed={linkModeEnabled}
+            title="Toggle link mode"
+            aria-label="Toggle link mode"
+          >
+            <LinkIcon />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              void onUndo();
+            }}
+            disabled={!historyState.canUndo}
+            className="bo-topbar-icon-button"
+            title="Undo"
+            aria-label="Undo"
+          >
+            <UndoIcon />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              void onRedo();
+            }}
+            disabled={!historyState.canRedo}
+            className="bo-topbar-icon-button"
+            title="Redo"
+            aria-label="Redo"
+          >
+            <RedoIcon />
+          </button>
         </div>
 
         <button
           type="button"
           onClick={() => {
-            void onUndo();
+            void onSetBoardTheme(nextTheme);
           }}
-          disabled={!historyState.canUndo}
-          className="bo-topbar-secondary-action"
+          className="bo-topbar-theme-pill"
+          aria-label={`Switch to ${nextTheme} theme`}
         >
-          Undo
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            void onRedo();
-          }}
-          disabled={!historyState.canRedo}
-          className="bo-topbar-secondary-action"
-        >
-          Redo
-        </button>
-
-        <button
-          type="button"
-          onClick={onToggleLinkMode}
-          className={`bo-topbar-secondary-action ${linkModeEnabled ? 'is-active' : ''}`}
-          aria-pressed={linkModeEnabled}
-          title="Toggle board-surface link mode"
-        >
-          Link mode
-        </button>
-
-        <button
-          type="button"
-          onClick={onToggleHistory}
-          className={`bo-topbar-secondary-action ${historyOpen ? 'is-active' : ''}`}
-          title={totalChanges > 0 ? `Viewing ${historyState.cursor} of ${totalChanges} applied changes.` : 'No durable change history yet.'}
-        >
-          History {totalChanges > 0 ? `(${historyState.cursor}/${totalChanges})` : ''}
-        </button>
-
-        <button
-          type="button"
-          onClick={onOpenOptions}
-          className="bo-topbar-secondary-action"
-        >
-          Options
+          {boardTheme}
         </button>
       </div>
     </header>
+  );
+}
+
+function BrandLampIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M10 2.5a4.6 4.6 0 0 0-2.78 8.26c.48.37.78.91.82 1.51l.03.36h3.86l.03-.36c.05-.6.34-1.14.82-1.5A4.6 4.6 0 0 0 10 2.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.1 14.4h3.8M8.7 16.6h2.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ClockIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="10" cy="10" r="6.7" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M10 6.7v3.5l2.4 1.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function GearIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="m10 3.1.9 1.46 1.69.32 1.1 1.34-.33 1.7 1.04 1.36-1.04 1.37.33 1.7-1.1 1.33-1.69.33L10 16.9l-1.6-1.48-1.69-.33-1.1-1.33.33-1.7L4.9 10.7l1.04-1.36-.33-1.7 1.1-1.34 1.69-.32L10 3.1Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <circle cx="10" cy="10" r="2.1" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+function PlusIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M10 5.1v9.8M5.1 10h9.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LinkIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M7.5 12.5 6.1 14a2.3 2.3 0 1 1-3.25-3.25l2.45-2.46A2.3 2.3 0 0 1 8.56 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="m12.5 7.5 1.39-1.39a2.3 2.3 0 1 1 3.25 3.25l-2.45 2.46A2.3 2.3 0 0 1 11.44 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M7.2 10h5.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UndoIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M8.1 5 4.5 8.6 8.1 12.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.1 8.6h5.3A4.6 4.6 0 0 1 15 13.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RedoIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="m11.9 5 3.6 3.6-3.6 3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14.9 8.6H9.6A4.6 4.6 0 0 0 5 13.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
   );
 }

@@ -27,7 +27,6 @@ interface UseBoardSessionActionsArgs {
   boardController: ReturnType<typeof createBoardController>;
   applyCommittedBoard: (document: BoardDocument, history: BoardHistoryState) => void;
   setCreating: Dispatch<SetStateAction<boolean>>;
-  setSelectedId: Dispatch<SetStateAction<string | null>>;
   setNewIdeaText: Dispatch<SetStateAction<string>>;
   setNewIdeaTags: Dispatch<SetStateAction<string>>;
   markActivity: (kind: 'edit' | 'group' | 'doc') => void;
@@ -153,7 +152,6 @@ export function useBoardSessionActions({
   boardController,
   applyCommittedBoard,
   setCreating,
-  setSelectedId,
   setNewIdeaText,
   setNewIdeaTags,
   markActivity,
@@ -186,7 +184,6 @@ export function useBoardSessionActions({
       });
       const committedPanel = result.idea.panel ?? panel;
       applyCommittedBoard(result.document, result.history);
-      setSelectedId(result.idea.id);
       setNewIdeaText('');
       setNewIdeaTags('');
       markActivity('edit');
@@ -218,7 +215,6 @@ export function useBoardSessionActions({
         actor: { type: 'user', source: 'canvas' },
       });
       applyCommittedBoard(result.document, result.history);
-      setSelectedId(prev => (prev === ideaId ? null : prev));
       markActivity('edit');
     } catch (err) {
       console.error('[App] discard failed:', err);
