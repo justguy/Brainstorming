@@ -5,8 +5,9 @@
  */
 import React, { useState } from 'react';
 import type { Idea, RiskItem, Severity } from '../../types';
-import { updateIdea } from '../../storage/ideas';
+import { createBoardController } from '../../storage/boardController';
 import Button from '../../ui/Button';
+import RiskRegister from '../RiskRegister';
 
 const CHALLENGE_QUESTIONS: { id: string; question: string; hint: string }[] = [
   {
@@ -70,42 +71,105 @@ export default function PremortemQuestions({ idea, onUpdate }: PremortemQuestion
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftRisks, setDraftRisks] = useState<RiskItem[] | null>(null);
 
   function handleChange(id: string, value: string) {
     setAnswers(prev => ({ ...prev, [id]: value }));
   }
 
-  async function handleSubmit() {
+  function buildDraftRisks(): RiskItem[] {
     const filled = CHALLENGE_QUESTIONS.filter(q => answers[q.id].trim().length > 0);
-    if (filled.length === 0) {
-      setError('Answer at least one question before submitting.');
+    const timestamp = Date.now();
+    return filled.map((q, idx) => {
+      const answer = answers[q.id].trim();
+      return {
+        id: crypto.randomUUID(),
+        description: answer,
+        likelihood: severityFromLength(answer),
+        impact: 'medium',
+        sourceQuestionId: q.id,
+        sourceQuestion: q.question,
+        createdAt: timestamp + idx,
+        updatedAt: timestamp + idx,
+      };
+    });
+  }
+
+  function handlePrepare() {
+    const generated = buildDraftRisks();
+    if (generated.length === 0) {
+      setError('Answer at least one question before reviewing.');
       return;
     }
+
+    setError(null);
+    setDraftRisks([...idea.briefState.risks, ...generated]);
+  }
+
+  async function handleSubmit() {
+    if (!draftRisks) return;
 
     setSubmitting(true);
     setError(null);
 
-    const newRisks: RiskItem[] = filled.map(q => ({
-      id: crypto.randomUUID(),
-      description: `[${q.question}] ${answers[q.id].trim()}`,
-      likelihood: severityFromLength(answers[q.id]),
-      impact: 'medium',
-    }));
-
     try {
-      const updated = await updateIdea(idea.id, {
-        briefState: {
-          ...idea.briefState,
-          risks: [...idea.briefState.risks, ...newRisks],
+      const boardController = createBoardController(idea.boardId ?? 'local-board');
+      const committed = await boardController.updateIdea({
+        ideaId: idea.id,
+        patch: {
+          briefState: {
+            ...idea.briefState,
+            risks: draftRisks,
+          },
+          readiness: 'yellow', // fallback path — not AI-reviewed
         },
-        readiness: 'yellow', // fallback path — not AI-reviewed
+        actor: { type: 'user', source: 'workspace' },
+        summary: `Updated risk register for idea ${idea.id}`,
       });
-      onUpdate(updated);
+      onUpdate(committed.idea);
+      setDraftRisks(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save answers.');
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function resetDraft() {
+    setDraftRisks(null);
+  }
+
+  if (draftRisks) {
+    const draftIdea: Idea = { ...idea, briefState: { ...idea.briefState, risks: draftRisks } };
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-50 border border-yellow-300 rounded-md px-4 py-3 text-sm text-yellow-800">
+          <strong>Review mode:</strong> Edit risk likelihood, impact, and follow-up notes before saving.
+        </div>
+        <RiskRegister
+          idea={draftIdea}
+          onUpdate={updated => setDraftRisks(updated.briefState.risks)}
+        />
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={resetDraft}>
+            Back
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1"
+          >
+            {submitting ? 'Saving…' : 'Save risk register'}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -143,11 +207,11 @@ export default function PremortemQuestions({ idea, onUpdate }: PremortemQuestion
 
       <Button
         variant="primary"
-        onClick={handleSubmit}
+        onClick={handlePrepare}
         disabled={submitting}
         className="w-full"
       >
-        {submitting ? 'Saving…' : 'Submit Risk Assessment'}
+        {submitting ? 'Preparing…' : 'Review risk register'}
       </Button>
     </div>
   );

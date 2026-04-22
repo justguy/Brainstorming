@@ -2,11 +2,11 @@
  * webmcp-tools.ts — WebMCP tool registration for the Brainstorming Orchestrator web app.
  *
  * Pattern mirrors the react-flightsearch demo:
- *  - Global tools (list_ideas, get_idea, capture_idea, export_handoff) are registered
- *    once on mount via the AbortController + signal approach.
- *  - Lifecycle tools (submit_clarifications, select_approach, confirm_rules,
- *    choose_next_step, advance_phase) are registered/unregistered based on which
- *    idea is selected and its current phase.
+ *  - Board-first global tools are registered once on mount via the
+ *    AbortController + signal approach.
+ *  - Facilitator control-plane tools mount under their own scope.
+ *  - Selected-idea lifecycle tools remount whenever the active idea or bead
+ *    phase changes, so stale phase-local registrations do not leak.
  *
  * The dispatchAndWait helper fires a CustomEvent and waits for React state to
  * commit (the component dispatches a completion event in a useEffect that runs
@@ -14,31 +14,40 @@
  */
 
 import { useEffect, useRef } from 'react';
-import type { Idea, IdeaGroup, SupportingDoc } from '../../src/types';
-import { listIdeas, getIdea, getTurnLogPage, createIdea, discardIdea, restoreIdea, listDiscardedIdeas } from '../../src/storage/ideas';
+import type { MutableRefObject } from 'react';
+import type { AmbiguityResolutionStatus, Idea, IdeaGroup, ProviderId, SupportingDoc } from '../../src/types';
+import { BEAT_NAMES, type BeatName } from '../../src/beats/types';
+import { DEFAULT_BOARD_ID } from '../../src/board/types';
+import { listIdeas, getIdea, getTurnLogPage, listDiscardedIdeas } from '../../src/storage/ideas';
 import { getCritique, listCritiques, listCritiquesForIdea } from '../../src/storage/critiques';
 import { listGroups } from '../../src/storage/groups';
+import { getIdeaPhaseHistory } from '../../src/storage/phaseHistory';
 import {
   listSuggestions as listAllSuggestions,
   listSuggestionsByStatus,
   getSuggestion,
 } from '../../src/storage/suggestions';
+import { listDocsForIdea, getDoc } from '../../src/storage/docs';
+import type { LegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
+import { defaultBoardRepository } from './boardRepository';
+import { createBoardController } from '../../src/storage/boardController';
+import { createCrossPollinateTool } from './webmcpCrossPollinateTool';
 import {
-  listDocsForIdea,
-  getDoc,
-  createDoc,
-  updateDoc,
-  deleteDoc,
-  markDocReady,
-  markDocFailed,
-} from '../../src/storage/docs';
-import { runAdhocRole } from '../../src/orchestrator/adhocRole';
+  createAttachLocalDocCandidateTool,
+  searchLocalDocsTool,
+  type SupportingDocToolResult,
+} from './webmcpLocalDocTools';
 import {
-  docFactExtractor,
-  buildDocFactExtractorTask,
-  type DocFactExtractorOutput,
-} from '../../src/orchestrator/roles/docFactExtractor';
-import { findSubPhase } from '../../src/orchestrator/subPhases';
+  claimAiHostTool,
+  getAiAutonomyStateTool,
+  listPeersTool,
+  releaseAiHostTool,
+  setAiAutonomyModeTool,
+  setAiPausedTool,
+} from './webmcpFacilitatorTools';
+import { deriveIdeaBeadState, isKnownBeadPhase } from '../../src/orchestrator/beadState';
+import { SUB_PHASES, findSubPhase } from '../../src/orchestrator/subPhases';
+import { dispatchAndWait, dispatchAndWaitForResult } from '../../src/webmcp/toolDispatch';
 
 // ---------------------------------------------------------------------------
 // safeRegisterTool — StrictMode-resilient registerTool wrapper
@@ -64,36 +73,6 @@ function safeRegisterTool(
     }
     throw err;
   }
-}
-
-// ---------------------------------------------------------------------------
-// dispatchAndWait: fire a CustomEvent, wait for React to signal completion
-// ---------------------------------------------------------------------------
-
-function dispatchAndWait(
-  eventName: string,
-  detail: Record<string, unknown> = {},
-  successMessage: string = 'Action completed successfully',
-  timeoutMs = 8000,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const requestId = Math.random().toString(36).substring(2, 15);
-    const completionEvent = `tool-completion-${requestId}`;
-
-    const timeoutId = setTimeout(() => {
-      window.removeEventListener(completionEvent, handleCompletion);
-      reject(new Error(`Timed out waiting for UI to update (requestId: ${requestId})`));
-    }, timeoutMs);
-
-    const handleCompletion = () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener(completionEvent, handleCompletion);
-      resolve(successMessage);
-    };
-
-    window.addEventListener(completionEvent, handleCompletion);
-    window.dispatchEvent(new CustomEvent(eventName, { detail: { ...detail, requestId } }));
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -266,16 +245,16 @@ const captureIdeaTool: ModelContextTool = {
     if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {
       return 'ERROR: `rawText` must be a non-empty string describing the idea.';
     }
-    const idea = await createIdea({ rawText: rawText.trim(), tags: tags ?? [] });
-    // Signal the UI to select the new idea
-    await dispatchAndWait(
-      'brainstorm:selectIdea',
-      { ideaId: idea.id },
-      `Idea captured and opened: "${idea.rawText.slice(0, 60)}"`,
+    const { ideaId, error } = await dispatchAndWaitForDetail<{ ideaId?: string; error?: string }>(
+      'brainstorm:captureIdea',
+      { rawText: rawText.trim(), tags: tags ?? [] },
     );
+    if (error || !ideaId) {
+      return `ERROR: ${error ?? 'capture failed'}`;
+    }
     return {
-      ideaId: idea.id,
-      message: `Idea captured with id ${idea.id}. Phase 0 is ready — call advance_phase to begin ambiguity extraction.`,
+      ideaId,
+      message: `Idea captured with id ${ideaId}. Phase 0 is ready — call advance_phase to begin ambiguity extraction.`,
     };
   },
 };
@@ -334,13 +313,14 @@ const exportHandoffTool: ModelContextTool = {
 const getCanvasTool: ModelContextTool = {
   name: 'get_canvas',
   description:
-    'Returns the current state of the idea canvas: visible ideas with their panel positions + groupIds, and all groups with their themes. ' +
-    'Use this to understand how ideas are arranged spatially before calling move_panel, group_ideas, or merge_ideas.',
+    'Returns the current state of the board canvas: visible ideas, pending scout suggestions, and groups with their spatial metadata. ' +
+    'Use this before calling move_panel, move_suggestion, group_ideas, or merge_ideas.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: true },
   execute: async () => {
-    const [ideas, groups] = await Promise.all([listIdeas(), listGroups()]);
+    const [ideas, groups, suggestions] = await Promise.all([listIdeas(), listGroups(), listAllSuggestions()]);
     const visible = ideas.filter(i => i.status !== 'archived');
+    const pendingSuggestions = suggestions.filter(suggestion => suggestion.status === 'pending');
     return {
       ideas: visible.map(i => ({
         id: i.id,
@@ -351,12 +331,82 @@ const getCanvasTool: ModelContextTool = {
         readiness: i.readiness,
         phase: i.phase,
       })),
+      suggestions: pendingSuggestions.map(suggestion => ({
+        id: suggestion.id,
+        rawText: suggestion.rawText.slice(0, 160),
+        x: suggestion.panel?.x ?? 0,
+        y: suggestion.panel?.y ?? 0,
+        width: suggestion.panel?.width ?? 248,
+        height: suggestion.panel?.height ?? 172,
+        status: suggestion.status,
+      })),
       groups: groups.map((g: IdeaGroup) => ({
         id: g.id,
         theme: g.theme,
         sharedQuestion: g.sharedQuestion,
         ideaIds: g.ideaIds,
       })),
+    };
+  },
+};
+
+const getBoardTool: ModelContextTool = {
+  name: 'get_board',
+  description:
+    'Returns the current durable board document: board metadata, ideas, groups, supporting docs, suggestions, critiques, connections, role runs, tweaks, and undo/redo history state. ' +
+    'Use this as the board-first read surface before invoking board automation routines or mutating board entities. Suggestions and ideas include panel geometry when available.',
+  inputSchema: { type: 'object', properties: {} },
+  annotations: { readOnlyHint: true },
+  execute: async () => {
+    const [document, history] = await Promise.all([
+      defaultBoardRepository.forBoard(DEFAULT_BOARD_ID).loadDocument(),
+      createBoardController(DEFAULT_BOARD_ID).getHistoryState(),
+    ]);
+    return {
+      board: document.board,
+      history,
+      ideas: document.ideas.map(idea => ({
+        id: idea.id,
+        rawText: idea.rawText,
+        status: idea.status,
+        tags: idea.tags,
+        panel: idea.panel,
+        readiness: idea.readiness,
+        phase: idea.phase,
+        updatedAt: idea.updatedAt,
+      })),
+      groups: document.groups,
+      docs: document.docs.map(doc => ({
+        id: doc.id,
+        ideaId: doc.ideaId,
+        title: doc.title,
+        status: doc.status,
+        summary: doc.summary,
+        facts: doc.facts,
+        updatedAt: doc.updatedAt,
+      })),
+      suggestions: document.suggestions.map(suggestion => ({
+        id: suggestion.id,
+        rawText: suggestion.rawText,
+        rationale: suggestion.rationale,
+        source: suggestion.source,
+        status: suggestion.status,
+        panel: suggestion.panel,
+        relatedIdeaIds: suggestion.relatedIdeaIds ?? [],
+        admittedIdeaId: suggestion.admittedIdeaId,
+        updatedAt: suggestion.updatedAt,
+      })),
+      critiques: document.critiques.map(critique => ({
+        id: critique.id,
+        ideaId: critique.ideaId,
+        critique: critique.critique,
+        evidenceAsk: critique.evidenceAsk,
+        status: critique.status,
+        updatedAt: critique.updatedAt,
+      })),
+      connections: document.connections,
+      beatRuns: document.beatRuns,
+      tweaks: document.tweaks,
     };
   },
 };
@@ -387,6 +437,40 @@ const movePanelTool: ModelContextTool = {
       `Moved idea ${ideaId} to (${x}, ${y}).`,
     );
     return `Panel for idea "${ideaId}" moved to (${x}, ${y}).`;
+  },
+};
+
+const moveSuggestionTool: ModelContextTool = {
+  name: 'move_suggestion',
+  description:
+    'Moves a pending scout suggestion card to a new position on the canvas. Pure positional move for the suggestion card only. ' +
+    'Coordinates are canvas pixels from the top-left, matching get_canvas/get_board panel geometry.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      suggestionId: { type: 'string', minLength: 1 },
+      x: { type: 'number', minimum: 0 },
+      y: { type: 'number', minimum: 0 },
+    },
+    required: ['suggestionId', 'x', 'y'],
+  },
+  annotations: { readOnlyHint: false },
+  execute: async (input) => {
+    const { suggestionId, x, y } = input as { suggestionId: string; x: number; y: number };
+    if (!suggestionId || typeof x !== 'number' || typeof y !== 'number') {
+      return 'ERROR: `suggestionId`, `x`, and `y` are required.';
+    }
+    const suggestion = await getSuggestion(suggestionId);
+    if (!suggestion) return `ERROR: no suggestion with id ${suggestionId}.`;
+    if (suggestion.status !== 'pending') {
+      return `ERROR: suggestion "${suggestionId}" is not pending (status=${suggestion.status}).`;
+    }
+    const detail = await dispatchAndWaitForDetail<{ ok?: boolean; error?: string }>(
+      'brainstorm:moveSuggestion',
+      { suggestionId, x, y },
+    );
+    if (detail.error) return `ERROR: ${detail.error}`;
+    return `Suggestion "${suggestionId}" moved to (${x}, ${y}).`;
   },
 };
 
@@ -498,8 +582,11 @@ const discardIdeaTool: ModelContextTool = {
     if (!ideaId) return 'ERROR: `ideaId` is required.';
     const idea = await getIdea(ideaId);
     if (!idea) return `ERROR: no idea with id ${ideaId}.`;
-    await discardIdea(ideaId);
-    window.dispatchEvent(new CustomEvent('brainstorm:ideasChanged', { detail: { ideaId, kind: 'discarded', reason } }));
+    await dispatchAndWait(
+      'brainstorm:discardIdea',
+      { ideaId, reason },
+      `Idea discarded: "${ideaId}"`,
+    );
     return `Idea "${ideaId}" moved to discard pile.`;
   },
 };
@@ -525,8 +612,11 @@ const restoreIdeaTool: ModelContextTool = {
     if (idea.status !== 'discarded') {
       return `ERROR: idea "${ideaId}" is not in the discard pile (status=${idea.status}).`;
     }
-    await restoreIdea(ideaId);
-    window.dispatchEvent(new CustomEvent('brainstorm:ideasChanged', { detail: { ideaId, kind: 'restored' } }));
+    await dispatchAndWait(
+      'brainstorm:restoreIdea',
+      { ideaId },
+      `Idea restored: "${ideaId}"`,
+    );
     return `Idea "${ideaId}" restored to the canvas.`;
   },
 };
@@ -562,8 +652,7 @@ const scoutIdeasTool: ModelContextTool = {
   description:
     'Runs the outside-knowledge scout over the full board (live + discarded ideas + ready docs). The scout ' +
     'proposes up to 6 novel suggestions — drawn from analogies, adjacent fields, contrarian readings, or user docs. ' +
-    'New suggestions appear on the canvas as dashed teal ghost panels. The user (or another tool) can then admit, ' +
-    'elaborate, or dismiss each one.',
+    'New suggestions appear on the canvas as dashed scout cards with persisted panel positions. The user (or another tool) can then move, admit, elaborate, or dismiss each one.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: false },
   execute: async () => {
@@ -574,11 +663,67 @@ const scoutIdeasTool: ModelContextTool = {
   },
 };
 
+const crossPollinateTool = createCrossPollinateTool(() => dispatchAndWaitForDetail<{
+  ok?: boolean;
+  error?: string;
+  suggestion?: {
+    id: string;
+    rawText: string;
+    rationale: string;
+    source: string;
+    sourceIdeaIds: string[];
+    relatedIdeaIds: string[];
+    status: string;
+  } | null;
+}>('brainstorm:crossPollinate'));
+
+const runBeatTool: ModelContextTool = {
+  name: 'run_beat',
+  description:
+    'Runs a board-scoped automation routine by name. `scout`, `connect`, and `critique` use the live board flow and return committed entities. ' +
+    '`cluster` and `summarise` materialize review candidates from the runtime so the app can keep or scratch them before commit. Use this as the board-first automation surface instead of phase-local tools.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      beat: {
+        type: 'string',
+        enum: [...BEAT_NAMES],
+        description: 'Automation routine to invoke.',
+      },
+      focusIdeaId: {
+        type: 'string',
+        minLength: 1,
+        description: 'Optional focus idea id. Required for `critique` and ignored by the other beats.',
+      },
+    },
+    required: ['beat'],
+  },
+  annotations: { readOnlyHint: false },
+  execute: async (input) => {
+    const { beat, focusIdeaId } = input as { beat: BeatName; focusIdeaId?: string };
+    if (!BEAT_NAMES.includes(beat)) {
+      return `ERROR: routine must be one of ${BEAT_NAMES.join(', ')}.`;
+    }
+    if (beat === 'critique' && (!focusIdeaId || !focusIdeaId.trim())) {
+      return 'ERROR: `focusIdeaId` is required when the routine is `critique`.';
+    }
+    const detail = await dispatchAndWaitForDetail<Record<string, unknown>>(
+      'brainstorm:runBeat',
+      { beat, focusIdeaId },
+      90_000,
+    );
+    if (typeof detail.error === 'string' && detail.error.length > 0) {
+      return `ERROR: ${detail.error}`;
+    }
+    return detail;
+  },
+};
+
 const listSuggestionsTool: ModelContextTool = {
   name: 'list_suggestions',
   description:
     'Returns scout suggestions filtered by status (default: pending). Pending suggestions live on the canvas ' +
-    'as ghost panels awaiting user judgement; admitted ones link to a real Idea id; dismissed ones stay indexed ' +
+    'as movable scout cards awaiting user judgement; admitted ones link to a real Idea id; dismissed ones stay indexed ' +
     'so the scout can avoid re-proposing them.',
   inputSchema: {
     type: 'object',
@@ -605,9 +750,12 @@ const listSuggestionsTool: ModelContextTool = {
         source: s.source,
         status: s.status,
         relatedIdeaIds: s.relatedIdeaIds ?? [],
+        sourceIdeaIds: s.sourceIdeaIds ?? [],
+        panel: s.panel,
         elaboration: s.elaboration,
         admittedIdeaId: s.admittedIdeaId,
         createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
       })),
     };
   },
@@ -699,7 +847,7 @@ const findConnectionsTool: ModelContextTool = {
     'Runs the connection-finder over live ideas, discarded ideas, and ready supporting docs, ' +
     'then populates the Connections panel. Returns up to 10 links (often fewer) with kind ' +
     '(builds_on | contradicts | revives_killed | shared_theme), the involved idea ids, a rationale, and strength. ' +
-    'Use this after making non-trivial changes to the board — the results are ephemeral and re-running always refreshes.',
+    'Use this after making non-trivial changes to the board — the latest result is persisted to board state, and re-running refreshes it.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: false },
   execute: async () => {
@@ -732,7 +880,7 @@ const drawConnectionTool: ModelContextTool = {
   description:
     'Creates a visible connection between two currently visible canvas ideas and renders it immediately on the board. ' +
     'Use this when the relationship is already known and should be shown without re-running the full connection finder. ' +
-    'This is board-scoped, ephemeral state; it does not persist to IndexedDB.',
+    'This is board-scoped state and persists with the rest of the canvas.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -943,18 +1091,7 @@ function docSummary(doc: SupportingDoc): {
   };
 }
 
-async function refineDocInline(doc: SupportingDoc): Promise<SupportingDoc> {
-  try {
-    const task = buildDocFactExtractorTask(doc.title, doc.rawText);
-    const { result } = await runAdhocRole<DocFactExtractorOutput>(docFactExtractor, task);
-    if (!result) {
-      return markDocFailed(doc.id, 'Extractor returned no result.');
-    }
-    return markDocReady(doc.id, result.summary, result.facts);
-  } catch (err) {
-    return markDocFailed(doc.id, err instanceof Error ? err.message : 'Extraction failed.');
-  }
-}
+type SupportingDocToolCompletion = SupportingDocToolResult;
 
 const attachSupportingDocTool: ModelContextTool = {
   name: 'attach_supporting_doc',
@@ -1006,11 +1143,13 @@ const attachSupportingDocTool: ModelContextTool = {
     if (!rawText || rawText.trim().length === 0) return 'ERROR: `rawText` must be non-empty.';
     const idea = await getIdea(ideaId);
     if (!idea) return `ERROR: no idea with id ${ideaId}.`;
-    const created = await createDoc({ ideaId, title: title ?? '', rawText });
-    const refined = await refineDocInline(created);
-    window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId } }));
+    const refined = await dispatchAndWaitForResult<SupportingDocToolCompletion>('brainstorm:attachSupportingDoc', {
+      ideaId,
+      title: title ?? '',
+      rawText,
+    });
     return {
-      docId: refined.id,
+      docId: refined.docId,
       status: refined.status,
       summary: refined.summary,
       facts: refined.facts,
@@ -1081,8 +1220,7 @@ const deleteSupportingDocTool: ModelContextTool = {
     if (!docId) return 'ERROR: `docId` is required.';
     const doc = await getDoc(docId);
     if (!doc) return `ERROR: no doc with id ${docId}.`;
-    await deleteDoc(docId);
-    window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: doc.ideaId } }));
+    await dispatchAndWait('brainstorm:deleteSupportingDoc', { docId }, 'Deleted supporting doc');
     return `Deleted doc "${doc.title}" (${docId}).`;
   },
 };
@@ -1105,11 +1243,9 @@ const retryDocExtractionTool: ModelContextTool = {
     if (!docId) return 'ERROR: `docId` is required.';
     const doc = await getDoc(docId);
     if (!doc) return `ERROR: no doc with id ${docId}.`;
-    await updateDoc(docId, { status: 'processing', error: undefined });
-    const refined = await refineDocInline(doc);
-    window.dispatchEvent(new CustomEvent('brainstorm:docsChanged', { detail: { ideaId: doc.ideaId } }));
+    const refined = await dispatchAndWaitForResult<SupportingDocToolCompletion>('brainstorm:retrySupportingDoc', { docId });
     return {
-      docId: refined.id,
+      docId: refined.docId,
       status: refined.status,
       summary: refined.summary,
       facts: refined.facts,
@@ -1118,11 +1254,20 @@ const retryDocExtractionTool: ModelContextTool = {
   },
 };
 
+const attachLocalDocCandidateTool = createAttachLocalDocCandidateTool(async (ideaId, title, rawText) => {
+  const refined = await dispatchAndWaitForResult<SupportingDocToolCompletion>('brainstorm:attachSupportingDoc', {
+    ideaId,
+    title,
+    rawText,
+  });
+  return refined;
+});
+
 // ---------------------------------------------------------------------------
 // Lifecycle tools — phase-contextual
 // ---------------------------------------------------------------------------
 
-function makeAdvancePhaseTool(selectedIdea: Idea, specLabel: string, skippable: boolean): ModelContextTool {
+function makeAdvancePhaseTool(selectedIdea: LegacyToolIdea, specLabel: string, skippable: boolean): ModelContextTool {
   return {
     name: 'advance_phase',
     description:
@@ -1166,7 +1311,7 @@ function makeAdvancePhaseTool(selectedIdea: Idea, specLabel: string, skippable: 
   };
 }
 
-function makeSubmitClarificationsTool(selectedIdea: Idea): ModelContextTool {
+function makeSubmitClarificationsTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const questions = selectedIdea.clarifications.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
   return {
     name: 'submit_clarifications',
@@ -1204,7 +1349,7 @@ function makeSubmitClarificationsTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeSelectApproachTool(selectedIdea: Idea): ModelContextTool {
+function makeSelectApproachTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const approaches = selectedIdea.briefState.approaches
     .map((a, i) => `${i + 1}. [${a.id}] ${a.label}: ${a.summary}`)
     .join('\n');
@@ -1255,7 +1400,7 @@ function makeSelectApproachTool(selectedIdea: Idea): ModelContextTool {
 // Micro-step tools — per-entry patches for lens (0.5), challenge (2.5), stress (4.5)
 // ---------------------------------------------------------------------------
 
-function makePinLensTool(selectedIdea: Idea): ModelContextTool {
+function makePinLensTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const lenses = selectedIdea.briefState.lenses
     .map((l, i) => `${i + 1}. [${l.id}] (${l.kind}) ${l.frame} — ${l.insight.slice(0, 80)}`)
     .join('\n');
@@ -1286,7 +1431,7 @@ function makePinLensTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeDismissLensTool(selectedIdea: Idea): ModelContextTool {
+function makeDismissLensTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   return {
     name: 'dismiss_lens',
     description: 'Dismisses a lens the user finds irrelevant. It stays visible but de-emphasized.',
@@ -1313,7 +1458,7 @@ function makeDismissLensTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeNoteLensTool(selectedIdea: Idea): ModelContextTool {
+function makeNoteLensTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   return {
     name: 'note_lens',
     description: 'Attaches the user\'s reaction/note to a lens entry.',
@@ -1341,7 +1486,7 @@ function makeNoteLensTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeRespondChallengeTool(selectedIdea: Idea): ModelContextTool {
+function makeRespondChallengeTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const challenges = selectedIdea.briefState.challenges
     .map((c, i) => `${i + 1}. [${c.id}] ${c.critique.slice(0, 100)}`)
     .join('\n');
@@ -1393,7 +1538,7 @@ function makeRespondChallengeTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeMarkStressHandledTool(selectedIdea: Idea): ModelContextTool {
+function makeMarkStressHandledTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   const stresses = selectedIdea.briefState.stressResults
     .map((s, i) => `${i + 1}. [${s.id}] rule ${s.ruleIndex + 1}: ${s.edgeCase.slice(0, 80)}`)
     .join('\n');
@@ -1441,7 +1586,7 @@ function makeMarkStressHandledTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
-function makeChooseNextStepTool(selectedIdea: Idea): ModelContextTool {
+function makeChooseNextStepTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   return {
     name: 'choose_next_step',
     description:
@@ -1476,137 +1621,734 @@ function makeChooseNextStepTool(selectedIdea: Idea): ModelContextTool {
   };
 }
 
+function makeAddRuleTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  const existingRules = selectedIdea.briefState.mustStayTrueRules
+    .map((rule, index) => `${index + 1}. ${rule}`)
+    .join('\n');
+  return {
+    name: 'add_rule',
+    description:
+      `Adds a must-stay-true rule for the selected idea. Existing rules:\n${existingRules || '(none yet)'}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        rule: {
+          type: 'string',
+          minLength: 1,
+          description: 'The new must-stay-true rule to add.',
+        },
+      },
+      required: ['rule'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const { rule } = input as { rule: string };
+      if (!rule || !rule.trim()) {
+        return 'ERROR: `rule` must be a non-empty string.';
+      }
+      const normalizedRule = rule.trim();
+      if (selectedIdea.briefState.mustStayTrueRules.includes(normalizedRule)) {
+        return `ERROR: rule "${normalizedRule}" already exists on this idea.`;
+      }
+
+      const detail = await dispatchAndWaitForResult<{ rule: string }>('brainstorm:add_rule', {
+        ideaId: selectedIdea.id,
+        rule: normalizedRule,
+      });
+      return {
+        ideaId: selectedIdea.id,
+        rule: detail.rule,
+      };
+    },
+  };
+}
+
+function makeRemoveRuleTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  const existingRules = selectedIdea.briefState.mustStayTrueRules
+    .map((rule, index) => `${index}. ${rule}`)
+    .join('\n');
+  return {
+    name: 'remove_rule',
+    description:
+      `Removes a must-stay-true rule from the selected idea by index. Current rules:\n${existingRules || '(none yet)'}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ruleIndex: {
+          type: 'number',
+          minimum: 0,
+          description: 'Zero-based index of the rule to remove.',
+        },
+      },
+      required: ['ruleIndex'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const { ruleIndex } = input as { ruleIndex: number };
+      if (!Number.isInteger(ruleIndex)) {
+        return 'ERROR: `ruleIndex` must be an integer.';
+      }
+      if (ruleIndex < 0 || ruleIndex >= selectedIdea.briefState.mustStayTrueRules.length) {
+        return `ERROR: ruleIndex must be between 0 and ${Math.max(0, selectedIdea.briefState.mustStayTrueRules.length - 1)}.`;
+      }
+
+      const detail = await dispatchAndWaitForResult<{ ruleIndex?: number; rule?: string | null }>('brainstorm:remove_rule', {
+        ideaId: selectedIdea.id,
+        ruleIndex,
+      });
+      return {
+        ideaId: selectedIdea.id,
+        ruleIndex: detail.ruleIndex ?? ruleIndex,
+        rule: detail.rule ?? selectedIdea.briefState.mustStayTrueRules[ruleIndex] ?? null,
+      };
+    },
+  };
+}
+
+function makeListRisksTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  return {
+    name: 'list_risks',
+    description:
+      'Returns the explicit risk register for the selected idea, plus current rules and stress-test state used in premortem and stress beads.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true },
+    execute: async () => {
+      const detail = await dispatchAndWaitForResult<{
+        risks: LegacyToolIdea['briefState']['risks'];
+        count: number;
+        stressResults: LegacyToolIdea['briefState']['stressResults'];
+        rules: LegacyToolIdea['briefState']['mustStayTrueRules'];
+      }>('brainstorm:list_risks', {
+        ideaId: selectedIdea.id,
+      });
+      return {
+        ideaId: selectedIdea.id,
+        count: detail.count,
+        risks: detail.risks,
+        stressResults: detail.stressResults,
+        rules: detail.rules,
+      };
+    },
+  };
+}
+
+function makePatchRiskTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  const existingRisks = selectedIdea.briefState.risks
+    .map((risk, index) => `${index + 1}. [${risk.id}] (${risk.likelihood}/${risk.impact}) ${risk.description}`)
+    .join('\n');
+  return {
+    name: 'patch_risk',
+    description:
+      `Edits a risk in the selected idea's risk register. Current risks:\n${existingRisks || '(none yet)'}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        riskId: {
+          type: 'string',
+          minLength: 1,
+          description: 'ID of the risk to edit.',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional replacement description.',
+        },
+        likelihood: {
+          type: 'string',
+          enum: ['high', 'medium', 'low'],
+          description: 'Optional replacement likelihood.',
+        },
+        impact: {
+          type: 'string',
+          enum: ['high', 'medium', 'low'],
+          description: 'Optional replacement impact.',
+        },
+        userNote: {
+          type: 'string',
+          description: 'Optional follow-up note, mitigation note, or owner note.',
+        },
+      },
+      required: ['riskId'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const { riskId, description, likelihood, impact, userNote } = input as {
+        riskId: string;
+        description?: string;
+        likelihood?: LegacyToolIdea['briefState']['risks'][number]['likelihood'];
+        impact?: LegacyToolIdea['briefState']['risks'][number]['impact'];
+        userNote?: string;
+      };
+      if (!riskId) return 'ERROR: `riskId` is required.';
+      if (!selectedIdea.briefState.risks.some(risk => risk.id === riskId)) {
+        return `ERROR: no risk with id "${riskId}" on this idea.`;
+      }
+      if (description !== undefined && !description.trim()) {
+        return 'ERROR: `description` must be non-empty when provided.';
+      }
+
+      const detail = await dispatchAndWaitForResult<{
+        riskId: string;
+        description?: string;
+        likelihood?: LegacyToolIdea['briefState']['risks'][number]['likelihood'];
+        impact?: LegacyToolIdea['briefState']['risks'][number]['impact'];
+        userNote?: string;
+      }>('brainstorm:patch_risk', {
+        ideaId: selectedIdea.id,
+        riskId,
+        ...(description !== undefined ? { description: description.trim() } : {}),
+        ...(likelihood ? { likelihood } : {}),
+        ...(impact ? { impact } : {}),
+        ...(userNote !== undefined ? { userNote } : {}),
+      });
+      return {
+        ideaId: selectedIdea.id,
+        riskId: detail.riskId,
+        description: detail.description ?? null,
+        likelihood: detail.likelihood ?? null,
+        impact: detail.impact ?? null,
+        userNote: detail.userNote ?? null,
+      };
+    },
+  };
+}
+
+function makeListAmbiguitiesTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  return {
+    name: 'list_ambiguities',
+    description:
+      'Returns the explicit ambiguity state for the selected idea, including severity, resolution mode, current resolution status, and linked clarification questions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['open', 'resolved', 'deferred', 'dismissed', 'all'],
+          description: 'Optional resolution-state filter. Defaults to all ambiguities.',
+        },
+      },
+    },
+    annotations: { readOnlyHint: true },
+    execute: async (input) => {
+      const { status = 'all' } = (input ?? {}) as { status?: AmbiguityResolutionStatus | 'all' };
+      const ambiguities = selectedIdea.ambiguities
+        .filter(ambiguity => status === 'all' || (ambiguity.resolution?.status ?? 'open') === status)
+        .map(ambiguity => ({
+          ...ambiguity,
+          resolution: {
+            status: ambiguity.resolution?.status ?? 'open',
+            note: ambiguity.resolution?.note,
+            resolvedBy: ambiguity.resolution?.resolvedBy,
+            resolvedAt: ambiguity.resolution?.resolvedAt,
+          },
+          clarifications: selectedIdea.clarifications
+            .filter(question => question.ambiguityId === ambiguity.id)
+            .map(question => ({
+              id: question.id,
+              question: question.question,
+              answer: question.answer,
+            })),
+        }));
+
+      return {
+        ideaId: selectedIdea.id,
+        count: ambiguities.length,
+        ambiguities,
+      };
+    },
+  };
+}
+
+function makeResolveAmbiguityTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  return {
+    name: 'resolve_ambiguity',
+    description:
+      'Records how a specific ambiguity was resolved, deferred, dismissed, or reopened for the selected idea using the lifecycle write handshake.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ambiguityId: {
+          type: 'string',
+          minLength: 1,
+          description: 'ID of the ambiguity to update.',
+        },
+        status: {
+          type: 'string',
+          enum: ['open', 'resolved', 'deferred', 'dismissed'],
+          description: 'Next resolution state for this ambiguity.',
+        },
+        resolution: {
+          type: 'string',
+          description: 'Optional note describing how or why the ambiguity was resolved.',
+        },
+      },
+      required: ['ambiguityId', 'status'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const { ambiguityId, status, resolution } = input as {
+        ambiguityId: string;
+        status: AmbiguityResolutionStatus;
+        resolution?: string;
+      };
+      if (!ambiguityId) return 'ERROR: `ambiguityId` is required.';
+      if (!selectedIdea.ambiguities.some(ambiguity => ambiguity.id === ambiguityId)) {
+        return `ERROR: no ambiguity with id "${ambiguityId}" on this idea.`;
+      }
+
+      const detail = await dispatchAndWaitForResult<{
+        ambiguityId: string;
+        status: AmbiguityResolutionStatus;
+        note?: string;
+      }>('brainstorm:resolve_ambiguity', {
+        ideaId: selectedIdea.id,
+        ambiguityId,
+        status,
+        ...(resolution?.trim() ? { resolution: resolution.trim() } : {}),
+      });
+
+      return {
+        ideaId: selectedIdea.id,
+        ambiguityId: detail.ambiguityId,
+        status: detail.status,
+        note: detail.note ?? null,
+      };
+    },
+  };
+}
+
+function makeApplyAmbiguityResolutionTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  return {
+    name: 'apply_ambiguity_resolution',
+    description:
+      'Applies a chosen ambiguity resolution in one lifecycle write: marks the ambiguity, optionally adds a rule or next step, and records the tool trace on the selected idea.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ambiguityId: {
+          type: 'string',
+          minLength: 1,
+          description: 'ID of the ambiguity to update.',
+        },
+        status: {
+          type: 'string',
+          enum: ['resolved', 'deferred', 'dismissed'],
+          description: 'Final ambiguity state after the resolution is applied.',
+        },
+        resolution: {
+          type: 'string',
+          description: 'Plain-language note describing how the ambiguity was resolved.',
+        },
+        action: {
+          type: 'string',
+          enum: ['resolve_only', 'add_rule', 'choose_next_step'],
+          description: 'Optional extra board write to apply alongside the ambiguity status.',
+        },
+        rule: {
+          type: 'string',
+          description: 'Rule text to add when action is add_rule.',
+        },
+        nextStep: {
+          type: 'string',
+          enum: ['planning', 'prototyping', 'research', 'stakeholder_review', 'defer'],
+          description: 'Next step to set when action is choose_next_step.',
+        },
+        summary: {
+          type: 'string',
+          description: 'Short summary of the applied change.',
+        },
+        roleId: {
+          type: 'string',
+          description: 'Optional provenance label for the planner that produced this resolution.',
+        },
+        provider: {
+          type: 'string',
+          enum: ['gemini', 'openai', 'anthropic'],
+          description: 'Optional provider used for the planner run.',
+        },
+        model: {
+          type: 'string',
+          description: 'Optional model used for the planner run.',
+        },
+        userResolution: {
+          type: 'string',
+          description: 'Optional original user-accepted or user-authored resolution text.',
+        },
+      },
+      required: ['ambiguityId', 'status', 'resolution'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const {
+        ambiguityId,
+        status,
+        resolution,
+        action,
+        rule,
+        nextStep,
+        summary,
+        roleId,
+        provider,
+        model,
+        userResolution,
+      } = input as {
+        ambiguityId: string;
+        status: AmbiguityResolutionStatus;
+        resolution: string;
+        action?: 'resolve_only' | 'add_rule' | 'choose_next_step';
+        rule?: string;
+        nextStep?: Idea['briefState']['nextStep'];
+        summary?: string;
+        roleId?: string;
+        provider?: ProviderId;
+        model?: string;
+        userResolution?: string;
+      };
+      if (!ambiguityId) return 'ERROR: `ambiguityId` is required.';
+      if (!selectedIdea.ambiguities.some(ambiguity => ambiguity.id === ambiguityId)) {
+        return `ERROR: no ambiguity with id "${ambiguityId}" on this idea.`;
+      }
+
+      const detail = await dispatchAndWaitForResult<{
+        ambiguityId: string;
+        status: AmbiguityResolutionStatus;
+        idea: Idea;
+      }>('brainstorm:apply_ambiguity_resolution', {
+        ideaId: selectedIdea.id,
+        ambiguityId,
+        status,
+        resolution,
+        action,
+        rule,
+        nextStep,
+        summary,
+        roleId,
+        provider,
+        model,
+        userResolution,
+      });
+
+      return {
+        ideaId: selectedIdea.id,
+        ambiguityId: detail.ambiguityId,
+        status: detail.status,
+      };
+    },
+  };
+}
+
+function makeGetPhaseHistoryTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  return {
+    name: 'get_phase_history',
+    description:
+      'Returns the selected idea\'s derived workflow-memory history: phase transitions plus lifecycle mutations like ambiguity resolution, rule changes, risk edits, stress handling, and next-step capture.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cursor: {
+          type: 'string',
+          description: 'Optional pagination cursor from a previous get_phase_history response.',
+        },
+        limit: {
+          type: 'number',
+          minimum: 1,
+          maximum: 100,
+          description: 'Optional page size. Defaults to 20, maximum 100.',
+        },
+      },
+    },
+    annotations: { readOnlyHint: true },
+    execute: async (input) => {
+      const { cursor, limit } = (input ?? {}) as { cursor?: string; limit?: number };
+      return getIdeaPhaseHistory({
+        ideaId: selectedIdea.id,
+        cursor,
+        limit,
+      });
+    },
+  };
+}
+
+function makeGetBeadStateTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  return {
+    name: 'get_bead_state',
+    description:
+      'Returns the derived 12-bead runtime state for the selected idea: active bead, completed beads, soft nudges, and durable review flags. This is derived from the idea phase plus bead coordination metadata, not a second workflow store.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true },
+    execute: async () => deriveIdeaBeadState(selectedIdea),
+  };
+}
+
+function makeSuggestNextBeadTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  const availableTargets = SUB_PHASES.filter(spec => spec.number > selectedIdea.phase);
+  const targetSummary = availableTargets.map(spec => `${spec.number}: ${spec.label}`).join('\n');
+  return {
+    name: 'suggest_next_bead',
+    description:
+      `Adds a soft facilitator nudge toward a future bead without changing phase. Available future beads:\n${targetSummary || '(none)'}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        phaseNumber: {
+          type: 'number',
+          enum: availableTargets.map(spec => spec.number),
+          description: 'Future bead phase number to softly nudge.',
+        },
+        reason: {
+          type: 'string',
+          minLength: 1,
+          description: 'Why this bead is the likely next focus.',
+        },
+      },
+      required: ['phaseNumber', 'reason'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const { phaseNumber, reason } = input as { phaseNumber: number; reason: string };
+      if (!isKnownBeadPhase(phaseNumber)) return 'ERROR: `phaseNumber` must match a known bead.';
+      if (phaseNumber <= selectedIdea.phase) {
+        return `ERROR: suggest_next_bead only accepts future beads. Current phase is ${selectedIdea.phase}.`;
+      }
+      if (!reason?.trim()) return 'ERROR: `reason` must be a non-empty string.';
+
+      const detail = await dispatchAndWaitForResult<{ phaseNumber: number; reason: string }>('brainstorm:suggest_next_bead', {
+        ideaId: selectedIdea.id,
+        phaseNumber,
+        reason: reason.trim(),
+      });
+      return {
+        ideaId: selectedIdea.id,
+        phaseNumber: detail.phaseNumber,
+        reason: detail.reason,
+      };
+    },
+  };
+}
+
+function makeFlagBeadForReviewTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  const completedBeads = SUB_PHASES.filter(spec => spec.number < selectedIdea.phase);
+  const completedSummary = completedBeads.map(spec => `${spec.number}: ${spec.label}`).join('\n');
+  return {
+    name: 'flag_bead_for_review',
+    description:
+      `Marks a completed bead for revisit because new evidence undermined it. Completed beads:\n${completedSummary || '(none yet)'}`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        phaseNumber: {
+          type: 'number',
+          enum: completedBeads.map(spec => spec.number),
+          description: 'Completed bead phase number to mark for revisit.',
+        },
+        reason: {
+          type: 'string',
+          minLength: 1,
+          description: 'Why the earlier bead now needs attention.',
+        },
+      },
+      required: ['phaseNumber', 'reason'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const { phaseNumber, reason } = input as { phaseNumber: number; reason: string };
+      if (!isKnownBeadPhase(phaseNumber)) return 'ERROR: `phaseNumber` must match a known bead.';
+      if (phaseNumber >= selectedIdea.phase) {
+        return `ERROR: flag_bead_for_review only accepts completed beads. Current phase is ${selectedIdea.phase}.`;
+      }
+      if (!reason?.trim()) return 'ERROR: `reason` must be a non-empty string.';
+
+      const detail = await dispatchAndWaitForResult<{ phaseNumber: number; reason: string }>('brainstorm:flag_bead_for_review', {
+        ideaId: selectedIdea.id,
+        phaseNumber,
+        reason: reason.trim(),
+      });
+      return {
+        ideaId: selectedIdea.id,
+        phaseNumber: detail.phaseNumber,
+        reason: detail.reason,
+      };
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // useBrainstormingTools — React hook
 // ---------------------------------------------------------------------------
 
-/**
- * Registers and unregisters WebMCP tools based on the currently selected idea.
- *
- * Global tools (list_ideas, get_idea, capture_idea, export_handoff) are
- * always registered while the hook is mounted.
- *
- * Phase-contextual tools are registered/unregistered whenever selectedIdea changes.
- */
-export function useBrainstormingTools(selectedIdea: Idea | null): void {
-  // Global tool AbortController — lives for the component lifetime
-  const globalAcRef = useRef<AbortController | null>(null);
-  // Lifecycle tool AbortController — re-created whenever selectedIdea changes
-  const lifecycleAcRef = useRef<AbortController | null>(null);
+const GLOBAL_BOARD_TOOLS: ModelContextTool[] = [
+  listIdeasTool,
+  getIdeaTool,
+  getTurnLogTool,
+  captureIdeaTool,
+  exportHandoffTool,
+  getCanvasTool,
+  getBoardTool,
+  movePanelTool,
+  moveSuggestionTool,
+  groupIdeasTool,
+  ungroupIdeaTool,
+  mergeIdeasTool,
+  attachSupportingDocTool,
+  searchLocalDocsTool,
+  attachLocalDocCandidateTool,
+  listSupportingDocsTool,
+  getSupportingDocTool,
+  deleteSupportingDocTool,
+  retryDocExtractionTool,
+  discardIdeaTool,
+  restoreIdeaTool,
+  listDiscardedIdeasTool,
+  findConnectionsTool,
+  drawConnectionTool,
+  critiqueIdeaTool,
+  listCritiquesTool,
+  dismissCritiqueTool,
+  scoutIdeasTool,
+  crossPollinateTool,
+  runBeatTool,
+  listSuggestionsTool,
+  admitSuggestionTool,
+  elaborateSuggestionTool,
+  dismissSuggestionTool,
+];
 
-  // Register global tools once on mount
+const FACILITATOR_CONTROL_TOOLS: ModelContextTool[] = [
+  listPeersTool,
+  getAiAutonomyStateTool,
+  claimAiHostTool,
+  releaseAiHostTool,
+  setAiAutonomyModeTool,
+  setAiPausedTool,
+];
+
+function buildLifecycleToolSet(selectedIdea: LegacyToolIdea): ModelContextTool[] {
+  const spec = findSubPhase(selectedIdea.phase);
+  if (!spec) return [];
+
+  const tools: ModelContextTool[] = [];
+  const mainPhase = Math.floor(selectedIdea.phase);
+  if (selectedIdea.phase === 2) {
+    tools.push(makeSubmitClarificationsTool(selectedIdea));
+  } else if (selectedIdea.phase === 3) {
+    tools.push(makeSelectApproachTool(selectedIdea));
+  } else if (selectedIdea.phase >= 8) {
+    tools.push(makeChooseNextStepTool(selectedIdea));
+  } else {
+    tools.push(makeAdvancePhaseTool(selectedIdea, spec.label, spec.skippable));
+  }
+
+  if (selectedIdea.phase === 0.5) {
+    tools.push(
+      makePinLensTool(selectedIdea),
+      makeDismissLensTool(selectedIdea),
+      makeNoteLensTool(selectedIdea),
+    );
+  }
+  if (selectedIdea.phase === 2.5) {
+    tools.push(makeRespondChallengeTool(selectedIdea));
+  }
+  if (selectedIdea.phase === 4.5) {
+    tools.push(makeMarkStressHandledTool(selectedIdea));
+  }
+
+  if (mainPhase <= 1) {
+    tools.push(
+      makeListAmbiguitiesTool(selectedIdea),
+      makeResolveAmbiguityTool(selectedIdea),
+      makeApplyAmbiguityResolutionTool(selectedIdea),
+    );
+  }
+
+  if (mainPhase >= 3 || selectedIdea.briefState.mustStayTrueRules.length > 0) {
+    tools.push(makeAddRuleTool(selectedIdea));
+    if (selectedIdea.briefState.mustStayTrueRules.length > 0) {
+      tools.push(makeRemoveRuleTool(selectedIdea));
+    }
+  }
+
+  if (mainPhase >= 4 || selectedIdea.briefState.risks.length > 0) {
+    tools.push(makeListRisksTool(selectedIdea));
+    if (selectedIdea.briefState.risks.length > 0) {
+      tools.push(makePatchRiskTool(selectedIdea));
+    }
+  }
+
+  tools.push(makeGetBeadStateTool(selectedIdea));
+  if (selectedIdea.phase < 8) {
+    tools.push(makeSuggestNextBeadTool(selectedIdea));
+  }
+  if (selectedIdea.phase > 0) {
+    tools.push(makeFlagBeadForReviewTool(selectedIdea));
+  }
+  tools.push(makeGetPhaseHistoryTool(selectedIdea));
+
+  return tools;
+}
+
+function registerToolScope(
+  mc: ModelContext,
+  controllerRef: MutableRefObject<AbortController | null>,
+  tools: ModelContextTool[],
+  scopeLabel: string,
+): void {
+  if (controllerRef.current || tools.length === 0) return;
+  controllerRef.current = new AbortController();
+  const opts = { signal: controllerRef.current.signal };
+  tools.forEach(tool => safeRegisterTool(mc, tool, opts));
+  console.info(`[webmcp-tools] ${scopeLabel} tools registered: ${tools.map(tool => tool.name).join(', ')}`);
+}
+
+function abortToolScope(controllerRef: MutableRefObject<AbortController | null>): void {
+  if (!controllerRef.current) return;
+  controllerRef.current.abort();
+  controllerRef.current = null;
+}
+
+/**
+ * Registers the brainstorming WebMCP surface under three explicit scopes:
+ * global board tools, facilitator control-plane tools, and selected-idea
+ * lifecycle tools keyed to the current idea id + phase.
+ */
+export function useBrainstormingTools(selectedIdea: LegacyToolIdea | null): void {
+  const globalAcRef = useRef<AbortController | null>(null);
+  const facilitatorAcRef = useRef<AbortController | null>(null);
+  const lifecycleAcRef = useRef<AbortController | null>(null);
+  const lifecycleScopeKey = selectedIdea ? JSON.stringify(selectedIdea) : null;
+
   useEffect(() => {
     const mc = window.navigator.modelContext;
     if (!mc) {
       console.info('[webmcp-tools] navigator.modelContext not available — WebMCP tools not registered.');
       return;
     }
-
-    if (!globalAcRef.current) {
-      globalAcRef.current = new AbortController();
-      const opts = { signal: globalAcRef.current.signal };
-      safeRegisterTool(mc, listIdeasTool, opts);
-      safeRegisterTool(mc, getIdeaTool, opts);
-      safeRegisterTool(mc, getTurnLogTool, opts);
-      safeRegisterTool(mc, captureIdeaTool, opts);
-      safeRegisterTool(mc, exportHandoffTool, opts);
-      safeRegisterTool(mc, getCanvasTool, opts);
-      safeRegisterTool(mc, movePanelTool, opts);
-      safeRegisterTool(mc, groupIdeasTool, opts);
-      safeRegisterTool(mc, ungroupIdeaTool, opts);
-      safeRegisterTool(mc, mergeIdeasTool, opts);
-      safeRegisterTool(mc, attachSupportingDocTool, opts);
-      safeRegisterTool(mc, listSupportingDocsTool, opts);
-      safeRegisterTool(mc, getSupportingDocTool, opts);
-      safeRegisterTool(mc, deleteSupportingDocTool, opts);
-      safeRegisterTool(mc, retryDocExtractionTool, opts);
-      safeRegisterTool(mc, discardIdeaTool, opts);
-      safeRegisterTool(mc, restoreIdeaTool, opts);
-      safeRegisterTool(mc, listDiscardedIdeasTool, opts);
-      safeRegisterTool(mc, findConnectionsTool, opts);
-      safeRegisterTool(mc, drawConnectionTool, opts);
-      safeRegisterTool(mc, critiqueIdeaTool, opts);
-      safeRegisterTool(mc, listCritiquesTool, opts);
-      safeRegisterTool(mc, dismissCritiqueTool, opts);
-      safeRegisterTool(mc, scoutIdeasTool, opts);
-      safeRegisterTool(mc, listSuggestionsTool, opts);
-      safeRegisterTool(mc, admitSuggestionTool, opts);
-      safeRegisterTool(mc, elaborateSuggestionTool, opts);
-      safeRegisterTool(mc, dismissSuggestionTool, opts);
-      console.info('[webmcp-tools] Global tools registered: list_ideas, get_idea, get_turn_log, capture_idea, export_handoff, get_canvas, move_panel, group_ideas, ungroup_idea, merge_ideas, attach_supporting_doc, list_supporting_docs, get_supporting_doc, delete_supporting_doc, retry_doc_extraction, discard_idea, restore_idea, list_discarded_ideas, find_connections, draw_connection, critique_idea, list_critiques, dismiss_critique, scout_ideas, list_suggestions, admit_suggestion, elaborate_suggestion, dismiss_suggestion');
-    }
-
-    return () => {
-      if (globalAcRef.current) {
-        globalAcRef.current.abort();
-        globalAcRef.current = null;
-      }
-    };
+    registerToolScope(mc, globalAcRef, GLOBAL_BOARD_TOOLS, 'Global board');
+    return () => abortToolScope(globalAcRef);
   }, []);
 
-  // Register lifecycle tools whenever the selected idea changes
   useEffect(() => {
-    // Abort any previously registered lifecycle tools
-    if (lifecycleAcRef.current) {
-      lifecycleAcRef.current.abort();
-      lifecycleAcRef.current = null;
-    }
-
     const mc = window.navigator.modelContext;
-    if (!mc || !selectedIdea) return;
+    if (!mc) return;
+    registerToolScope(mc, facilitatorAcRef, FACILITATOR_CONTROL_TOOLS, 'Facilitator control-plane');
+    return () => abortToolScope(facilitatorAcRef);
+  }, []);
 
-    lifecycleAcRef.current = new AbortController();
-    const opts = { signal: lifecycleAcRef.current.signal };
-
-    const spec = findSubPhase(selectedIdea.phase);
-    const specLabel = spec?.label ?? `step ${selectedIdea.phase}`;
-    const skippable = !!spec?.skippable;
-
-    // Always register advance_phase when an idea is selected
-    safeRegisterTool(mc, makeAdvancePhaseTool(selectedIdea, specLabel, skippable), opts);
-
-    // Main phases that expect user text input
-    if (selectedIdea.phase === 2 && selectedIdea.clarifications.length > 0) {
-      safeRegisterTool(mc, makeSubmitClarificationsTool(selectedIdea), opts);
-    }
-    if (selectedIdea.phase === 3 && selectedIdea.briefState.approaches.length > 0) {
-      safeRegisterTool(mc, makeSelectApproachTool(selectedIdea), opts);
+  useEffect(() => {
+    const mc = window.navigator.modelContext;
+    if (!mc) return;
+    if (!selectedIdea) {
+      console.info('[webmcp-tools] No selected idea — lifecycle-scoped tools remain unmounted.');
+      return () => abortToolScope(lifecycleAcRef);
     }
 
-    // Micro-step tools — available when lenses/challenges/stress results exist,
-    // NOT gated only on current phase. This lets an agent revisit a micro decision
-    // after the main phase has advanced past it.
-    if (selectedIdea.briefState.lenses.length > 0) {
-      safeRegisterTool(mc, makePinLensTool(selectedIdea), opts);
-      safeRegisterTool(mc, makeDismissLensTool(selectedIdea), opts);
-      safeRegisterTool(mc, makeNoteLensTool(selectedIdea), opts);
-    }
-    if (selectedIdea.briefState.challenges.length > 0) {
-      safeRegisterTool(mc, makeRespondChallengeTool(selectedIdea), opts);
-    }
-    if (selectedIdea.briefState.stressResults.length > 0) {
-      safeRegisterTool(mc, makeMarkStressHandledTool(selectedIdea), opts);
-    }
-
-    if (selectedIdea.phase >= 8) {
-      safeRegisterTool(mc, makeChooseNextStepTool(selectedIdea), opts);
-    }
-
-    return () => {
-      if (lifecycleAcRef.current) {
-        lifecycleAcRef.current.abort();
-        lifecycleAcRef.current = null;
-      }
-    };
-  }, [
-    selectedIdea?.id,
-    selectedIdea?.phase,
-    selectedIdea?.briefState.lenses.length,
-    selectedIdea?.briefState.challenges.length,
-    selectedIdea?.briefState.stressResults.length,
-    selectedIdea?.briefState.approaches.length,
-    selectedIdea?.clarifications.length,
-  ]);
+    const lifecycleTools = buildLifecycleToolSet(selectedIdea);
+    registerToolScope(
+      mc,
+      lifecycleAcRef,
+      lifecycleTools,
+      `Lifecycle ${selectedIdea.id}@${selectedIdea.phase}`,
+    );
+    return () => abortToolScope(lifecycleAcRef);
+  }, [lifecycleScopeKey]);
 }
 
 export {
@@ -1615,4 +2357,5 @@ export {
   captureIdeaTool,
   exportHandoffTool,
   dispatchAndWait,
+  dispatchAndWaitForResult,
 };

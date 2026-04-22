@@ -52,7 +52,9 @@ export const openaiProvider: BaseProvider = {
     }
 
     const data = await res.json();
-    const raw: string = data?.choices?.[0]?.message?.content ?? '';
+    const choice = data?.choices?.[0];
+    const message = choice?.message;
+    const raw = normaliseMessageContent(message?.content);
     const usage = data?.usage
       ? {
           input: data.usage.prompt_tokens ?? 0,
@@ -69,6 +71,28 @@ export const openaiProvider: BaseProvider = {
       }
     }
 
+    if (!raw.trim() && parsedJson === undefined) {
+      const refusal = typeof message?.refusal === 'string' ? message.refusal : undefined;
+      const finishReason = typeof choice?.finish_reason === 'string' ? choice.finish_reason : 'unknown';
+      throw new Error(
+        `OpenAI API returned no usable content (finish_reason=${finishReason}${refusal ? `, refusal=${refusal}` : ''}).`,
+      );
+    }
+
     return { raw, parsedJson, usage };
   },
 };
+
+function normaliseMessageContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') {
+        return part.text;
+      }
+      return '';
+    })
+    .join('');
+}

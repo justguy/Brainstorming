@@ -1,48 +1,184 @@
 # Brainstorming Orchestrator
 
-Brainstorming Orchestrator is a local-first idea workspace with two shipped surfaces:
+A local-first brainstorming workspace where an AI facilitator works directly on your canvas, not in a chat sidebar.
 
-- A Chrome extension for the original 8-phase brainstorming pipeline.
-- A standalone web app with WebMCP tools, a free-form canvas, supporting docs, connection finding, critique cards, ghost suggestions, and a local autonomous facilitator.
+Instead of asking an AI for ideas, the AI participates like a teammate:
 
-## Status
+- it adds ideas
+- it connects them
+- it challenges assumptions
+- it revives discarded paths
+- it helps move the work forward
 
-- `PHASED_IMPL.md`: complete.
-- `ROADMAP.md` shipped local-first work: complete through the UI/UX polish driver.
-- `ROADMAP.md` current sprint: collaborative sync.
-- Remaining roadmap work is still future work: collaborative sync, Yjs, WebRTC multi-peer, and other stretch items in `ROADMAP.md`.
+All through explicit, typed actions, not vague chat responses.
 
-## What Is Shipped
+## What Makes This Different
 
-### Chrome extension
+Most AI tools sit in a sidebar and generate text.
 
-- Manifest V3 extension build.
-- BYOK provider support for Gemini, OpenAI, and Anthropic.
-- 8-phase structured brainstorming pipeline.
-- Popup capture, side panel workspace, readiness-gated export.
+This system is different:
 
-### Standalone web app
+- AI acts on the workspace, not outside it
+- draws connections between ideas
+- attaches critique cards to specific panels and tucks them behind the host card until expanded
+- proposes new ideas as draggable scout cards on the canvas
+- groups and reshapes the board
+- AI is bounded and controllable
+- operates through explicit tools (`WebMCP`)
+- can be paused or throttled
+- backs off when its suggestions are rejected
+- stages ideas instead of forcing them (`Shadow Mode`)
+- everything is reversible
+- AI actions are tracked and can be undone
+- no hidden mutations
+- no AI drift
+- local-first by default
+- runs fully in-browser
+- no required backend
+- your data stays with you
 
-- Runs at `http://localhost:6611` in dev mode.
-- WebMCP surface with global and lifecycle tools.
-- Free-form canvas with drag, group, merge, discard, and restore flows.
-- Supporting-doc extraction and board-aware idea scouting.
-- Connection finder plus on-canvas connection overlay.
-- Manual `draw_connection` tool.
-- Persisted critiques with anchored critique cards and dismiss flow.
-- Soft-mode inference with subtle timing hints.
-- Signal controls: bounded suggestions, bounded critiques, bounded connections.
-- Paginated turn-log access via `get_turn_log`.
-- Local autonomous facilitator with pause toggle and AI-origin action tagging.
-- Refined interaction polish: clearer active-focus hierarchy, idle-gated sequential AI reveals, stronger critique/suggestion motion, hover-aware related emphasis, and sharper critique copy.
+## What Is Shipped Today
+
+### Standalone Web App
+
+Shipped. This is the primary surface and runs at `http://localhost:6611`.
+
+- Free-form canvas: drag, group, merge, discard, restore
+- Supporting-doc extraction with facts injected into reasoning
+- Local-doc search + attach tools for user-authorized folders
+- Connection finder plus on-canvas connection overlay
+- Candidate ideas from outside-knowledge scouting, including draggable scout cards
+- Attached critique cards for devil's-advocate challenges with inline accept/dismiss
+- Signal control for bounded suggestions, critiques, and connections
+- Local autonomous facilitator with idle-gated automation
+- Facilitator peer/host controls plus shared pause/autonomy state
+- AI-tagged history and undo/redo support
+- Global WebMCP board tools plus selected-idea lifecycle/bead tools when `navigator.modelContext` is available
+
+### Chrome Extension
+
+Shipped.
+
+- 8-phase structured brainstorming pipeline
+- BYOK for Gemini, OpenAI, and Anthropic
+- Active-tab WebMCP discovery with explicit user consent
+- Side-panel workflow plus export
+
+### Same-Browser Sync Baseline
+
+Partially shipped.
+
+- Idea-row sync uses Yjs + `BroadcastChannel` + `y-indexeddb`
+- Facilitator peer state, host election, staged insights, and shared pause/autonomy state sync across local peers
+- This is not yet full board collaboration across every entity type
 
 ## Not Shipped Yet
 
-- Collaborative sync.
-- Yjs storage cutover.
-- WebRTC peer collaboration.
-- Centralized cloud persistence.
-- Cross-session AI memory.
+- Full-board collaborative sync across groups, docs, suggestions, critiques, connections, and history
+- WebRTC peer collaboration
+- Cross-device persistence
+- Cloud backup
+- Extension-origin WebMCP tool exposure on `chrome-extension://` pages
+
+These are actively planned in the roadmap.
+
+## What This Enables
+
+Instead of this:
+
+`Give me ideas for a CSV importer`
+
+You get this:
+
+- you add an idea to the board
+- AI proposes 2 alternative approaches as scout cards on the canvas
+- AI draws a connection between overlapping ideas
+- AI drops a critique:
+  `This breaks with large files — you're assuming memory fits`
+- AI revives a discarded idea when it becomes relevant again
+
+Now you're not brainstorming with a tool.
+You're working with a collaborator.
+
+## Core Concept: AI Through Tools (WebMCP)
+
+The AI does not decide what to do loosely.
+
+It operates through explicit actions like:
+
+- `capture_idea`
+- `get_idea`
+- `get_canvas`
+- `get_board`
+- `move_panel`
+- `draw_connection`
+- `critique_idea`
+- `scout_ideas`
+- `move_suggestion`
+- `discard_idea` / `restore_idea`
+- `advance_phase`
+- `get_bead_state`
+
+This makes behavior:
+
+- predictable
+- inspectable
+- controllable
+
+## WebMCP Tools
+
+The standalone web app exposes WebMCP tools when `navigator.modelContext` is available. In the current Chrome preview flow, that means Chrome/Chromium 146+ with `chrome://flags/#enable-webmcp-testing` enabled.
+
+If WebMCP is unavailable, the app still works normally. The tool surface just does not register.
+
+### What The Tools Do
+
+- Workspace reads and setup: `list_ideas`, `get_idea`, `get_turn_log`, `capture_idea`, `get_canvas`, `get_board`, `export_handoff`
+- Canvas mutation: `move_panel`, `move_suggestion`, `group_ideas`, `ungroup_idea`, `merge_ideas`, `discard_idea`, `restore_idea`
+- Board analysis and idea generation: `find_connections`, `draw_connection`, `critique_idea`, `list_critiques`, `dismiss_critique`, `scout_ideas`, `cross_pollinate`, `run_beat`, `list_suggestions`, `admit_suggestion`, `elaborate_suggestion`, `dismiss_suggestion`
+- Supporting docs: `attach_supporting_doc`, `list_supporting_docs`, `get_supporting_doc`, `delete_supporting_doc`, `retry_doc_extraction`
+- Local-doc intake: `search_local_docs`, `attach_local_doc_candidate`
+- Facilitator controls: `list_peers`, `get_ai_autonomy_state`, `claim_ai_host`, `release_ai_host`, `set_ai_paused`, `set_ai_autonomy_mode`
+- Selected-idea lifecycle and bead tools: `advance_phase`, `submit_clarifications`, `select_approach`, `respond_to_challenge`, `mark_stress_handled`, `choose_next_step`, `add_rule`, `remove_rule`, `list_risks`, `patch_risk`, `list_ambiguities`, `resolve_ambiguity`, `get_phase_history`, `get_bead_state`, `suggest_next_bead`, `flag_bead_for_review`
+
+### How To Use Them
+
+1. Run `npm run dev:web` and open `http://localhost:6611`.
+2. Open the app in a WebMCP-capable Chromium build with the WebMCP flag enabled.
+3. Use a WebMCP inspector or browser agent to list the page's registered tools.
+4. Global board tools are available as soon as the app loads.
+5. Select an idea to expose the lifecycle/bead tool set for that idea and its current phase.
+6. For `search_local_docs`, first authorize a folder from the supporting-doc UI. The tool will otherwise return a re-authorization message instead of silently reading files.
+7. In the extension flow, allowing the WebMCP consent banner snapshots active-tab tool metadata into the idea context; invoking active-tab tools remains an explicit, user-consented action.
+
+For the deeper inventory and architecture notes, see `WEBMCP_README.md` and `WEBMCP_CAPABILITIES.md`.
+
+## Autonomous Facilitator
+
+The goal is not an assistant.
+
+It is a facilitator that:
+
+- keeps momentum
+- surfaces risks
+- connects ideas
+- nudges progress
+
+It operates in modes:
+
+- `Passive Observer` — watches, stages insights
+- `Guided Co-Pilot` — acts during idle moments
+- `Active Challenger` — behaves like a full participant
+
+And it adapts:
+
+- repeated rejections -> it backs off
+- accepted ideas -> it ramps up again
+- cooldown does not mean silence; in `Shadow Mode` it keeps tracking, generating, and staging ideas in the `Insight Feed`
+
+Architecturally, this is a managerial control plane layered over the board, bead flow, and WebMCP tool system.
+It observes the workspace, selects a role, emits a structured proposal, and then either executes or stages that proposal under policy control.
+Humans remain the final authority: they can accept, reject, override, advance manually, or undo AI-authored changes at any time.
 
 ## Prerequisites
 
@@ -51,28 +187,14 @@ Brainstorming Orchestrator is a local-first idea workspace with two shipped surf
 - Chromium-based browser for the extension
 - At least one LLM API key for Gemini, OpenAI, or Anthropic
 
-## Install
+## Development
 
 ```bash
 npm install
-```
-
-## Development
-
-### Standalone web app
-
-```bash
 npm run dev:web
 ```
 
-- Dev server: `http://localhost:6611`
-- Primary surface for new feature work
-
-### Chrome extension
-
-```bash
-npm run dev
-```
+Open: `http://localhost:6611`
 
 ## Builds
 
@@ -120,19 +242,21 @@ npm run typecheck
 - `WEBMCP_CAPABILITIES.md`: detailed capability matrix.
 - `WEBMCP_INTEGRATION_NOTES.md`: integration decisions and tradeoffs.
 - `PHASED_IMPL.md`: phased implementation driver that is now complete.
-- `ROADMAP.md`: forward plan beyond the shipped facilitator work.
+- `ROADMAP.md`: forward plan for facilitator evolution and sync.
 - `KILLER_DEMO.md`: demo framing.
 - `EXECUTION.md`: earlier execution and acceptance notes.
 
 ## Storage Model
 
 - IndexedDB stores ideas, groups, docs, suggestions, critiques, and related local board state.
+- `y-indexeddb` persists the same-browser Yjs sync layer used for idea rows and facilitator session state.
 - Browser-local settings storage holds provider configuration and credentials for the shipped surfaces.
-- The app is still local-only.
+- The app is still local-first and browser-resident.
 
 ## Current Constraints
 
-- No sync or multiplayer yet.
+- Full board/entity sync is not complete yet. Current shipped sync is limited to idea rows plus facilitator session state across same-browser peers.
+- No WebRTC or cross-device collaboration yet.
 - No cloud backup.
 - The standalone web app is the primary engine for ongoing work.
 - The extension-origin WebMCP expose path remains paused as noted in `ROADMAP.md`.

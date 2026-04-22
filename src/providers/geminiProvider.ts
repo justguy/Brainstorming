@@ -75,7 +75,8 @@ export const geminiProvider: BaseProvider = {
     }
 
     const data = await res.json();
-    const raw: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const candidate = data?.candidates?.[0];
+    const raw = normaliseGeminiParts(candidate?.content?.parts);
     const usage = data?.usageMetadata
       ? {
           input: data.usageMetadata.promptTokenCount ?? 0,
@@ -92,6 +93,27 @@ export const geminiProvider: BaseProvider = {
       }
     }
 
+    if (!raw.trim() && parsedJson === undefined) {
+      const finishReason = typeof candidate?.finishReason === 'string' ? candidate.finishReason : 'unknown';
+      const blockReason = typeof data?.promptFeedback?.blockReason === 'string'
+        ? data.promptFeedback.blockReason
+        : undefined;
+      throw new Error(
+        `Gemini API returned no usable content (finishReason=${finishReason}${blockReason ? `, blockReason=${blockReason}` : ''}).`,
+      );
+    }
+
     return { raw, parsedJson, usage };
   },
 };
+
+function normaliseGeminiParts(parts: unknown): string {
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .map((part) => (
+      part && typeof part === 'object' && 'text' in part && typeof part.text === 'string'
+        ? part.text
+        : ''
+    ))
+    .join('');
+}

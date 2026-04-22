@@ -63,6 +63,17 @@ export default function Options(): React.ReactElement {
     }));
   }
 
+  function handleKeyInput(providerId: ProviderId, event: React.FormEvent<HTMLInputElement>) {
+    updateKey(providerId, event.currentTarget.value);
+  }
+
+  function handleKeyPaste(providerId: ProviderId, event: React.ClipboardEvent<HTMLInputElement>) {
+    const pasted = event.clipboardData.getData('text');
+    if (!pasted) return;
+    event.preventDefault();
+    updateKey(providerId, pasted);
+  }
+
   async function handleValidateAndSave() {
     setSaveStatus('saving');
     setSaveError(null);
@@ -148,7 +159,7 @@ export default function Options(): React.ReactElement {
           {ALL_PROVIDERS.map(provider => {
             const isActive = provider.id === activeProvider;
             return (
-              <label
+              <div
                 key={provider.id}
                 className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
                   isActive
@@ -156,59 +167,69 @@ export default function Options(): React.ReactElement {
                     : 'border-gray-200 hover:border-gray-300 bg-white'
                 }`}
               >
-                <input
-                  type="radio"
-                  name="activeProvider"
-                  value={provider.id}
-                  checked={isActive}
-                  onChange={() => handleProviderChange(provider.id)}
-                  className="mt-0.5 accent-violet-600"
-                  aria-label={`Select ${PROVIDER_LABELS[provider.id]} as active provider`}
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900">
-                      {PROVIDER_LABELS[provider.id]}
-                    </span>
-                    {isActive && (
-                      <span className="text-xs bg-violet-600 text-white px-1.5 py-0.5 rounded-full font-medium">
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {provider.availableModels.join(', ')}
-                  </p>
-
-                  {/* API Key field for this provider */}
-                  <div className="mt-2">
-                    <label
-                      htmlFor={`key-${provider.id}`}
-                      className="block text-xs font-medium text-gray-600 mb-1"
-                    >
-                      API Key{isActive && <span className="text-red-500 ml-0.5">*</span>}
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <input
+                    id={`provider-${provider.id}`}
+                    type="radio"
+                    name="activeProvider"
+                    value={provider.id}
+                    checked={isActive}
+                    onChange={() => handleProviderChange(provider.id)}
+                    className="mt-0.5 accent-violet-600"
+                    aria-label={`Select ${PROVIDER_LABELS[provider.id]} as active provider`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor={`provider-${provider.id}`} className="block cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {PROVIDER_LABELS[provider.id]}
+                        </span>
+                        {isActive && (
+                          <span className="text-xs bg-violet-600 text-white px-1.5 py-0.5 rounded-full font-medium">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {provider.availableModels.join(', ')}
+                      </p>
                     </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        id={`key-${provider.id}`}
-                        type="password"
-                        value={providerKeys[provider.id].key}
-                        onChange={e => updateKey(provider.id, e.target.value)}
-                        placeholder={isActive ? 'Required' : 'Optional'}
-                        className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
-                        aria-label={`API key for ${PROVIDER_LABELS[provider.id]}`}
-                      />
-                      {(() => {
-                        const v = providerKeys[provider.id].validation;
-                        if (v === 'validating') return <span className="text-xs text-gray-500">…</span>;
-                        if (v === 'valid') return <span className="text-green-600 text-sm" aria-label="Valid">✓</span>;
-                        if (v === 'invalid') return <span className="text-red-600 text-sm" aria-label="Invalid">✗</span>;
-                        return null;
-                      })()}
+
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`key-${provider.id}`}
+                        className="mb-1 block text-xs font-medium text-gray-600"
+                      >
+                        API Key{isActive && <span className="text-red-500 ml-0.5">*</span>}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id={`key-${provider.id}`}
+                          type="text"
+                          value={providerKeys[provider.id].key}
+                          onChange={e => updateKey(provider.id, e.target.value)}
+                          onInput={event => handleKeyInput(provider.id, event)}
+                          onPaste={event => handleKeyPaste(provider.id, event)}
+                          placeholder={isActive ? 'Required' : 'Optional'}
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
+                          className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          aria-label={`API key for ${PROVIDER_LABELS[provider.id]}`}
+                        />
+                        {(() => {
+                          const v = providerKeys[provider.id].validation;
+                          if (v === 'validating') return <span className="text-xs text-gray-500">…</span>;
+                          if (v === 'valid') return <span className="text-green-600 text-sm" aria-label="Valid">✓</span>;
+                          if (v === 'invalid') return <span className="text-red-600 text-sm" aria-label="Invalid">✗</span>;
+                          return null;
+                        })()}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </label>
+              </div>
             );
           })}
         </div>

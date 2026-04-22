@@ -2,7 +2,7 @@
  * Options.tsx — Settings page for the web app.
  *
  * Reached via hash-based routing: window.location.hash = '#/options'
- * Uses the chrome-shim storage (localStorage under "brainstorm:" prefix) to persist.
+ * Uses the IndexedDB-backed settings store via src/storage/settings.ts.
  *
  * Reuses the exact same logic as src/options/Options.tsx but adds a Back link
  * and operates in the single-page hash router context.
@@ -74,6 +74,17 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
       ...prev,
       [providerId]: { key, validation: 'idle' },
     }));
+  }
+
+  function handleKeyInput(providerId: ProviderId, event: React.FormEvent<HTMLInputElement>) {
+    updateKey(providerId, event.currentTarget.value);
+  }
+
+  function handleKeyPaste(providerId: ProviderId, event: React.ClipboardEvent<HTMLInputElement>) {
+    const pasted = event.clipboardData.getData('text');
+    if (!pasted) return;
+    event.preventDefault();
+    updateKey(providerId, pasted);
   }
 
   async function handleValidateAndSave() {
@@ -167,18 +178,20 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
             LLM Provider
           </h2>
           <div className="flex flex-col gap-2">
-            {ALL_PROVIDERS.map(provider => {
-              const isActive = provider.id === activeProvider;
-              return (
-                <label
-                  key={provider.id}
-                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                    isActive
-                      ? 'border-violet-500 bg-violet-50'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
-                >
+          {ALL_PROVIDERS.map(provider => {
+            const isActive = provider.id === activeProvider;
+            return (
+              <div
+                key={provider.id}
+                className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                  isActive
+                    ? 'border-violet-500 bg-violet-50'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-3">
                   <input
+                    id={`provider-${provider.id}`}
                     type="radio"
                     name="activeProvider"
                     value={provider.id}
@@ -187,35 +200,43 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
                     className="mt-0.5 accent-violet-600"
                     aria-label={`Select ${PROVIDER_LABELS[provider.id]} as active provider`}
                   />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">
-                        {PROVIDER_LABELS[provider.id]}
-                      </span>
-                      {isActive && (
-                        <span className="text-xs bg-violet-600 text-white px-1.5 py-0.5 rounded-full font-medium">
-                          Active
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor={`provider-${provider.id}`} className="block cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {PROVIDER_LABELS[provider.id]}
                         </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {provider.availableModels.join(', ')}
-                    </p>
+                        {isActive && (
+                          <span className="text-xs bg-violet-600 text-white px-1.5 py-0.5 rounded-full font-medium">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {provider.availableModels.join(', ')}
+                      </p>
+                    </label>
                     <div className="mt-2">
                       <label
                         htmlFor={`key-${provider.id}`}
-                        className="block text-xs font-medium text-gray-600 mb-1"
+                        className="mb-1 block text-xs font-medium text-gray-600"
                       >
                         API Key{isActive && <span className="text-red-500 ml-0.5">*</span>}
                       </label>
                       <div className="flex items-center gap-2">
                         <input
                           id={`key-${provider.id}`}
-                          type="password"
+                          type="text"
                           value={providerKeys[provider.id].key}
                           onChange={e => updateKey(provider.id, e.target.value)}
+                          onInput={event => handleKeyInput(provider.id, event)}
+                          onPaste={event => handleKeyPaste(provider.id, event)}
                           placeholder={isActive ? 'Required' : 'Optional'}
-                          className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
+                          className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
                           aria-label={`API key for ${PROVIDER_LABELS[provider.id]}`}
                         />
                         {(() => {
@@ -228,11 +249,12 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
                       </div>
                     </div>
                   </div>
-                </label>
-              );
-            })}
-          </div>
-        </section>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
         {/* Model picker */}
         <section className="mb-6" aria-labelledby="model-heading">
@@ -307,8 +329,8 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
         </Button>
 
         <p className="text-xs text-gray-400 mt-4 text-center">
-          Keys are stored in your browser's localStorage under the "brainstorm:" prefix.
-          They never leave your device.
+          Keys are stored in the browser's IndexedDB-backed settings store on this device.
+          Legacy localStorage values are migrated on first load.
         </p>
       </div>
     </div>

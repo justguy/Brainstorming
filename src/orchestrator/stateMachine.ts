@@ -1,4 +1,15 @@
-import type { Idea, LlmMessage, BriefState, ProviderId, ActiveTabToolContext, LensEntry, ChallengeEntry, StressResult } from '../types';
+import type {
+  Idea,
+  LlmMessage,
+  LlmMessageMeta,
+  BriefState,
+  ProviderId,
+  ActiveTabToolContext,
+  LensEntry,
+  ChallengeEntry,
+  StressResult,
+  AmbiguityResolutionStatus,
+} from '../types';
 import { buildPayload, payloadToMessages } from './ctmcp';
 import { getSettings } from '../storage/settings';
 import { callWithRetry } from './retryAndFallback';
@@ -40,6 +51,56 @@ function mergeBriefState(existing: BriefState, update: Partial<BriefState>): Bri
     lenses: update.lenses ?? existing.lenses,
     challenges: update.challenges ?? existing.challenges,
     stressResults: update.stressResults ?? existing.stressResults,
+  };
+}
+
+export interface AmbiguityResolutionInput {
+  ambiguityId: string;
+  status: Exclude<AmbiguityResolutionStatus, 'open'> | 'open';
+  note?: string;
+  resolvedBy?: string;
+  resolvedAt?: number;
+}
+
+export function applyAmbiguityResolution(
+  idea: Idea,
+  input: AmbiguityResolutionInput,
+): Idea {
+  const now = input.resolvedAt ?? Date.now();
+  let updated = false;
+  const nextAmbiguities = idea.ambiguities.map(ambiguity => {
+    if (ambiguity.id !== input.ambiguityId) {
+      return ambiguity;
+    }
+    updated = true;
+    return {
+      ...ambiguity,
+      resolution: {
+        status: input.status,
+        note: input.note,
+        resolvedBy: input.resolvedBy,
+        resolvedAt: now,
+      },
+    };
+  });
+
+  if (!updated) {
+    throw new Error(`No ambiguity found with id "${input.ambiguityId}"`);
+  }
+
+  return {
+    ...idea,
+    ambiguities: nextAmbiguities,
+  };
+}
+
+function normalizeAmbiguity(ambiguity: Idea['ambiguities'][number]): Idea['ambiguities'][number] {
+  if (ambiguity.resolution?.status) return ambiguity;
+  return {
+    ...ambiguity,
+    resolution: {
+      status: 'open',
+    },
   };
 }
 
@@ -112,10 +173,30 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
   const task = role.buildTask(idea, userInput);
   const payload = buildPayload(role, idea, task, liveToolContext, supportingDocs);
   const messages = payloadToMessages(payload);
+  const liveToolNames = liveToolContext?.tools.map(tool => tool.name) ?? [];
+  const turnMeta: LlmMessageMeta = {
+    phase: spec.number,
+    phaseLabel: spec.label,
+    roleId: role.id,
+    provider: activeProvider,
+    model: activeModel,
+    source: 'phase_run',
+    runSurface: 'llm_role',
+    liveToolOrigin: liveToolContext?.origin,
+    liveToolNames,
+  };
 
   const outgoingLog: LlmMessage[] = [
-    { role: 'system', content: `[Step ${spec.number}] Running role: ${role.id}` },
-    { role: 'user', content: task },
+    {
+      role: 'system',
+      content: `[Step ${spec.number}] Running role: ${role.id}`,
+      meta: { ...turnMeta, source: 'system', entryKind: 'start' },
+    },
+    {
+      role: 'user',
+      content: task,
+      meta: { ...turnMeta, source: 'user_input', entryKind: 'task' },
+    },
   ];
 
   const { result, usedFallback } = await callWithRetry({
@@ -133,6 +214,7 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
     const sentinelLog: LlmMessage = {
       role: 'assistant',
       content: `[FALLBACK] Role ${role.id} failed after retries. Manual input required.`,
+      meta: { ...turnMeta, entryKind: 'fallback' },
     };
     return {
       ...idea,
@@ -152,7 +234,11 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
     turnLog: [
       ...idea.turnLog,
       ...outgoingLog,
-      { role: 'assistant', content: JSON.stringify(result) },
+      {
+        role: 'assistant',
+        content: JSON.stringify(result, null, 2),
+        meta: { ...turnMeta, entryKind: 'result' },
+      },
     ],
   };
 
@@ -163,7 +249,7 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
     case 'ambiguity': {
       updated = {
         ...baseUpdate,
-        ambiguities: result.ambiguities ?? [],
+        ambiguities: (result.ambiguities ?? []).map(normalizeAmbiguity),
         phase: nextPhase,
         status: 'in_progress',
         ...(liveToolContext && !idea.liveToolContext ? { liveToolContext } : {}),

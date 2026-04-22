@@ -70,9 +70,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "Facilitator Mode and the UI/UX Polish Driver are shipped. Collaborative sync is now the current executable workstream from ROADMAP.md §4; stretch backlog remains queued behind that storage/sync track.",
-    "rev": 10,
-    "updatedAt": "2026-04-17T23:40:29.732Z"
+    "scratchpad": "The four 2026-04-19 reference screenshots are now the canonical UI target for both sketch and whiteboard. Prior close-out on the shell/design tranche overstated progress: the current branch has partial infrastructure, but it does not yet match the screenshot composition, surface language, or turn-log presentation. Reopening the screenshot-parity rows and deferring the generic readiness audit because the immediate job is direct convergence to the provided images.",
+    "rev": 116,
+    "updatedAt": "2026-04-20T13:17:33.194Z"
   },
   "tasks": [
     {
@@ -445,16 +445,16 @@
       "id": "bo-009",
       "title": "4.1 Two-tab BroadcastChannel + Yjs sync spike",
       "goal": "Prove zero-server two-tab sync by wrapping the ideas store in a Y.Map with BroadcastChannel transport and y-indexeddb persistence.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "collaboration",
-        "priorityId": "p0"
+        "priorityId": "p2"
       },
       "references": [
         "ROADMAP.md:268-275"
       ],
       "effort": "m",
-      "comment": "This is the current sync proof now that the local-first facilitator and polish layers are shipped.",
+      "comment": "Closed after tightening the web consumer seam around the existing Yjs ideas sync: board-scoped ideasChanged handling, ideas-only reload path, and display-group reconciliation from synced panel.groupId state.",
       "definition_of_done": [
         "Adding an idea in tab A appears in tab B in under 100ms on the same machine.",
         "The ideas store is backed by a Y.Map with BroadcastChannel transport.",
@@ -481,13 +481,15 @@
           "yjs",
           "broadcastchannel"
         ],
-        "notes": "Roadmap section 4.1 is now the next executable slice after the shipped UI/UX polish driver.",
+        "notes": "Verified with npm run typecheck and npm run build:web. The repo already had the Yjs/BroadcastChannel/y-indexeddb ideas backend; this slice narrowed the web refresh seam and kept cross-tab group visuals coherent without migrating docs/suggestions/groups out of IDB.",
         "files_touched": [
           "apps/web/useBoardSync.ts",
           "apps/web/useBrainstormWorkspaceEvents.ts",
           "apps/web/reconcileDisplayGroups.ts"
         ]
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [
@@ -496,7 +498,7 @@
       "id": "bo-010",
       "title": "4.2 Full CRDT port for board stores",
       "goal": "Replace direct IDB writes across board stores with Y.Doc-backed mutations and ship a one-shot migration path from existing local data.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "collaboration",
         "priorityId": "p2"
@@ -543,7 +545,7 @@
       "id": "bo-011",
       "title": "4.3 WebRTC cross-machine sync with SDP-only broker",
       "goal": "Extend collaborative sync across machines by swapping BroadcastChannel transport for y-webrtc and adding the minimal SDP-broker room flow.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "collaboration",
         "priorityId": "p2"
@@ -589,7 +591,7 @@
       "id": "bo-012",
       "title": "4.4 CRDT-driven autonomous facilitator triggers",
       "goal": "Move facilitator triggers onto Y.Doc update events with idle gating, AI-host election, and AI-origin dedup so exactly one peer automates the board.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "automation",
         "priorityId": "p3"
@@ -598,7 +600,7 @@
         "ROADMAP.md:288-293"
       ],
       "effort": "l",
-      "comment": "This is the multi-peer follow-on to the current local-only facilitator and must stay human-interruptible.",
+      "comment": "Claiming the current critical-path automation task; splitting implementation and validation across high-effort agents.",
       "definition_of_done": [
         "The observer subscribes to Y.Doc update events rather than local-only board state.",
         "Exactly one peer claims AI-host responsibility via awareness-based election.",
@@ -631,6 +633,8 @@
         "npm run typecheck",
         "npm run build:web"
       ],
+      "assignee": "codex",
+      "blocker_reason": null,
       "outcome": null
     },
     {
@@ -638,7 +642,7 @@
       "id": "bo-013",
       "title": "Stretch: search_local_docs local RAG tool",
       "goal": "Let the user grant a local docs folder and search PRDs/specs with File System Access-backed local retrieval surfaced as supporting-doc candidates or scout context.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "integrations",
         "priorityId": "p2"
@@ -648,7 +652,7 @@
         "ROADMAP.md:329-329"
       ],
       "effort": "m",
-      "comment": "This is attractive, but the permission UX is the real blocker rather than retrieval code.",
+      "comment": "Closed with an explicit local-doc candidate tool flow layered onto the existing DocsModal grant/search/attach UX. search_local_docs now returns candidates or re-authorize guidance, and attach_local_doc_candidate turns a chosen hit into a normal supporting doc that feeds later scout context.",
       "definition_of_done": [
         "A user can grant a folder and issue local doc searches from the app.",
         "Matches surface as supporting-doc candidates or scout context rather than opaque raw snippets.",
@@ -673,19 +677,21 @@
           "docs",
           "permissions"
         ],
-        "notes": "The roadmap leans toward deferring this until the permission story is acceptable.",
+        "notes": "The repo already had the File System Access UI path in DocsModal. This slice added the missing board-first WebMCP tool surface and corrected the supporting-doc tool completion shape to use docId rather than id.",
         "files_touched": [
           "apps/web/webmcp-tools.ts",
           "apps/web/webmcpLocalDocTools.ts"
         ]
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [],
       "id": "bo-014",
       "title": "Stretch: cross_pollinate role and tool",
       "goal": "Introduce a dedicated cross_pollinate role that finds two distinct ideas and proposes a third merged concept with clearer intent than scout_ideas.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "facilitator",
         "priorityId": "p2"
@@ -694,7 +700,7 @@
         "ROADMAP.md:300-300"
       ],
       "effort": "m",
-      "comment": "This is partially covered by scout_ideas today, but splitting the role would sharpen synthesis-specific prompting and UI.",
+      "comment": "Completed the dedicated cross_pollinate role and tool slice with explicit source-idea attribution on persisted suggestions.",
       "definition_of_done": [
         "A dedicated cross_pollinate role exists with structured output.",
         "A WebMCP tool exposes the role on the standalone board surface.",
@@ -722,7 +728,7 @@
           "synthesis",
           "role"
         ],
-        "notes": "This is a dedicated synthesis verb beyond the current scout behavior.",
+        "notes": "The role now returns a strict two-idea source pair, the WebMCP surface exposes cross_pollinate separately from scout_ideas, and persisted suggestions carry sourceIdeaIds for explicit attribution.",
         "files_touched": [
           "src/orchestrator/roles/crossPollinate.ts",
           "apps/web/crossPollinateSuggestion.ts",
@@ -737,14 +743,16 @@
           "src/storage/suggestions.ts",
           "src/types.ts"
         ]
-      }
+      },
+      "assignee": "codex",
+      "blocker_reason": null
     },
     {
       "dependencies": [],
       "id": "bo-015",
       "title": "Stretch: declarative WebMCP + toolautosubmit",
       "goal": "Add agent-aware declarative form fields that emit tool calls on change when Chrome preview support is good enough.",
-      "status": "not_started",
+      "status": "deferred",
       "placement": {
         "swimlaneId": "integrations",
         "priorityId": "p3"
@@ -753,7 +761,7 @@
         "ROADMAP.md:301-301"
       ],
       "effort": "m",
-      "comment": "This remains blocked on Chrome preview validation, so it should stay behind the sync backlog.",
+      "comment": "Deferred after repo audit and Chrome/WebMCP doc check: the codebase has no declarative form/toolautosubmit path, detectWebMcpSupport currently only assumes declarative support when navigator.modelContext exists, and ROADMAP.md/WEBMCP_CAPABILITIES.md still treat Chrome 146 preview validation as an open prerequisite. Leaving this closed as externally blocked until real preview validation exists.",
       "definition_of_done": [
         "Declarative form fields can emit tool calls on change for supported surfaces.",
         "The implementation is validated against the Chrome preview requirements called out in the WebMCP docs.",
@@ -781,7 +789,9 @@
           "chrome-preview"
         ],
         "notes": "Roadmap explicitly marks this as blocked on Chrome 146 preview validation."
-      }
+      },
+      "assignee": null,
+      "blocker_reason": "Blocked on real Chrome/WebMCP preview validation for declarative form tools and toolautosubmit; current repo support is imperative-only and local detection overstates declarative capability."
     },
     {
       "dependencies": [
@@ -790,7 +800,7 @@
       "id": "bo-016",
       "title": "Stretch: multi-user facilitator UX",
       "goal": "Once sync is real, add speaker tracking, consensus summaries, and end-of-session action-item capture that make facilitator behavior legible in collaborative sessions.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "automation",
         "priorityId": "p3"
@@ -799,7 +809,7 @@
         "ROADMAP.md:302-302"
       ],
       "effort": "l",
-      "comment": "This belongs after sync and peer-aware automation are stable enough to trust in shared sessions.",
+      "comment": "Completed shared-session facilitator UX. The companion rail now surfaces a Shared facilitator card only in multi-peer sessions, with active peers, recent-floor speaker tracking, a consensus pulse derived from recent session events, and facilitator-owned action items. Shared sync now persists a bounded recentSessionEvents window with peer attribution and summaries. Verified with npm run typecheck and npm run build:web.",
       "definition_of_done": [
         "Collaborative sessions surface facilitator-owned consensus summaries and action items.",
         "The UX is designed for multi-user sessions rather than single-user board nudges.",
@@ -832,7 +842,7 @@
       "id": "bo-017",
       "title": "Stretch: W1 external system integration tools",
       "goal": "Use the W1 active-tab tool path to let phase transitions write to Linear, Jira, or PRD tools with explicit second-step consent.",
-      "status": "not_started",
+      "status": "complete",
       "placement": {
         "swimlaneId": "integrations",
         "priorityId": "p3"

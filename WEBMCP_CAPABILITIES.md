@@ -2,7 +2,7 @@
 
 **Status:** living doc — update whenever a tool is added, removed, or a new issue is discovered.
 **Companion docs:** `ROADMAP.md` (forward-looking plan for facilitator mode + sync), `WEBMCP_INTEGRATION_NOTES.md` (retrospective on W1/W2/W3), `WEBMCP_SPIKE.md` (W2 test plan).
-**Last updated:** 2026-04-17 (Current Sprint = Facilitator Mode in §2g; paginated `get_turn_log` promoted into the sprint; former C3 removed from §3b; sync blocked until sprint ships)
+**Last updated:** 2026-04-20 (board-read tools, critique tools, facilitator controls, `run_beat`, and `move_suggestion` now reflected in §1a; facilitator-mode sprint marked shipped in §2g)
 
 This document is the map. It tracks (1) what the orchestrator can do through WebMCP today, (2) what an agent can't do yet but should be able to, (3) what breaks or is awkward, and (4) where WebMCP could take the product next. The goal is to drive WebMCP to its full potential and evaluate the API honestly as we do.
 
@@ -23,10 +23,13 @@ Registered via `navigator.modelContext.registerTool`. Split into two lifetimes:
 |---|---|---|
 | `list_ideas` | read | List all non-archived ideas (id, text, readiness, phase, tags). |
 | `get_idea` | read | Return a full idea object including `briefState` and `turnLog`. |
+| `get_turn_log` | read | Paginated turn-log reader for the selected idea's audit trail. |
 | `capture_idea` | write | Create a new idea from raw text + optional tags, select it. |
 | `export_handoff` | write | Download the handoff markdown for a green-readiness idea. |
-| `get_canvas` | read | Snapshot canvas layout — all visible ideas' `(x, y, groupId)` plus group themes. |
+| `get_canvas` | read | Snapshot canvas layout — visible ideas, pending scout suggestions, and groups with their spatial metadata. |
+| `get_board` | read | Return the full durable board document including ideas, docs, suggestions, critiques, connections, tweaks, and history metadata. |
 | `move_panel` | write | Set a panel's `(x, y)`. Pure positional. |
+| `move_suggestion` | write | Set a pending scout suggestion card's `(x, y)`. Pure positional. |
 | `group_ideas` | write | Group two ideas; kicks off `groupThemer` LLM role. |
 | `ungroup_idea` | write | Remove an idea from its group (group auto-deleted if empty). |
 | `merge_ideas` | write | Run `ideaMerger` synthesis; archives originals, creates merged idea. |
@@ -39,11 +42,22 @@ Registered via `navigator.modelContext.registerTool`. Split into two lifetimes:
 | `restore_idea` | write | Pulls an idea back out of the discard pile (status → `captured`). |
 | `list_discarded_ideas` | read | Lists the pile newest-first. Feeds agent-driven revival workflows. |
 | `find_connections` | write | Runs the `connectionFinder` role over live + discarded ideas + ready docs. Populates the Connections panel. Results are ephemeral. |
-| `scout_ideas` | write | Runs the `outsideKnowledgeScout` role. Materialises up to 6 pending `ScoutSuggestion` rows and paints them as ghost panels. |
+| `draw_connection` | write | Create a visible board connection between two canvas ideas without rerunning the full finder. |
+| `critique_idea` | write | Run the `devilsAdvocate` role and attach one persisted critique to a target idea. |
+| `list_critiques` | read | List persisted critiques, optionally filtered by idea or status. |
+| `dismiss_critique` | write | Dismiss an active critique while preserving history. |
+| `scout_ideas` | write | Runs the `outsideKnowledgeScout` role. Materialises up to 6 pending `ScoutSuggestion` rows and paints them as movable scout cards. |
+| `cross_pollinate` | write | Synthesize a new suggestion by pairing ideas already on the board. |
+| `run_beat` | write | Invoke a board-scoped beat (`scout`, `connect`, `critique`, `cluster`, `summarise`) through the board-first surface. |
 | `list_suggestions` | read | Filterable by `status: 'pending' \| 'admitted' \| 'dismissed' \| 'all'`. Default `pending`. |
 | `admit_suggestion` | write | Promotes a pending suggestion into a real idea (tagged `from-scout`, preserving elaboration if any). Returns the new idea id via the completion payload. |
 | `elaborate_suggestion` | write | Runs the `suggestionElaborator` role and stores elaboration + sub-parts + implications on the suggestion. |
 | `dismiss_suggestion` | write | Marks the suggestion dismissed. It stays indexed so the scout won't re-propose it. |
+| `list_peers` | read | Returns the current collaboration peer view for facilitator coordination. |
+| `get_ai_autonomy_state` | read | Returns facilitator autonomy ceiling, effective mode, cooldowns, and recent AI action outcomes. |
+| `claim_ai_host` / `release_ai_host` | write | Coordinate which peer is currently allowed to act as AI host. |
+| `set_ai_autonomy_mode` | write | Switch the facilitator between named autonomy profiles. |
+| `set_ai_paused` | write | Immediate global pause toggle for autonomous facilitator actions. |
 
 #### Lifecycle (re-registered per selected idea)
 
@@ -125,16 +139,18 @@ Follow-up opportunities: an agent-level "summarize all docs for this idea" helpe
 - **Multi-tool invocation pattern.** Today `invokeActiveTabTool` is a single call. An orchestrator that wants "invoke tool X, feed output to tool Y, then summarize" would benefit from a declarative `chain` helper or at least structured pagination of tool outputs.
 - **Persistent tool directory per idea.** Currently we snapshot at phase 0/1 only. A refresh action or scheduled re-snapshot would let mid-phase changes (e.g., user opens a different tab) reach the orchestrator.
 
-### 2g. Current Sprint — Facilitator Mode (see `ROADMAP.md` §2)
+### 2g. Facilitator Mode Closure Note (see `ROADMAP.md` §2)
 
-In flight on the W3 standalone web app. All three ship together; `get_turn_log` is in scope because the two new roles increase turn-log churn.
+The core W3 facilitator-mode surface is now shipped and reflected in §1a:
 
-| Tool | Kind | Rationale |
-|---|---|---|
-| `draw_connection` | write | Create a `Connection` and render an SVG line between two idea panels. Reads from existing Connection records so the overlay is a view over `find_connections` output. |
-| `critique_idea` | write | Run new `devilsAdvocate` role. Returns structured `{ risks[], hiddenAssumptions[], counterExamples[] }` about one idea. New `critiques` store (DB_VERSION → 5). |
-| `list_critiques` / `dismiss_critique` | read / write | Lifecycle companions for `critique_idea`. |
-| `get_turn_log` | read | Paginated turn-log reader with `{ cursor, limit }`. `get_idea` trims `turnLog` to `{ totalTurns, latestTurnAt }` once this ships. Closes the former C3 in §3b. |
+- `draw_connection`
+- `critique_idea`
+- `list_critiques`
+- `dismiss_critique`
+- `get_turn_log`
+- `cross_pollinate`
+- `run_beat`
+- `move_suggestion`
 
 ### 2g.1 Longer-horizon facilitator tools (see `ROADMAP.md` §4)
 
@@ -148,9 +164,7 @@ In flight on the W3 standalone web app. All three ship together; `get_turn_log` 
 | Tool | Kind | Rationale |
 |---|---|---|
 | `join_room` / `leave_room` | write | Connect to a shared Y.Doc via BroadcastChannel (same browser) or `y-webrtc` (cross-machine). |
-| `list_peers` | read | Returns connected peers from `y-awareness`. |
-| `claim_ai_host` / `release_ai_host` | write | One-peer-runs-observer guarantee for the autonomous facilitator. Lowest clientID wins by default; this tool lets an agent override. |
-| `set_ai_paused` | write | Global toggle. Stops all autonomous observer triggers immediately. |
+| Peer-presence sync beyond the local board | mixed | `list_peers`, host-claim verbs, and pause/autonomy controls are already exposed on W3; the remaining gap is durable multi-room/shared-document transport. |
 
 ---
 

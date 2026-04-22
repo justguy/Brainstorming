@@ -5,7 +5,7 @@
  */
 import React, { useState } from 'react';
 import type { Approach, Idea } from '../../types';
-import { updateIdea } from '../../storage/ideas';
+import { createBoardController } from '../../storage/boardController';
 import Button from '../../ui/Button';
 
 const SCORE_DIMENSIONS: { key: keyof Approach['scores']; label: string; description: string }[] = [
@@ -99,14 +99,20 @@ export default function ApproachTemplate({ idea, onUpdate }: ApproachTemplatePro
     }));
 
     try {
-      const updated = await updateIdea(idea.id, {
-        briefState: {
-          ...idea.briefState,
-          approaches: [...idea.briefState.approaches, ...approaches],
+      const boardController = createBoardController(idea.boardId ?? 'local-board');
+      const committed = await boardController.updateIdea({
+        ideaId: idea.id,
+        patch: {
+          briefState: {
+            ...idea.briefState,
+            approaches: [...idea.briefState.approaches, ...approaches],
+          },
+          readiness: 'yellow', // fallback path — not AI-reviewed
         },
-        readiness: 'yellow', // fallback path — not AI-reviewed
+        actor: { type: 'user', source: 'workspace' },
+        summary: `Added ${approaches.length} fallback approaches to idea ${idea.id}`,
       });
-      onUpdate(updated);
+      onUpdate(committed.idea);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save approaches.');
     } finally {

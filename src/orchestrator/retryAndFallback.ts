@@ -31,7 +31,7 @@ export async function callWithRetry(
     const validated = schema.parse(parsed);
     return { result: validated, usedFallback: false };
   } catch (err1) {
-    console.warn('[retryAndFallback] Attempt 1 failed:', err1);
+    console.warn(`[retryAndFallback] Attempt 1 failed for ${providerId}/${model}:`, err1);
   }
 
   // Attempt 2: prepend corrective message, retry via SW
@@ -47,7 +47,7 @@ export async function callWithRetry(
     const validated = schema.parse(parsed);
     return { result: validated, usedFallback: false };
   } catch (err2) {
-    console.warn('[retryAndFallback] Attempt 2 failed:', err2);
+    console.warn(`[retryAndFallback] Attempt 2 failed for ${providerId}/${model}:`, err2);
   }
 
   // Attempt 3 (terminal): signal fallback
@@ -57,6 +57,9 @@ export async function callWithRetry(
 
 function tryParse(raw: string, parsedJson?: unknown): unknown {
   if (parsedJson !== undefined) return parsedJson;
+  if (!raw.trim()) {
+    throw new Error('Provider returned an empty response body.');
+  }
   try {
     return JSON.parse(raw);
   } catch {

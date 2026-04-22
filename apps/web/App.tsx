@@ -1,1698 +1,927 @@
-/**
- * App.tsx — Top-level layout for the Brainstorming Orchestrator web app.
- *
- * Routing is hash-based (no React Router dependency needed):
- *   ''  or '#' → canvas view
- *   '#/options' → Options settings page
- *
- * Layout:
- *   Header: title + WebMCP status + Options link
- *   Main: full-screen Canvas with floating idea panels.
- *   Capture: floating "+" button opens a popover.
- *   Workspace: slides in from the right when an idea is clicked.
- *
- * WebMCP tools are registered via useBrainstormingTools() on mount.
- * The App listens for CustomEvents dispatched by tool execute() functions:
- *   'brainstorm:selectIdea'  → selects an idea by id
- *   'brainstorm:advancePhase' → triggers phase advance (supports skip flag)
- *   'brainstorm:exportHandoff' → triggers export
- *   'brainstorm:chooseNextStep' → updates nextStep on brief
- *   'brainstorm:patchLens'    → pin/dismiss/note a lens at phase 0.5
- *   'brainstorm:patchChallenge' → accept/defer/rebut a challenge at phase 2.5
- *   'brainstorm:patchStress'  → mark handled / response for a stress test at phase 4.5
- *   'brainstorm:movePanel'    → position a panel on the canvas
- *   'brainstorm:groupIdeas'   → group two ideas by proximity (triggers LLM themer)
- *   'brainstorm:ungroupIdea'  → remove an idea from its group
- *   'brainstorm:mergeIdeas'   → merge two ideas via LLM into a new one
- */
-
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import type { Idea, IdeaCritique, IdeaGroup, Connection, SupportingDoc, ScoutSuggestion } from '../../src/types';
-import { listIdeas, createIdea, updateIdea, discardIdea, restoreIdea } from '../../src/storage/ideas';
-import { updateBriefState } from '../../src/storage/ideas';
-import {
-  createCritique,
-  dismissCritique as dismissCritiqueStore,
-  listCritiques,
-  listCritiquesForIdea,
-} from '../../src/storage/critiques';
-import {
-  listSuggestionsByStatus,
-  listSuggestions,
-  createSuggestion,
-  admitSuggestion as admitSuggestionStore,
-  dismissSuggestion as dismissSuggestionStore,
-  setSuggestionElaboration,
-  getSuggestion,
-} from '../../src/storage/suggestions';
-import {
-  listGroups,
-  createGroup,
-  updateGroup,
-  addIdeaToGroup,
-  removeIdeaFromGroup,
-  getGroup,
-} from '../../src/storage/groups';
-import { getSettings } from '../../src/storage/settings';
-import { advance } from '../../src/orchestrator/stateMachine';
-import { runAdhocRole } from '../../src/orchestrator/adhocRole';
-import { groupThemer, buildGroupThemerTask, type GroupThemerOutput } from '../../src/orchestrator/roles/groupThemer';
-import { ideaMerger, buildIdeaMergerTask, type IdeaMergerOutput } from '../../src/orchestrator/roles/ideaMerger';
-import Button from '../../src/ui/Button';
-import Workspace from '../../src/workspace/Workspace';
-import Canvas from '../../src/canvas/Canvas';
-import { CritiqueCardsLayer } from '../../src/canvas/CritiqueCardsLayer';
-import DiscardPile from '../../src/canvas/DiscardPile';
-import ConnectionsPanel from '../../src/canvas/ConnectionsPanel';
-import DocsModal from '../../src/docs/DocsModal';
-import { countDocsForIdea, listDocsForIdea } from '../../src/storage/docs';
-import {
-  connectionFinder,
-  buildConnectionFinderTask,
-  type ConnectionFinderOutput,
-} from '../../src/orchestrator/roles/connectionFinder';
-import {
-  buildStandaloneCritiqueTask,
-  devilsAdvocate,
-  type DevilsAdvocateOutput,
-} from '../../src/orchestrator/roles/devilsAdvocate';
-import {
-  outsideKnowledgeScout,
-  buildScoutTask,
-  type OutsideKnowledgeScoutOutput,
-} from '../../src/orchestrator/roles/outsideKnowledgeScout';
-import {
-  suggestionElaborator,
-  buildElaboratorTask,
-  type SuggestionElaboratorOutput,
-} from '../../src/orchestrator/roles/suggestionElaborator';
-import {
-  makeManualConnection,
-  materializeConnections,
-  replaceGeneratedConnections,
-  upsertConnection,
-} from './connectionState';
-import { SoftModeHint } from './SoftModeHint';
-import {
-  dismissSoftModeHint,
-  inferSoftMode,
-  recordActivity,
-  shouldShowSoftModeHint,
-  type ActivityState,
-} from './softMode';
-import { MAX_VISIBLE_SUGGESTIONS, pickVisibleSuggestions } from './suggestionDedup';
+import React, { useEffect, useRef, useState } from 'react';
+import type { Connection, Idea, LlmMessage, Panel } from '../../src/types';
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
-import { CaptureIdeaPopover } from './CaptureIdeaPopover';
+import Workspace, { WorkspacePhaseFlow } from '../../src/workspace/Workspace';
+import { IdeaAttentionPanel } from '../../src/workspace/IdeaAttentionPanel';
+import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
+import { useBrainstormAnalysisEvents } from './useBrainstormAnalysisEvents';
+import { useBrainstormLifecycleEvents } from './useBrainstormLifecycleEvents';
+import { useBrainstormSuggestionEvents } from './useBrainstormSuggestionEvents';
+import { useBoardSync } from './useBoardSync';
+import { useBrainstormSupportingDocEvents } from './useBrainstormSupportingDocEvents';
+import { useBrainstormWorkspaceEvents } from './useBrainstormWorkspaceEvents';
+import { useCanvasIdeaMutations } from './useCanvasIdeaMutations';
+import { AUTO_IDLE_MS, useCompanionAutomation } from './useCompanionAutomation';
+import { useBoardSessionActions } from './useBoardSessionActions';
+import { useBoardAnalysisActions } from './useBoardAnalysisActions';
+import { useBoardSuggestionActions } from './useBoardSuggestionActions';
+import { useHashRoute } from './useHashRoute';
+import { useBoardActivity } from './useBoardActivity';
+import { useBoardBeatRunner } from './useBoardBeatRunner';
+import { BoardAppView } from './BoardAppView';
+import { useBeatReviewActions } from './useBeatReviewActions';
+import { BeatReviewPanel } from './BeatReviewPanel';
+import { BoardHistoryPanel } from './BoardHistoryPanel';
+import { BoardBeadStrip } from './BoardBeadStrip';
+import { createBoardHistoryEntries } from './historyTimeline';
+import { IdeaDocsPanel } from './IdeaDocsPanel';
+import { IdeaTurnLogPanel } from './IdeaTurnLogPanel';
+import { PeerPresenceStrip } from './PeerPresenceStrip';
+import { runManualBoardBeat, selectBoardBeatReviewSurface } from './boardBeatReviewSurface';
+import { useBoardTheme } from './useBoardTheme';
+import { useFacilitatorSync } from './useFacilitatorSync';
+import { WebMcpAvailabilityModal } from './WebMcpAvailabilityModal';
+import { WorkspaceScoutInspector } from '../../src/workspace/WorkspaceScoutInspector';
+import {
+  DEMO_FALLBACK_CONNECTIONS,
+  DEMO_FALLBACK_CRITIQUES,
+  DEMO_FALLBACK_IDEAS,
+  DEMO_FALLBACK_SUGGESTIONS,
+} from './demoBoardFallback';
+import { findLatestSafeAiUndoTarget } from '../../src/storage/boardAiUndo';
+import DiscardPile from '../../src/canvas/DiscardPile';
+import { detectWebMcpSupport, type SupportStatus } from '../../src/webmcp/detectSupport';
 
-// ---------------------------------------------------------------------------
-// Hash router
-// ---------------------------------------------------------------------------
+const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
+const CAPTURE_CANVAS_SELECTOR = '.bo-canvas';
+const CAPTURE_REVEAL_PADDING = 32;
+const CAPTURE_REVEAL_ATTEMPTS = 5;
+const CAPTURE_HIGHLIGHT_CLEAR_MS = 2200;
 
-function useHashRoute(): [string, (hash: string) => void] {
-  const [hash, setHash] = useState(() => window.location.hash);
+type CaptureFeedback = {
+  tone: 'success' | 'error';
+  message: string;
+} | null;
 
-  useEffect(() => {
-    const handler = () => setHash(window.location.hash);
-    window.addEventListener('hashchange', handler);
-    return () => window.removeEventListener('hashchange', handler);
-  }, []);
+type CaptureReveal = {
+  ideaId: string;
+  panel: Panel;
+  attempts: number;
+};
 
-  const navigate = useCallback((h: string) => {
-    window.location.hash = h;
-  }, []);
+type LatestCapture = {
+  ideaId: string;
+  panel: Panel;
+};
 
-  return [hash, navigate];
+function getCanvasElement(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  return document.querySelector<HTMLElement>(CAPTURE_CANVAS_SELECTOR);
 }
 
-const AUTO_IDLE_MS = 1_500;
-const AUTO_SEQUENCE_GAP_MS = 850;
-const AUTO_CRITIQUE_COOLDOWN_MS = 45_000;
-const COLLAPSED_SUGGESTION_COUNT = 3;
-const HIGHLIGHT_FLASH_MS = 320;
-const REVEAL_WINDOW_MS = 1_800;
+function isPanelVisible(canvas: HTMLElement, panel: Panel): boolean {
+  const visibleLeft = canvas.scrollLeft + CAPTURE_REVEAL_PADDING;
+  const visibleTop = canvas.scrollTop + CAPTURE_REVEAL_PADDING;
+  const visibleRight = canvas.scrollLeft + canvas.clientWidth - CAPTURE_REVEAL_PADDING;
+  const visibleBottom = canvas.scrollTop + canvas.clientHeight - CAPTURE_REVEAL_PADDING;
 
-type RevealOrigin = 'manual' | 'ai';
-
-function isTextEntryTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return target.matches('input, textarea, select, [role="textbox"]');
+  return (
+    panel.x >= visibleLeft &&
+    panel.y >= visibleTop &&
+    panel.x + panel.width <= visibleRight &&
+    panel.y + panel.height <= visibleBottom
+  );
 }
 
-function connectionStrengthWeight(strength: Connection['strength']): number {
-  switch (strength) {
-    case 'strong':
-      return 2;
-    case 'medium':
-      return 1;
-    case 'weak':
-    default:
-      return 0;
+function centerPanelOnCanvas(canvas: HTMLElement, panel: Panel): void {
+  const targetLeft = Math.max(0, panel.x - (canvas.clientWidth - panel.width) / 2);
+  const targetTop = Math.max(0, panel.y - (canvas.clientHeight - panel.height) / 2);
+  canvas.scrollTo({
+    left: Math.round(targetLeft),
+    top: Math.round(targetTop),
+    behavior: 'auto',
+  });
+}
+
+const TURN_LOG_TRANSFER_TAGS = ['turn-log'];
+
+declare global {
+  interface Window {
+    __openWebMcpAvailabilityModal?: (reason?: Exclude<SupportStatus, { supported: true }>['reason']) => void;
+    __closeWebMcpAvailabilityModal?: () => void;
   }
 }
 
-// ---------------------------------------------------------------------------
-// App
-// ---------------------------------------------------------------------------
-
 export default function App(): React.ReactElement {
+  const webMcpCheckRef = useRef(false);
   const [hash, navigate] = useHashRoute();
-  const [ideas, setIdeas] = useState<Idea[]>([]);
-  const [groups, setGroups] = useState<IdeaGroup[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  const { boardTheme, setBoardTheme } = useBoardTheme();
+  const {
+    boardId, boardTitle, boardRepository, boardController, boardReady, ideas, groups, docs, selectedId, setSelectedId, hasApiKey,
+    docCounts, setDocCounts, connections, critiques, suggestions, beatReviewSessions, beatReviewItems, tweaks,
+    historyState, changeSets, applyCommittedBoard, updateBoardTweaks, createBeatReviewSession, keepBeatReviewItem,
+    scratchBeatReviewItem,
+    handleIdeaUpdate, loadBoard, loadIdeas, loadDocCounts, loadCritiques, supportingDocMutations, refineSupportingDoc,
+  } = useBoardSync();
   const [newIdeaText, setNewIdeaText] = useState('');
   const [newIdeaTags, setNewIdeaTags] = useState('');
   const [creating, setCreating] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureFeedback, setCaptureFeedback] = useState<CaptureFeedback>(null);
+  const [captureReveal, setCaptureReveal] = useState<CaptureReveal | null>(null);
+  const [latestCapture, setLatestCapture] = useState<LatestCapture | null>(null);
+  const [captureHighlightIds, setCaptureHighlightIds] = useState<string[]>([]);
   const [advancingFromTool, setAdvancingFromTool] = useState(false);
   const [canvasBusy, setCanvasBusy] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [linkModeEnabled, setLinkModeEnabled] = useState(false);
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
-  const [docCounts, setDocCounts] = useState<Record<string, number>>({});
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [findingConnections, setFindingConnections] = useState(false);
-  const [lastConnectionsRunAt, setLastConnectionsRunAt] = useState<number | null>(null);
-  const [highlightIds, setHighlightIds] = useState<string[]>([]);
-  const [critiques, setCritiques] = useState<IdeaCritique[]>([]);
-  const [critiqueBusyByIdea, setCritiqueBusyByIdea] = useState<Record<string, boolean>>({});
-  const [suggestions, setSuggestions] = useState<ScoutSuggestion[]>([]);
-  const [scouting, setScouting] = useState(false);
-  const [lastScoutRunAt, setLastScoutRunAt] = useState<number | null>(null);
-  const [suggestionBusy, setSuggestionBusy] = useState<Record<string, 'admit' | 'elaborate' | 'dismiss' | null>>({});
-  const [activity, setActivity] = useState<ActivityState>(() => ({
-    lastInteractionAt: Date.now(),
-    recentEdits: [],
-    recentGroups: [],
-    recentDocs: [],
-    lastDismissedAt: 0,
-  }));
-  const [clockMs, setClockMs] = useState(() => Date.now());
-  const [facilitatorPaused, setFacilitatorPaused] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [turnLogOpen, setTurnLogOpen] = useState(false);
+  const [selectedAttentionItemId, setSelectedAttentionItemId] = useState<string | null>(null);
+  const [selectedSuggestionId, setSelectedSuggestionId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [textEntryActive, setTextEntryActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
-  const [animatedConnectionIds, setAnimatedConnectionIds] = useState<string[]>([]);
-  const [animatedCritiqueIds, setAnimatedCritiqueIds] = useState<string[]>([]);
-  const [animatedSuggestionIds, setAnimatedSuggestionIds] = useState<string[]>([]);
-  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
-  const [aiActions, setAiActions] = useState<Array<{
-    origin: 'ai';
-    kind: 'connections' | 'scout' | 'critique';
-    createdAt: number;
-    ideaId?: string;
-  }>>([]);
-  const autoCooldownRef = useRef({
-    lastConnectionsAt: 0,
-    lastScoutAt: 0,
-    lastAiActionAt: 0,
-    critiqueByIdea: {} as Record<string, number>,
-  });
-  const connectionRevealTimerRef = useRef<number | null>(null);
-  const critiqueRevealTimerRef = useRef<number | null>(null);
-  const suggestionRevealTimerRef = useRef<number | null>(null);
+  const [dismissedDemoSuggestionIds, setDismissedDemoSuggestionIds] = useState<string[]>([]);
+  const [dismissedDemoCritiqueIds, setDismissedDemoCritiqueIds] = useState<string[]>([]);
+  const [webMcpUnavailableStatus, setWebMcpUnavailableStatus] = useState<Exclude<SupportStatus, { supported: true }> | null>(null);
+  const [webMcpModalOpen, setWebMcpModalOpen] = useState(false);
+  const lastSharedBoardMutationIdRef = useRef<string | null>(null);
+  const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
+  const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
+  const persistedFacilitatorPaused = Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]);
 
-  // Canvas shows only active ideas. Archived (post-merge originals) and
-  // discarded (user dismissed) both stay in IDB but are hidden from the board.
   const visibleIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
   const discardedIdeas = ideas.filter(i => i.status === 'discarded');
-  const selectedIdea = ideas.find(i => i.id === selectedId) ?? null;
+  const usingDemoBoard = boardReady && visibleIdeas.length === 0 && connections.length === 0 && critiques.length === 0 && suggestions.length === 0;
+  const demoSuggestions = DEMO_FALLBACK_SUGGESTIONS.filter(suggestion => !dismissedDemoSuggestionIds.includes(suggestion.id));
+  const demoCritiques = DEMO_FALLBACK_CRITIQUES.filter(critique => !dismissedDemoCritiqueIds.includes(critique.id));
+  const canvasIdeas = usingDemoBoard ? DEMO_FALLBACK_IDEAS : visibleIdeas;
+  const canvasConnections = usingDemoBoard ? DEMO_FALLBACK_CONNECTIONS : connections;
+  const selectedBoardIdea = usingDemoBoard ? null : ideas.find(i => i.id === selectedId) ?? null;
+  const selectedCanvasIdea = canvasIdeas.find(idea => idea.id === selectedId) ?? null;
+  const selectedSuggestion = (usingDemoBoard ? demoSuggestions : suggestions)
+    .find(suggestion => suggestion.id === selectedSuggestionId) ?? null;
+  const selectedSuggestionIdea = selectedSuggestion
+    ? ideas.find(idea => selectedSuggestion.relatedIdeaIds?.includes(idea.id)) ?? null
+    : null;
+  const selectedLegacyToolIdea = createLegacyToolIdea(selectedBoardIdea);
   const activeCritiques = critiques.filter(critique => critique.status === 'active');
-
-  // Register WebMCP tools (global + lifecycle)
-  useBrainstormingTools(selectedIdea);
-
-  // ---------------------------------------------------------------------------
-  // Data loading
-  // ---------------------------------------------------------------------------
-
-  async function loadIdeas() {
-    try {
-      const all = await listIdeas();
-      setIdeas(all);
-    } catch {
-      // non-fatal
-    }
-  }
-
-  async function loadGroups() {
-    try {
-      setGroups(await listGroups());
-    } catch {
-      // non-fatal
-    }
-  }
-
-  async function loadDocCounts(ideaIds: string[]): Promise<void> {
-    try {
-      const entries = await Promise.all(
-        ideaIds.map(async id => [id, await countDocsForIdea(id)] as const),
-      );
-      setDocCounts(prev => {
-        const next = { ...prev };
-        for (const [id, n] of entries) next[id] = n;
-        return next;
-      });
-    } catch {
-      // non-fatal
-    }
-  }
-
-  async function checkApiKey() {
-    try {
-      const s = await getSettings();
-      setHasApiKey(!!(s.credentials[s.activeProvider]));
-    } catch {
-      setHasApiKey(false);
-    }
-  }
-
-  async function loadSuggestions() {
-    try {
-      const pending = await listSuggestionsByStatus('pending');
-      setSuggestions(pending.slice(0, MAX_VISIBLE_SUGGESTIONS));
-    } catch {
-      // non-fatal
-    }
-  }
-
-  async function loadCritiques() {
-    try {
-      setCritiques(await listCritiques());
-    } catch {
-      // non-fatal
-    }
-  }
+  const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
+  const boardSubtitle = boardReady
+    ? `${canvasIdeas.length} ideas \u00b7 ${canvasConnections.length} connections`
+    : 'Loading board…';
 
   useEffect(() => {
-    loadIdeas();
-    loadGroups();
-    loadCritiques();
-    loadSuggestions();
-    checkApiKey();
+    if (webMcpCheckRef.current) return;
+    webMcpCheckRef.current = true;
+
+    const status = detectWebMcpSupport();
+    window.__WEBMCP_STATUS = status;
+    if (!status.supported) {
+      setWebMcpUnavailableStatus(status);
+      setWebMcpModalOpen(true);
+    }
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setClockMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    window.__openWebMcpAvailabilityModal = (reason = 'unknown') => {
+      setWebMcpUnavailableStatus({ supported: false, reason });
+      setWebMcpModalOpen(true);
+    };
+    window.__closeWebMcpAvailabilityModal = () => {
+      setWebMcpModalOpen(false);
+    };
+
+    return () => {
+      delete window.__openWebMcpAvailabilityModal;
+      delete window.__closeWebMcpAvailabilityModal;
+    };
   }, []);
 
   useEffect(() => {
-    if (captureOpen) {
-      setTextEntryActive(true);
-      return;
-    }
-    setTextEntryActive(isTextEntryTarget(document.activeElement));
-  }, [captureOpen]);
+    if (!captureFeedback) return undefined;
+    const timeout = window.setTimeout(() => {
+      setCaptureFeedback(current => (current === captureFeedback ? null : current));
+    }, captureFeedback.tone === 'success' ? 3200 : 5200);
+    return () => window.clearTimeout(timeout);
+  }, [captureFeedback]);
 
   useEffect(() => {
-    if (captureOpen) return;
-    const syncTextEntryState = (target: EventTarget | null) => {
-      setTextEntryActive(isTextEntryTarget(target ?? document.activeElement));
-    };
-    const handlePointerDown = (event: PointerEvent) => {
-      if (isTextEntryTarget(event.target)) {
-        syncTextEntryState(event.target);
-        return;
-      }
-      touchInteraction();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (isTextEntryTarget(event.target)) {
-        syncTextEntryState(event.target);
-        return;
-      }
-      touchInteraction();
-      syncTextEntryState(event.target);
-    };
-    const handleInput = (event: Event) => {
-      if (isTextEntryTarget(event.target)) {
-        touchInteraction();
-        syncTextEntryState(event.target);
-      }
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      syncTextEntryState(event.target);
-      if (!isTextEntryTarget(event.target)) {
-        touchInteraction();
-      }
-    };
-    const handleFocusOut = () => {
-      window.setTimeout(() => syncTextEntryState(document.activeElement), 0);
-    };
-
-    window.addEventListener('pointerdown', handlePointerDown, true);
-    window.addEventListener('keydown', handleKeyDown, true);
-    window.addEventListener('input', handleInput, true);
-    window.addEventListener('focusin', handleFocusIn, true);
-    window.addEventListener('focusout', handleFocusOut, true);
-
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown, true);
-      window.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('input', handleInput, true);
-      window.removeEventListener('focusin', handleFocusIn, true);
-      window.removeEventListener('focusout', handleFocusOut, true);
-    };
-  }, [captureOpen]);
-
-  function markActivity(kind: 'edit' | 'group' | 'doc'): void {
-    setActivity(prev => recordActivity(prev, kind));
-  }
-
-  function touchInteraction(now = Date.now()): void {
-    setActivity(prev => ({ ...prev, lastInteractionAt: now }));
-  }
-
-  function recordAiAction(kind: 'connections' | 'scout' | 'critique', ideaId?: string): void {
-    const action = {
-      origin: 'ai' as const,
-      kind,
-      createdAt: Date.now(),
-      ideaId,
-    };
-    autoCooldownRef.current.lastAiActionAt = action.createdAt;
-    setAiActions(prev => [action, ...prev].slice(0, 5));
-  }
-
-  function clearRevealTimer(ref: React.MutableRefObject<number | null>): void {
-    if (ref.current !== null) {
-      window.clearTimeout(ref.current);
-      ref.current = null;
+    if (!selectedBoardIdea) {
+      setInspectorOpen(false);
+      setTurnLogOpen(false);
     }
-  }
-
-  function revealConnections(connectionIds: string[]): void {
-    clearRevealTimer(connectionRevealTimerRef);
-    setAnimatedConnectionIds(connectionIds);
-    connectionRevealTimerRef.current = window.setTimeout(() => {
-      setAnimatedConnectionIds([]);
-      connectionRevealTimerRef.current = null;
-    }, REVEAL_WINDOW_MS);
-  }
-
-  function revealCritique(critiqueId: string): void {
-    clearRevealTimer(critiqueRevealTimerRef);
-    setAnimatedCritiqueIds([critiqueId]);
-    critiqueRevealTimerRef.current = window.setTimeout(() => {
-      setAnimatedCritiqueIds([]);
-      critiqueRevealTimerRef.current = null;
-    }, REVEAL_WINDOW_MS);
-  }
-
-  function revealSuggestions(suggestionIds: string[]): void {
-    clearRevealTimer(suggestionRevealTimerRef);
-    setAnimatedSuggestionIds(suggestionIds);
-    suggestionRevealTimerRef.current = window.setTimeout(() => {
-      setAnimatedSuggestionIds([]);
-      suggestionRevealTimerRef.current = null;
-    }, REVEAL_WINDOW_MS);
-  }
-
-  // Keep doc counts in sync with the visible idea set.
-  useEffect(() => {
-    const ids = ideas.filter(i => i.status !== 'archived').map(i => i.id);
-    if (ids.length > 0) loadDocCounts(ids);
-  }, [ideas]);
+  }, [selectedBoardIdea]);
 
   useEffect(() => {
-    if (suggestions.length <= COLLAPSED_SUGGESTION_COUNT && suggestionsExpanded) {
-      setSuggestionsExpanded(false);
+    if (!selectedSuggestionId) return;
+    const availableSuggestions = usingDemoBoard ? demoSuggestions : suggestions;
+    if (!availableSuggestions.some(suggestion => suggestion.id === selectedSuggestionId)) {
+      setSelectedSuggestionId(null);
     }
-  }, [suggestions.length, suggestionsExpanded]);
-
-  // ---------------------------------------------------------------------------
-  // Canvas operations
-  // ---------------------------------------------------------------------------
-
-  async function handleMove(ideaId: string, x: number, y: number): Promise<void> {
-    const idea = ideas.find(i => i.id === ideaId);
-    if (!idea) return;
-    const panel = { ...(idea.panel ?? { width: 260, height: 180 }), x, y, width: idea.panel?.width ?? 260, height: idea.panel?.height ?? 180, groupId: idea.panel?.groupId };
-    const updated = await updateIdea(ideaId, { panel });
-    setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-    markActivity('edit');
-  }
-
-  async function handleGroup(ideaIdA: string, ideaIdB: string): Promise<void> {
-    const a = ideas.find(i => i.id === ideaIdA);
-    const b = ideas.find(i => i.id === ideaIdB);
-    if (!a || !b) return;
-
-    setCanvasBusy('Naming group…');
-    try {
-      let groupId: string;
-
-      // If B is already in a group, join it. Else if A is, add B to A's. Else create.
-      if (b.panel?.groupId) {
-        groupId = b.panel.groupId;
-        await addIdeaToGroup(groupId, ideaIdA);
-      } else if (a.panel?.groupId) {
-        groupId = a.panel.groupId;
-        await addIdeaToGroup(groupId, ideaIdB);
-      } else {
-        const g = await createGroup([ideaIdA, ideaIdB]);
-        groupId = g.id;
-      }
-
-      // Stamp groupId on both ideas' panels
-      const patchedA = await updateIdea(ideaIdA, {
-        panel: { ...(a.panel ?? { x: 0, y: 0, width: 260, height: 180 }), groupId },
-      });
-      const patchedB = await updateIdea(ideaIdB, {
-        panel: { ...(b.panel ?? { x: 0, y: 0, width: 260, height: 180 }), groupId },
-      });
-      setIdeas(prev =>
-        prev.map(i => (i.id === patchedA.id ? patchedA : i.id === patchedB.id ? patchedB : i)),
-      );
-
-      // Refresh groups + kick off theming
-      await loadGroups();
-      const group = await getGroup(groupId);
-      if (group) {
-        const groupIdeas = group.ideaIds
-          .map(id => (id === patchedA.id ? patchedA : id === patchedB.id ? patchedB : ideas.find(x => x.id === id)))
-          .filter((x): x is Idea => !!x);
-        const task = buildGroupThemerTask(groupIdeas);
-        const { result } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
-        if (result) {
-          await updateGroup(groupId, {
-            theme: result.theme,
-            sharedQuestion: result.sharedQuestion,
-          });
-          await loadGroups();
-        }
-      }
-      markActivity('group');
-    } catch (err) {
-      console.error('[App] group failed:', err);
-    } finally {
-      setCanvasBusy(null);
-    }
-  }
-
-  async function handleUngroup(ideaId: string): Promise<void> {
-    const idea = ideas.find(i => i.id === ideaId);
-    if (!idea?.panel?.groupId) return;
-    const groupId = idea.panel.groupId;
-    try {
-      await removeIdeaFromGroup(groupId, ideaId);
-      const patched = await updateIdea(ideaId, {
-        panel: { ...idea.panel, groupId: undefined },
-      });
-      setIdeas(prev => prev.map(i => (i.id === patched.id ? patched : i)));
-      await loadGroups();
-      markActivity('group');
-    } catch (err) {
-      console.error('[App] ungroup failed:', err);
-    }
-  }
-
-  async function handleMerge(draggedId: string, targetId: string): Promise<void> {
-    const a = ideas.find(i => i.id === draggedId);
-    const b = ideas.find(i => i.id === targetId);
-    if (!a || !b) return;
-
-    setCanvasBusy('Merging ideas…');
-    try {
-      const task = buildIdeaMergerTask(a, b);
-      const { result } = await runAdhocRole<IdeaMergerOutput>(ideaMerger, task);
-      if (!result) {
-        console.warn('[App] merge LLM call returned no result — skipping merge.');
-        return;
-      }
-      // Create the new merged idea at the target's position
-      const targetPanel = b.panel ?? { x: 60, y: 60, width: 260, height: 180 };
-      const merged = await createIdea({
-        rawText: result.mergedRawText,
-        tags: result.mergedTags,
-        panel: { ...targetPanel, groupId: undefined },
-      });
-      const mergedWithProvenance = await updateIdea(merged.id, {
-        mergedFrom: [a.id, b.id],
-        briefState: {
-          ...merged.briefState,
-          openQuestions: [
-            ...(result.tensions.length > 0 ? [`Tensions: ${result.tensions.join(' | ')}`] : []),
-            `Merge notes: ${result.synthesisNotes}`,
-          ],
-        },
-      });
-
-      // Archive the originals (kept in IDB for history, hidden from canvas)
-      await updateIdea(a.id, { status: 'archived' });
-      await updateIdea(b.id, { status: 'archived' });
-
-      // Remove from any groups they were in
-      if (a.panel?.groupId) await removeIdeaFromGroup(a.panel.groupId, a.id);
-      if (b.panel?.groupId) await removeIdeaFromGroup(b.panel.groupId, b.id);
-
-      await loadIdeas();
-      await loadGroups();
-      setSelectedId(mergedWithProvenance.id);
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] merge failed:', err);
-    } finally {
-      setCanvasBusy(null);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Tool event listeners
-  // ---------------------------------------------------------------------------
+  }, [demoSuggestions, selectedSuggestionId, suggestions, usingDemoBoard]);
 
   useEffect(() => {
-    // brainstorm:selectIdea — captures idea created by capture_idea tool
-    const handleSelectIdea = (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      setSelectedId(ideaId);
-      loadIdeas().then(() => {
-        if (requestId) {
-          window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        }
-      });
-    };
-
-    // brainstorm:advancePhase — drives the phase workflow from an agent
-    const handleAdvancePhase = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; userInput?: string; skip?: boolean; requestId?: string }>;
-      const { ideaId, userInput, skip, requestId } = ev.detail;
-
-      const idea = ideas.find(i => i.id === ideaId);
-      if (!idea) {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        return;
-      }
-
-      setAdvancingFromTool(true);
-      try {
-        const updated = await advance(idea, userInput ?? '', !!skip);
-        await updateIdea(updated.id, updated);
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-        if (idea.id === selectedId) {
-          setSelectedId(updated.id);
-        }
-      } catch (err) {
-        console.error('[App] advancePhase failed:', err);
-      } finally {
-        setAdvancingFromTool(false);
-        if (requestId) {
-          window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        }
-      }
-    };
-
-    // brainstorm:patchLens — pin/dismiss/note a lens entry
-    const handlePatchLens = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        lensId: string;
-        verdict?: 'pending' | 'pinned' | 'dismissed';
-        userNote?: string;
-        requestId?: string;
-      }>;
-      const { ideaId, lensId, verdict, userNote, requestId } = ev.detail;
-      try {
-        const idea = ideas.find(i => i.id === ideaId);
-        if (!idea) return;
-        const lenses = idea.briefState.lenses.map(l =>
-          l.id === lensId
-            ? { ...l, ...(verdict ? { verdict } : {}), ...(userNote !== undefined ? { userNote } : {}) }
-            : l,
-        );
-        const updated = await updateBriefState(ideaId, { lenses });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-      } catch (err) {
-        console.error('[App] patchLens failed:', err);
-      } finally {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:patchChallenge — accept/defer/rebut a challenge entry
-    const handlePatchChallenge = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        challengeId: string;
-        stance?: 'pending' | 'accept' | 'defer' | 'rebut';
-        userRebuttal?: string;
-        requestId?: string;
-      }>;
-      const { ideaId, challengeId, stance, userRebuttal, requestId } = ev.detail;
-      try {
-        const idea = ideas.find(i => i.id === ideaId);
-        if (!idea) return;
-        const challenges = idea.briefState.challenges.map(c =>
-          c.id === challengeId
-            ? { ...c, ...(stance ? { stance } : {}), ...(userRebuttal !== undefined ? { userRebuttal } : {}) }
-            : c,
-        );
-        const updated = await updateBriefState(ideaId, { challenges });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-      } catch (err) {
-        console.error('[App] patchChallenge failed:', err);
-      } finally {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:patchStress — mark handled / add response for a stress test entry
-    const handlePatchStress = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        stressId: string;
-        handled?: boolean;
-        userResponse?: string;
-        requestId?: string;
-      }>;
-      const { ideaId, stressId, handled, userResponse, requestId } = ev.detail;
-      try {
-        const idea = ideas.find(i => i.id === ideaId);
-        if (!idea) return;
-        const stressResults = idea.briefState.stressResults.map(s =>
-          s.id === stressId
-            ? { ...s, ...(handled !== undefined ? { handled } : {}), ...(userResponse !== undefined ? { userResponse } : {}) }
-            : s,
-        );
-        const updated = await updateBriefState(ideaId, { stressResults });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-      } catch (err) {
-        console.error('[App] patchStress failed:', err);
-      } finally {
-        if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:exportHandoff — triggered by export_handoff tool
-    const handleExportHandoff = (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      const idea = ideas.find(i => i.id === ideaId);
-      if (idea?.artifactMd) {
-        const slug = idea.rawText.slice(0, 40).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const blob = new Blob([idea.artifactMd], { type: 'text/markdown; charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        chrome.downloads.download({ url, filename: `handoff_${slug}.md` });
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-      }
-    };
-
-    // brainstorm:chooseNextStep — updates nextStep on the brief
-    const handleChooseNextStep = async (e: Event) => {
-      const ev = e as CustomEvent<{
-        ideaId: string;
-        nextStep: string;
-        requestId?: string;
-      }>;
-      const { ideaId, nextStep, requestId } = ev.detail;
-      try {
-        const updated = await updateBriefState(ideaId, {
-          nextStep: nextStep as Idea['briefState']['nextStep'],
-        });
-        setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-      } catch (err) {
-        console.error('[App] chooseNextStep failed:', err);
-      } finally {
-        if (requestId) {
-          window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-        }
-      }
-    };
-
-    // Discard/restore tools mutate IDB directly; this listener refreshes the visible idea list.
-    const handleIdeasChanged = () => {
-      loadIdeas();
-    };
-
-    // Supporting-doc tools mutate IDB directly; this listener just refreshes the pill count.
-    const handleDocsChanged = (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId?: string }>;
-      const { ideaId } = ev.detail ?? {};
-      markActivity('doc');
-      if (ideaId) {
-        loadDocCounts([ideaId]);
-      } else {
-        // Unknown idea — refresh all visible
-        loadDocCounts(ideas.filter(i => i.status !== 'archived').map(i => i.id));
-      }
-    };
-
-    const handleCritiquesChanged = () => {
-      loadCritiques();
-    };
-
-    // Canvas operations — delegate to the same handlers the UI uses
-    const handleMoveEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; x: number; y: number; requestId?: string }>;
-      const { ideaId, x, y, requestId } = ev.detail;
-      try { await handleMove(ideaId, x, y); } catch (err) { console.error('[App] move failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-    const handleGroupEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaIdA: string; ideaIdB: string; requestId?: string }>;
-      const { ideaIdA, ideaIdB, requestId } = ev.detail;
-      try { await handleGroup(ideaIdA, ideaIdB); } catch (err) { console.error('[App] group failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-    const handleUngroupEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      try { await handleUngroup(ideaId); } catch (err) { console.error('[App] ungroup failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-    const handleMergeEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ draggedId: string; targetId: string; requestId?: string }>;
-      const { draggedId, targetId, requestId } = ev.detail;
-      try { await handleMerge(draggedId, targetId); } catch (err) { console.error('[App] merge failed:', err); }
-      if (requestId) window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`));
-    };
-
-    // brainstorm:findConnections — agent-driven connection finder run.
-    // Signals completion with the connection count via the requestId envelope.
-    const handleFindConnectionsEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ requestId?: string }>;
-      const { requestId } = ev.detail ?? {};
-      let count = 0;
-      try {
-        const found = await runConnectionFinder();
-        count = found.length;
-      } catch (err) {
-        console.error('[App] find_connections failed:', err);
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { count } }));
-      }
-    };
-
-    const handleDrawConnectionEvent = (e: Event) => {
-      const ev = e as CustomEvent<{
-        fromIdeaId: string;
-        toIdeaId: string;
-        kind: Connection['kind'];
-        rationale: string;
-        requestId?: string;
-      }>;
-      const { fromIdeaId, toIdeaId, kind, rationale, requestId } = ev.detail;
-      let error: string | undefined;
-      let connectionId: string | undefined;
-
-      const visibleIdeaIds = new Set(
-        ideas
-          .filter(idea => idea.status !== 'archived' && idea.status !== 'discarded')
-          .map(idea => idea.id),
-      );
-
-      if (!visibleIdeaIds.has(fromIdeaId) || !visibleIdeaIds.has(toIdeaId)) {
-        error = 'draw_connection requires both idea ids to be visible on the active canvas.';
-      } else if (fromIdeaId === toIdeaId) {
-        error = 'draw_connection requires two different idea ids.';
-      } else if (!rationale.trim()) {
-        error = 'draw_connection requires a non-empty rationale.';
-      } else {
-        const connection = makeManualConnection({
-          fromIdeaId,
-          toIdeaId,
-          kind,
-          rationale: rationale.trim(),
-        });
-        connectionId = connection.id;
-        setConnections(prev => upsertConnection(prev, connection));
-        setLastConnectionsRunAt(connection.createdAt);
-        handleHighlight(connection.ideaIds);
-      }
-
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error, connectionId } }));
-      }
-    };
-
-    const handleCritiqueIdeaEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ ideaId: string; requestId?: string }>;
-      const { ideaId, requestId } = ev.detail;
-      let critiqueId: string | undefined;
-      let error: string | undefined;
-
-      try {
-        const critique = await runCritiqueIdea(ideaId);
-        critiqueId = critique?.id;
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'critique failed';
-      }
-
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error, critiqueId } }));
-      }
-    };
-
-    const handleDismissCritiqueEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ critiqueId: string; requestId?: string }>;
-      const { critiqueId, requestId } = ev.detail;
-      let error: string | undefined;
-
-      try {
-        await handleDismissCritique(critiqueId);
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'dismiss critique failed';
-      }
-
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-
-    // brainstorm:scout — agent-driven scout run. Returns count of new suggestions.
-    const handleScoutEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ requestId?: string }>;
-      const { requestId } = ev.detail ?? {};
-      let count = 0;
-      try {
-        const created = await runScout();
-        count = created.length;
-      } catch (err) {
-        console.error('[App] scout_ideas failed:', err);
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { count } }));
-      }
-    };
-
-    const handleAdmitSuggestionEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ suggestionId: string; requestId?: string }>;
-      const { suggestionId, requestId } = ev.detail;
-      let admittedIdeaId: string | undefined;
-      let error: string | undefined;
-      try {
-        await handleAdmitSuggestion(suggestionId);
-        const updated = await getSuggestion(suggestionId);
-        admittedIdeaId = updated?.admittedIdeaId;
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'admit failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { admittedIdeaId, error } }));
-      }
-    };
-
-    const handleElaborateSuggestionEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ suggestionId: string; requestId?: string }>;
-      const { suggestionId, requestId } = ev.detail;
-      let error: string | undefined;
-      try {
-        await handleElaborateSuggestion(suggestionId);
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'elaborate failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-
-    const handleDismissSuggestionEvent = async (e: Event) => {
-      const ev = e as CustomEvent<{ suggestionId: string; requestId?: string }>;
-      const { suggestionId, requestId } = ev.detail;
-      let error: string | undefined;
-      try {
-        await handleDismissSuggestion(suggestionId);
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'dismiss failed';
-      }
-      if (requestId) {
-        window.dispatchEvent(new CustomEvent(`tool-completion-${requestId}`, { detail: { ok: !error, error } }));
-      }
-    };
-
-    window.addEventListener('brainstorm:selectIdea', handleSelectIdea);
-    window.addEventListener('brainstorm:advancePhase', handleAdvancePhase as EventListener);
-    window.addEventListener('brainstorm:exportHandoff', handleExportHandoff);
-    window.addEventListener('brainstorm:chooseNextStep', handleChooseNextStep as EventListener);
-    window.addEventListener('brainstorm:patchLens', handlePatchLens as EventListener);
-    window.addEventListener('brainstorm:patchChallenge', handlePatchChallenge as EventListener);
-    window.addEventListener('brainstorm:patchStress', handlePatchStress as EventListener);
-    window.addEventListener('brainstorm:movePanel', handleMoveEvent as EventListener);
-    window.addEventListener('brainstorm:groupIdeas', handleGroupEvent as EventListener);
-    window.addEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
-    window.addEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
-    window.addEventListener('brainstorm:docsChanged', handleDocsChanged as EventListener);
-    window.addEventListener('brainstorm:critiquesChanged', handleCritiquesChanged as EventListener);
-    window.addEventListener('brainstorm:ideasChanged', handleIdeasChanged as EventListener);
-    window.addEventListener('brainstorm:findConnections', handleFindConnectionsEvent as EventListener);
-    window.addEventListener('brainstorm:drawConnection', handleDrawConnectionEvent as EventListener);
-    window.addEventListener('brainstorm:critiqueIdea', handleCritiqueIdeaEvent as EventListener);
-    window.addEventListener('brainstorm:dismissCritique', handleDismissCritiqueEvent as EventListener);
-    window.addEventListener('brainstorm:scout', handleScoutEvent as EventListener);
-    window.addEventListener('brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener);
-    window.addEventListener('brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener);
-    window.addEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
-
-    return () => {
-      window.removeEventListener('brainstorm:selectIdea', handleSelectIdea);
-      window.removeEventListener('brainstorm:advancePhase', handleAdvancePhase as EventListener);
-      window.removeEventListener('brainstorm:exportHandoff', handleExportHandoff);
-      window.removeEventListener('brainstorm:chooseNextStep', handleChooseNextStep as EventListener);
-      window.removeEventListener('brainstorm:patchLens', handlePatchLens as EventListener);
-      window.removeEventListener('brainstorm:patchChallenge', handlePatchChallenge as EventListener);
-      window.removeEventListener('brainstorm:patchStress', handlePatchStress as EventListener);
-      window.removeEventListener('brainstorm:movePanel', handleMoveEvent as EventListener);
-      window.removeEventListener('brainstorm:groupIdeas', handleGroupEvent as EventListener);
-      window.removeEventListener('brainstorm:ungroupIdea', handleUngroupEvent as EventListener);
-      window.removeEventListener('brainstorm:mergeIdeas', handleMergeEvent as EventListener);
-      window.removeEventListener('brainstorm:docsChanged', handleDocsChanged as EventListener);
-      window.removeEventListener('brainstorm:critiquesChanged', handleCritiquesChanged as EventListener);
-      window.removeEventListener('brainstorm:ideasChanged', handleIdeasChanged as EventListener);
-      window.removeEventListener('brainstorm:findConnections', handleFindConnectionsEvent as EventListener);
-      window.removeEventListener('brainstorm:drawConnection', handleDrawConnectionEvent as EventListener);
-      window.removeEventListener('brainstorm:critiqueIdea', handleCritiqueIdeaEvent as EventListener);
-      window.removeEventListener('brainstorm:dismissCritique', handleDismissCritiqueEvent as EventListener);
-      window.removeEventListener('brainstorm:scout', handleScoutEvent as EventListener);
-      window.removeEventListener('brainstorm:admitSuggestion', handleAdmitSuggestionEvent as EventListener);
-      window.removeEventListener('brainstorm:elaborateSuggestion', handleElaborateSuggestionEvent as EventListener);
-      window.removeEventListener('brainstorm:dismissSuggestion', handleDismissSuggestionEvent as EventListener);
-    };
-  }, [ideas, selectedId]);
-
-  // ---------------------------------------------------------------------------
-  // Capture
-  // ---------------------------------------------------------------------------
-
-  async function handleCapture() {
-    const text = newIdeaText.trim();
-    if (!text) return;
-    setCreating(true);
-    try {
-      const tags = newIdeaTags
-        .split(',')
-        .map(t => t.trim())
-        .filter(Boolean);
-      const idea = await createIdea({ rawText: text, tags });
-      await loadIdeas();
-      setSelectedId(idea.id);
-      setNewIdeaText('');
-      setNewIdeaTags('');
-      markActivity('edit');
-    } catch {
-      // ignore
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  function handleIdeaUpdate(updated: Idea) {
-    setIdeas(prev => prev.map(i => (i.id === updated.id ? updated : i)));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Discard / restore (UI-side — tool-side paths live in webmcp-tools.ts)
-  // ---------------------------------------------------------------------------
-
-  async function handleDiscard(ideaId: string): Promise<void> {
-    try {
-      await discardIdea(ideaId);
-      if (selectedId === ideaId) setSelectedId(null);
-      await loadIdeas();
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] discard failed:', err);
-    }
-  }
-
-  async function handleRestore(ideaId: string): Promise<void> {
-    try {
-      await restoreIdea(ideaId);
-      await loadIdeas();
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] restore failed:', err);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Connections (ad-hoc LLM call; ephemeral state — not persisted)
-  // ---------------------------------------------------------------------------
-
-  async function runConnectionFinder(options: {
-    origin?: RevealOrigin;
-    limitGenerated?: number;
-  } = {}): Promise<Connection[]> {
-    setFindingConnections(true);
-    try {
-      const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
-      const discarded = ideas.filter(i => i.status === 'discarded');
-      const docsPerIdea = await Promise.all(
-        boardIdeas.map(i => listDocsForIdea(i.id).catch(() => [] as SupportingDoc[])),
-      );
-      const supportingDocs = docsPerIdea.flat().filter(d => d.status === 'ready');
-
-      const task = buildConnectionFinderTask({
-        boardIdeas,
-        discardedIdeas: discarded,
-        supportingDocs,
-      });
-      const { result } = await runAdhocRole<ConnectionFinderOutput>(connectionFinder, task);
-      const now = Date.now();
-      if (!result) {
-        setConnections(prev => prev.filter(connection => connection.id.startsWith('manual-')));
-        setLastConnectionsRunAt(now);
-        return [];
-      }
-      const materialised = materializeConnections(ideas, supportingDocs, result, now);
-      const nextGenerated = [...materialised]
-        .sort((left, right) => {
-          const strengthDelta = connectionStrengthWeight(right.strength) - connectionStrengthWeight(left.strength);
-          if (strengthDelta !== 0) return strengthDelta;
-          return left.createdAt - right.createdAt;
-        })
-        .slice(0, options.limitGenerated ?? materialised.length);
-      setConnections(prev => replaceGeneratedConnections(prev, nextGenerated));
-      setLastConnectionsRunAt(now);
-      if (options.origin === 'ai' && nextGenerated.length > 0) {
-        revealConnections(nextGenerated.map(connection => connection.id));
-      }
-      return nextGenerated;
-    } catch (err) {
-      console.error('[App] connection finder failed:', err);
-      return [];
-    } finally {
-      setFindingConnections(false);
-    }
-  }
-
-  const flashTimerRef = useRef<number | null>(null);
-  function handleHighlight(ids: string[]): void {
-    if (flashTimerRef.current !== null) {
-      window.clearTimeout(flashTimerRef.current);
-    }
-    setHighlightIds(ids);
-    flashTimerRef.current = window.setTimeout(() => {
-      setHighlightIds([]);
-      flashTimerRef.current = null;
-    }, HIGHLIGHT_FLASH_MS);
-  }
+    if (captureHighlightIds.length === 0) return undefined;
+    const timeout = window.setTimeout(() => {
+      setCaptureHighlightIds([]);
+    }, CAPTURE_HIGHLIGHT_CLEAR_MS);
+    return () => window.clearTimeout(timeout);
+  }, [captureHighlightIds]);
 
   useEffect(() => {
-    return () => {
-      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
-      clearRevealTimer(connectionRevealTimerRef);
-      clearRevealTimer(critiqueRevealTimerRef);
-      clearRevealTimer(suggestionRevealTimerRef);
-    };
-  }, []);
+    if (!usingDemoBoard) return;
+    const canvas = getCanvasElement();
+    if (!canvas) return;
+    canvas.scrollTo({ left: 0, top: 0, behavior: 'auto' });
+  }, [usingDemoBoard]);
 
-  async function runCritiqueIdea(
-    ideaId: string,
-    options: { origin?: RevealOrigin } = {},
-  ): Promise<IdeaCritique | null> {
-    setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: true }));
-    try {
-      const idea = ideas.find(entry => entry.id === ideaId);
-      if (!idea) throw new Error(`Idea not found: ${ideaId}`);
+  useBrainstormingTools(selectedLegacyToolIdea);
 
-      const activeCritiques = await listCritiquesForIdea(ideaId, 'active');
-      if (activeCritiques.length >= 2) {
-        throw new Error('This idea already has the maximum number of active critiques.');
-      }
-      const mostRecentCritiqueAt = activeCritiques[0]?.createdAt ?? 0;
-      if (mostRecentCritiqueAt && Date.now() - mostRecentCritiqueAt < 25_000) {
-        throw new Error('This idea is on critique cooldown. Wait a moment before asking for another critique.');
-      }
-
-      const supportingDocs = (await listDocsForIdea(ideaId)).filter(doc => doc.status === 'ready');
-      const boardIdeas = ideas.filter(entry => entry.status !== 'archived' && entry.status !== 'discarded');
-      const priorCritiques = await listCritiquesForIdea(ideaId);
-      const task = buildStandaloneCritiqueTask({
-        idea,
-        boardIdeas,
-        supportingDocs,
-        existingCritiques: priorCritiques,
-      });
-      const { result } = await runAdhocRole<DevilsAdvocateOutput>(devilsAdvocate, task);
-      if (!result || result.challenges.length === 0) {
-        throw new Error('Devil’s advocate returned no critique.');
-      }
-
-      const priorCritiqueTexts = new Set(
-        priorCritiques.map(critique => critique.critique.trim().toLowerCase()),
-      );
-      const nextChallenge = result.challenges.find(challenge => (
-        !priorCritiqueTexts.has(challenge.critique.trim().toLowerCase())
-      ));
-      if (!nextChallenge) {
-        throw new Error('No new critique surfaced beyond the ones already shown.');
-      }
-
-      const critique = await createCritique({
-        ideaId,
-        critique: nextChallenge.critique,
-        evidenceAsk: nextChallenge.evidenceAsk,
-      });
-      await loadCritiques();
-      handleHighlight([ideaId]);
-      if (options.origin === 'ai') revealCritique(critique.id);
-      return critique;
-    } finally {
-      setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: false }));
-    }
-  }
-
-  async function handleDismissCritique(id: string): Promise<void> {
-    try {
-      await dismissCritiqueStore(id);
-      await loadCritiques();
-    } catch (err) {
-      console.error('[App] dismiss critique failed:', err);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Scout / suggestions
-  // ---------------------------------------------------------------------------
-
-  function ghostPanelFor(index: number): ScoutSuggestion['panel'] {
-    // Lay ghost panels along the right side, offset vertically by index so
-    // a fresh batch doesn't stack on top of each other.
-    return {
-      x: 520 + (index % 2) * 40,
-      y: 60 + index * 220,
-      width: 280,
-      height: 200,
-    };
-  }
-
-  async function runScout(options: {
-    origin?: RevealOrigin;
-    limitNew?: number;
-  } = {}): Promise<ScoutSuggestion[]> {
-    setScouting(true);
-    try {
-      const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
-      const discarded = ideas.filter(i => i.status === 'discarded');
-      const docsPerIdea = await Promise.all(
-        boardIdeas.map(i => listDocsForIdea(i.id).catch(() => [] as SupportingDoc[])),
-      );
-      const supportingDocs = docsPerIdea.flat().filter(d => d.status === 'ready');
-
-      const existing = await listSuggestions();
-      const alreadyProposedRawTexts = existing
-        .filter(s => s.status === 'pending' || s.status === 'admitted')
-        .map(s => s.rawText);
-      const dismissedRawTexts = existing.filter(s => s.status === 'dismissed').map(s => s.rawText);
-
-      const task = buildScoutTask({
-        boardIdeas,
-        discardedIdeas: discarded,
-        supportingDocs,
-        alreadyProposedRawTexts,
-        dismissedRawTexts,
-      });
-      const { result } = await runAdhocRole<OutsideKnowledgeScoutOutput>(outsideKnowledgeScout, task);
-      const now = Date.now();
-      setLastScoutRunAt(now);
-      if (!result || result.suggestions.length === 0) return [];
-
-      const visibleSuggestions = pickVisibleSuggestions({
-        currentVisibleCount: suggestions.length,
-        alreadyProposedRawTexts,
-        dismissedRawTexts,
-        suggestions: result.suggestions,
-      }).slice(0, options.limitNew ?? MAX_VISIBLE_SUGGESTIONS);
-      if (visibleSuggestions.length === 0) return [];
-
-      const allIds = new Set(ideas.map(i => i.id));
-      const created: ScoutSuggestion[] = [];
-      for (let i = 0; i < visibleSuggestions.length; i++) {
-        const s = visibleSuggestions[i];
-        const createdSuggestion = await createSuggestion({
-          rawText: s.rawText,
-          rationale: s.rationale,
-          source: s.source,
-          relatedIdeaIds: s.relatedIdeaIds?.filter(id => allIds.has(id)),
-          panel: ghostPanelFor(suggestions.length + i),
-        });
-        created.push(createdSuggestion);
-      }
-      await loadSuggestions();
-      if (created.length > 0) setSuggestionsExpanded(false);
-      if (options.origin === 'ai' && created.length > 0) {
-        revealSuggestions(created.map(suggestion => suggestion.id));
-      }
-      return created;
-    } catch (err) {
-      console.error('[App] scout failed:', err);
-      return [];
-    } finally {
-      setScouting(false);
-    }
-  }
-
-  async function handleAdmitSuggestion(id: string): Promise<void> {
-    setSuggestionBusy(prev => ({ ...prev, [id]: 'admit' }));
-    try {
-      const s = await getSuggestion(id);
-      if (!s) return;
-      const bodyParts = [s.rawText];
-      if (s.elaboration) bodyParts.push('', '## Scout elaboration', s.elaboration);
-      if (s.rationale) bodyParts.push('', `_Scout rationale:_ ${s.rationale}`);
-      const idea = await createIdea({
-        rawText: bodyParts.join('\n'),
-        tags: ['from-scout', s.source.split(':')[0]?.trim() || 'scout'],
-        panel: s.panel ? { ...s.panel } : undefined,
-      });
-      await admitSuggestionStore(id, idea.id);
-      await Promise.all([loadIdeas(), loadSuggestions()]);
-      markActivity('edit');
-    } catch (err) {
-      console.error('[App] admit suggestion failed:', err);
-    } finally {
-      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
-    }
-  }
-
-  async function handleElaborateSuggestion(id: string): Promise<void> {
-    setSuggestionBusy(prev => ({ ...prev, [id]: 'elaborate' }));
-    try {
-      const s = await getSuggestion(id);
-      if (!s) return;
-      const boardIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
-      const task = buildElaboratorTask({ suggestion: s, boardIdeas });
-      const { result } = await runAdhocRole<SuggestionElaboratorOutput>(suggestionElaborator, task);
-      if (!result) return;
-      const parts = [result.elaboration];
-      if (result.subSuggestions.length > 0) {
-        parts.push('', '**Sub-parts:**', ...result.subSuggestions.map(x => `- ${x}`));
-      }
-      if (result.implicationsIfAdmitted.length > 0) {
-        parts.push('', '**If admitted:**', ...result.implicationsIfAdmitted.map(x => `- ${x}`));
-      }
-      await setSuggestionElaboration(id, parts.join('\n'));
-      await loadSuggestions();
-    } catch (err) {
-      console.error('[App] elaborate suggestion failed:', err);
-    } finally {
-      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
-    }
-  }
-
-  async function handleDismissSuggestion(id: string): Promise<void> {
-    setSuggestionBusy(prev => ({ ...prev, [id]: 'dismiss' }));
-    try {
-      await dismissSuggestionStore(id);
-      await loadSuggestions();
-    } catch (err) {
-      console.error('[App] dismiss suggestion failed:', err);
-    } finally {
-      setSuggestionBusy(prev => ({ ...prev, [id]: null }));
-    }
-  }
-
-  const idleMs = Math.max(0, clockMs - activity.lastInteractionAt);
-  const softModeAssessment = inferSoftMode({
-    ideaCount: visibleIdeas.length,
-    editCount: activity.recentEdits.length,
-    groupingCount: activity.recentGroups.length,
-    idleMs,
-    docIdeasCount: Object.values(docCounts).filter(count => count > 0).length,
-    connectionCount: connections.length,
-    activeCritiqueCount: activeCritiques.length,
+  const { handleCapture, handleDiscard, handleRestore, handleUndo, handleRedo } = useBoardSessionActions({
+    ideas: visibleIdeas, newIdeaText, newIdeaTags, boardController, applyCommittedBoard, setCreating,
+    setNewIdeaText, setNewIdeaTags, markActivity, onCaptureFeedback: setCaptureFeedback,
+    onCaptureCommitted: capture => {
+      setSelectedId(null);
+      setInspectorOpen(false);
+      setTurnLogOpen(false);
+      setDocsIdeaId(null);
+      setLatestCapture(capture);
+      setCaptureReveal({ ...capture, attempts: 0 });
+    },
   });
-  const interactionSuppressed = dragActive || textEntryActive;
-  const softModeBusy = scouting || findingConnections || Object.values(critiqueBusyByIdea).some(Boolean);
-  const showSoftModeHint = shouldShowSoftModeHint({
-    assessment: softModeAssessment,
-    idleMs,
-    lastDismissedAt: activity.lastDismissedAt,
-    now: clockMs,
-  }) && !softModeBusy && !interactionSuppressed;
+  const {
+    findingConnections, lastConnectionsRunAt, highlightIds, critiqueBusyByIdea, animatedConnectionIds,
+    animatedCritiqueIds, markConnectionsRunAt, handleHighlight, runConnectionFinder, createManualConnection, runCritiqueIdea,
+    handleAcceptCritique, handleDismissCritique,
+  } = useBoardAnalysisActions({
+    boardId,
+    ideas,
+    connections,
+    boardRepository,
+    boardController,
+    applyCommittedBoard,
+    runBoardBeat,
+    onCritiqueOutcome: ({ critiqueId, outcome }) => {
+      facilitatorSync.setAiActionOutcomeForEntity(critiqueId, outcome);
+      if (outcome === 'accepted') {
+        facilitatorSync.recordRecoverySignal(`Critique ${critiqueId} was accepted.`);
+      }
+    },
+  });
+  const {
+    scouting, lastScoutRunAt, suggestionBusy, animatedSuggestionIds, suggestionsExpanded,
+    visibleCanvasSuggestions, suggestionOverflowCount, runScout, runCrossPollinate, handleAdmitSuggestion,
+    handleElaborateSuggestion, handleDismissSuggestion, handleMoveSuggestion, expandSuggestions, collapseSuggestions,
+  } = useBoardSuggestionActions({
+    boardId,
+    ideas,
+    suggestions,
+    boardRepository,
+    boardController,
+    applyCommittedBoard,
+    runBoardBeat,
+    markActivity,
+    onSuggestionOutcome: ({ suggestionId, outcome }) => {
+      facilitatorSync.setAiActionOutcomeForEntity(suggestionId, outcome);
+      if (outcome === 'accepted') {
+        facilitatorSync.recordRecoverySignal(`Suggestion ${suggestionId} was admitted.`);
+      }
+    },
+  });
+  const { handleMove, handleGroup, handleGroupSelection, handleUngroup, handleMerge } = useCanvasIdeaMutations({
+    ideas, boardController, applyCommittedBoard, setCanvasBusy, setSelectedId, markActivity,
+  });
+  const {
+    activeSession: activeBeatReviewSession, activeItems: activeBeatReviewItems, busyByItem: beatReviewBusyByItem,
+    batchBusy: beatReviewBatchBusy, presentBeatReview, handleKeep: handleKeepBeatReviewItem,
+    handleScratch: handleScratchBeatReviewItem, handleKeepAll: handleKeepAllBeatReviewItems,
+    handleScratchAll: handleScratchAllBeatReviewItems, closeActiveSession: closeBeatReviewSession,
+    focusSession: focusBeatReviewSession,
+  } = useBeatReviewActions({ ideas, beatReviewSessions, beatReviewItems, boardController, applyCommittedBoard, createBeatReviewSession, keepBeatReviewItem, scratchBeatReviewItem });
 
-  async function handleSoftModeAction(): Promise<void> {
-    setActivity(prev => dismissSoftModeHint(recordActivity(prev, 'edit')));
-
-    if (softModeAssessment.inferredMode === 'explore') {
-      await runScout();
-      return;
-    }
-
-    if (softModeAssessment.inferredMode === 'structure') {
-      await runConnectionFinder();
-      return;
-    }
-
-    if (softModeAssessment.inferredMode === 'stress') {
-      const targetIdeaId = selectedIdea?.id ?? visibleIdeas[0]?.id;
-      if (targetIdeaId) await runCritiqueIdea(targetIdeaId);
-    }
-  }
-
-  function softModeActionLabel(): string | undefined {
-    switch (softModeAssessment.inferredMode) {
-      case 'explore':
-        return 'Run scout';
-      case 'structure':
-        return 'Find links';
-      case 'stress':
-        return selectedIdea || visibleIdeas[0] ? 'Stress-test idea' : undefined;
-      case 'converge':
-      default:
-        return undefined;
-    }
-  }
+  useBrainstormSupportingDocEvents({ boardId, ideas, loadDocCounts, markActivity, supportingDocMutations, refineSupportingDoc });
+  useBrainstormAnalysisEvents({
+    boardId, ideas, connections, boardController, applyCommittedBoard, markConnectionsRunAt,
+    handleHighlight, loadCritiques, runConnectionFinder, runCritiqueIdea, handleDismissCritique,
+  });
+  useBrainstormLifecycleEvents({
+    boardId, ideas, boardController, applyCommittedBoard, loadIdeas, setSelectedId, setAdvancingFromTool, setCreating,
+  });
+  useBrainstormSuggestionEvents({
+    boardId, boardTitle, ideas, groups, connections, suggestions, runConnectionFinder, runCritiqueIdea, runScout, runCrossPollinate, runBoardBeat,
+    presentBeatReview,
+    handleMoveSuggestion,
+    handleAdmitSuggestion, handleElaborateSuggestion, handleDismissSuggestion,
+  });
+  useBrainstormWorkspaceEvents({
+    boardId, ideas, boardController, applyCommittedBoard, loadBoard, loadIdeas, setSelectedId, handleMove, handleGroup, handleUngroup, handleMerge,
+  });
 
   useEffect(() => {
-    if (facilitatorPaused || softModeBusy || interactionSuppressed || idleMs < AUTO_IDLE_MS) return;
+    const sharedBoardMutation = facilitatorSync.lastBoardMutation;
+    if (!sharedBoardMutation) return;
+    if (lastSharedBoardMutationIdRef.current === sharedBoardMutation.id) return;
+    lastSharedBoardMutationIdRef.current = sharedBoardMutation.id;
+    if (sharedBoardMutation.clientId === facilitatorSync.localClientId) return;
+    void loadBoard();
+  }, [facilitatorSync.lastBoardMutation, facilitatorSync.localClientId, loadBoard]);
 
-    let cancelled = false;
+  const { boardBeatReviewSession, boardBeatReviewItems } = selectBoardBeatReviewSurface({ beatReviewSessions, beatReviewItems, activeBeatReviewSession });
 
-    async function runObserver(): Promise<void> {
-      const now = Date.now();
-      const auto = autoCooldownRef.current;
-      if (now - auto.lastAiActionAt < AUTO_SEQUENCE_GAP_MS) return;
-
-      if (
-        visibleIdeas.length >= 3 &&
-        connections.length === 0 &&
-        now - auto.lastConnectionsAt >= 30_000
-      ) {
-        auto.lastConnectionsAt = now;
-        const found = await runConnectionFinder({ origin: 'ai', limitGenerated: 1 });
-        if (!cancelled && found.length > 0) recordAiAction('connections');
-        return;
-      }
-
-      const critiqueTarget = selectedIdea ?? visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) > 0) ?? visibleIdeas[0];
-      if (critiqueTarget) {
-        const activeForIdea = activeCritiques.filter(critique => critique.ideaId === critiqueTarget.id);
-        const lastCritiqueAt = auto.critiqueByIdea[critiqueTarget.id] ?? 0;
-        const critiqueAllowed =
-          activeForIdea.length < 2 &&
-          now - lastCritiqueAt >= AUTO_CRITIQUE_COOLDOWN_MS;
-
-        if (critiqueAllowed) {
-          const critique = await runCritiqueIdea(critiqueTarget.id, { origin: 'ai' }).catch(() => null);
-          if (critique) {
-            auto.critiqueByIdea[critiqueTarget.id] = now;
-            if (!cancelled) recordAiAction('critique', critiqueTarget.id);
-            return;
-          }
-        }
-      }
-
-      const doclessIdea = visibleIdeas.find(idea => (docCounts[idea.id] ?? 0) === 0);
-      if (
-        doclessIdea &&
-        suggestions.length === 0 &&
-        now - auto.lastScoutAt >= 45_000
-      ) {
-        auto.lastScoutAt = now;
-        const created = await runScout({ origin: 'ai', limitNew: 1 });
-        if (!cancelled && created.length > 0) recordAiAction('scout', doclessIdea.id);
-      }
-    }
-
-    void runObserver();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    facilitatorPaused,
-    softModeBusy,
-    interactionSuppressed,
-    idleMs,
+  const {
+    facilitatorPaused, idleMs, softModeAssessment, interactionSuppressed, softModeBusy,
+    lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
+    showSoftModeHint, companionActionLabel, handleSoftModeAction, toggleFacilitatorPause, lastAiAction, dismissHint,
+  } = useCompanionAutomation({
+    activity,
+    setActivity,
+    dragActive,
+    textEntryActive,
+    activeBeatRun,
+    persistedFacilitatorPaused,
+    persistFacilitatorPaused: async paused => {
+      await updateBoardTweaks(
+        { [DEV_COMPANION_PAUSED_TWEAK_KEY]: paused },
+        { type: 'user', source: 'canvas', label: 'devCompanion' },
+        paused ? 'Paused dev companion automation' : 'Resumed dev companion automation',
+      );
+    },
+    sharedFacilitatorPaused: facilitatorSync.sharedPause,
+    isAiHost: facilitatorSync.isAiHost,
+    syncBoardChangeAt: facilitatorSync.lastBoardActivityAt,
+    sharedAiAction: facilitatorSync.lastAiAction,
+    setSharedFacilitatorPause: facilitatorSync.setSharedPause,
+    recordSharedAiAction: facilitatorSync.recordAiAction,
+    scouting,
+    findingConnections,
+    critiqueBusyByIdea,
     visibleIdeas,
-    connections.length,
-    suggestions.length,
+    discardedIdeasCount: discardedIdeas.length,
+    connectionsCount: connections.length,
+    suggestionsCount: suggestions.length,
     docCounts,
-    selectedIdea,
+    selectedBoardIdea,
     activeCritiques,
-  ]);
+    recentSessionEvents: facilitatorSync.recentSessionEvents,
+    autonomyState: facilitatorSync.autonomyState,
+    recentAiActionOutcomes: facilitatorSync.recentAiActionOutcomes,
+    runScout,
+    runConnectionFinder,
+    runCritiqueIdea,
+    setAutonomyEffectiveMode: facilitatorSync.setAutonomyEffectiveMode,
+    setAutonomyBackoffState: facilitatorSync.setAutonomyBackoffState,
+    recordRecoverySignal: facilitatorSync.recordRecoverySignal,
+    addStagedInsight: facilitatorSync.addStagedInsight,
+  });
 
-  const visibleCanvasSuggestions = suggestionsExpanded
-    ? suggestions
-    : suggestions.slice(0, Math.min(COLLAPSED_SUGGESTION_COUNT, suggestions.length));
-  const suggestionOverflowCount = Math.max(0, suggestions.length - visibleCanvasSuggestions.length);
   const critiqueFocusIdeaId = hoverIdeaId ?? selectedId ?? null;
   const editingIdeaId = textEntryActive ? selectedId : null;
   const suppressRevealAnimations = dragActive || textEntryActive;
+  const highlightedIdeaIds = [...new Set([
+    ...highlightIds,
+    ...captureHighlightIds,
+    ...(selectedSuggestion?.relatedIdeaIds ?? []),
+  ])];
+  const canvasSuggestions = usingDemoBoard ? demoSuggestions : visibleCanvasSuggestions;
+  const canvasCritiques = usingDemoBoard ? demoCritiques : critiques;
+  const openOptions = () => navigate('#/options');
+  const closeSuggestionDrawer = () => setSelectedSuggestionId(null);
+  const openSuggestionDrawer = (suggestionId: string) => {
+    setSelectedAttentionItemId(null);
+    setInspectorOpen(false);
+    setTurnLogOpen(false);
+    setDocsIdeaId(null);
+    setSelectedId(null);
+    setSelectedSuggestionId(suggestionId);
+  };
+  const openCaptureComposer = () => {
+    setCaptureFeedback(null);
+    setCaptureOpen(true);
+  };
+  const toggleCaptureComposer = () => {
+    setCaptureFeedback(null);
+    setCaptureOpen(value => !value);
+  };
+  const closeCaptureComposer = () => setCaptureOpen(false);
+  const openDocsPanel = (ideaId: string) => {
+    setTurnLogOpen(false);
+    setDocsIdeaId(ideaId);
+  };
+  const handleCaptureTextChange = (value: string) => {
+    setCaptureFeedback(current => (current?.tone === 'error' ? null : current));
+    setNewIdeaText(value);
+  };
+  const handleCaptureTagsChange = (value: string) => {
+    setCaptureFeedback(current => (current?.tone === 'error' ? null : current));
+    setNewIdeaTags(value);
+  };
+  const revealCreatedIdea = (ideaId: string, fallbackPanel?: Panel): boolean => {
+    const canvas = getCanvasElement();
+    const liveIdea = visibleIdeas.find(idea => idea.id === ideaId);
+    const panel = liveIdea?.panel ?? fallbackPanel;
+    if (!canvas || !panel) return false;
 
-  // ---------------------------------------------------------------------------
-  // Hash routing
-  // ---------------------------------------------------------------------------
+    centerPanelOnCanvas(canvas, panel);
+    setCaptureHighlightIds([ideaId]);
+    return isPanelVisible(canvas, panel);
+  };
 
-  if (hash === '#/options') {
-    return <Options onBack={() => navigate('')} />;
+  async function handleTransferFromTurnLog(entry: LlmMessage): Promise<void> {
+    const rawText = entry.content.trim();
+    if (!rawText) {
+      setCaptureFeedback({
+        tone: 'error',
+        message: 'Turn-log entry is empty.',
+      });
+      return;
+    }
+
+    const sourcePanel = selectedBoardIdea?.panel;
+    const panel = sourcePanel
+      ? {
+          ...sourcePanel,
+          x: sourcePanel.x + sourcePanel.width + 32,
+        }
+      : undefined;
+
+    try {
+      const result = await boardController.captureIdea({
+        rawText,
+        tags: [entry.role, ...TURN_LOG_TRANSFER_TAGS],
+        actor: { type: 'user', source: 'canvas', label: 'turn-log-transfer' },
+        panel,
+      });
+      applyCommittedBoard(result.document, result.history);
+      setSelectedId(result.idea.id);
+      setCaptureHighlightIds([result.idea.id]);
+      markActivity('edit');
+      setCaptureFeedback({
+        tone: 'success',
+        message: 'Turn-log entry transferred to note.',
+      });
+    } catch (err) {
+      console.error('[App] transfer turn log entry failed:', err);
+      setCaptureFeedback({
+        tone: 'error',
+        message: 'Could not transfer turn-log entry.',
+      });
+    }
   }
 
-  // ---------------------------------------------------------------------------
-  // Main layout
-  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!captureReveal) return undefined;
 
-  return (
-    <div className="flex flex-col h-screen bg-white overflow-hidden">
-      {/* Header */}
-      <header className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-semibold text-gray-900">Brainstorming Orchestrator</span>
-          {advancingFromTool && (
-            <span className="text-xs text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">
-              Agent driving…
-            </span>
-          )}
-          {canvasBusy && (
-            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-              {canvasBusy}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {/* WebMCP status indicator */}
-          <span
-            className={`text-xs px-2 py-0.5 rounded-full ${
-              typeof window !== 'undefined' && window.navigator.modelContext
-                ? 'bg-green-50 text-green-700'
-                : 'bg-gray-100 text-gray-500'
-            }`}
-            title={
-              typeof window !== 'undefined' && window.navigator.modelContext
-                ? 'WebMCP is available — agentic browsers can drive this app'
-                : 'WebMCP not detected — direct use only'
+    const liveIdea = visibleIdeas.find(idea => idea.id === captureReveal.ideaId);
+    const panel = liveIdea?.panel ?? captureReveal.panel;
+    if (!panel) {
+      setCaptureFeedback({
+        tone: 'error',
+        message: 'Note was saved, but its board position is missing.',
+      });
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      const revealed = revealCreatedIdea(captureReveal.ideaId, panel);
+      if (revealed) {
+        setCaptureFeedback({
+          tone: 'success',
+          message: 'Note added and centered on the board.',
+        });
+        setCaptureReveal(null);
+        return;
+      }
+
+      if (captureReveal.attempts + 1 >= CAPTURE_REVEAL_ATTEMPTS) {
+        setCaptureFeedback({
+          tone: 'error',
+          message: 'Note was saved, but we could not confirm it onscreen.',
+        });
+        setCaptureReveal(null);
+        return;
+      }
+
+      setCaptureReveal(current => (
+        current && current.ideaId === captureReveal.ideaId
+          ? { ...current, attempts: current.attempts + 1, panel }
+          : current
+      ));
+    }, 90);
+
+    return () => window.clearTimeout(timer);
+  }, [captureReveal, setSelectedId, visibleIdeas]);
+
+  const historyEntries = createBoardHistoryEntries({ changeSets, historyState, ideas, groups, docs, suggestions, critiques, connections, beatReviewSessions, beatReviewItems });
+  const aiUndoTarget = findLatestSafeAiUndoTarget(changeSets, historyState.cursor);
+  const triggerManualBoardBeat = (beat: 'cluster' | 'summarise'): void => {
+    void runManualBoardBeat({ beat, boardId, boardTitle, ideas, groups, connections, runBoardBeat, presentBeatReview }).catch(err => {
+      console.error(`[App] ${beat} beat failed:`, err);
+    });
+  };
+  const applyStagedInsight = (insightId: string): void => {
+    const insight = facilitatorSync.stagedInsights?.find(item => item.id === insightId);
+    if (!insight) return;
+
+    const acceptAndRecover = () => {
+      facilitatorSync.setAiActionOutcomeForPendingInsight(insightId, 'accepted');
+      facilitatorSync.recordRecoverySignal(`Staged insight ${insightId} was adopted.`);
+    };
+
+    if (insight.kind === 'scout') {
+      const drafts = Array.isArray((insight.payload as { drafts?: unknown[] } | undefined)?.drafts)
+        ? (insight.payload as { drafts: Array<Record<string, unknown>> }).drafts
+        : [];
+      const draft = drafts[0];
+      if (!draft) return;
+      void boardController.createSuggestion({
+        rawText: typeof draft.rawText === 'string' ? draft.rawText : insight.summary,
+        rationale: typeof draft.rationale === 'string' ? draft.rationale : insight.summary,
+        source: typeof draft.source === 'string' ? draft.source : 'Robot note',
+        sourceIdeaIds: Array.isArray(draft.sourceIdeaIds) ? draft.sourceIdeaIds.filter((value): value is string => typeof value === 'string') : undefined,
+        relatedIdeaIds: Array.isArray(draft.relatedIdeaIds) ? draft.relatedIdeaIds.filter((value): value is string => typeof value === 'string') : undefined,
+        actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+      }).then(result => (
+        boardController.admitSuggestion({
+          suggestionId: result.suggestion.id,
+          actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+        })
+      )).then(result => {
+        applyCommittedBoard(result.document, result.history);
+        acceptAndRecover();
+      }).catch(err => {
+        console.error('[App] apply staged scout insight failed:', err);
+      });
+      return;
+    }
+
+    if (insight.kind === 'critique') {
+      const payload = insight.payload as { ideaId?: string; critique?: string; evidenceAsk?: string } | undefined;
+      if (!payload?.ideaId || !payload.critique || !payload.evidenceAsk) return;
+      void boardController.createCritique({
+        ideaId: payload.ideaId,
+        critique: payload.critique,
+        evidenceAsk: payload.evidenceAsk,
+        actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+      }).then(result => {
+        applyCommittedBoard(result.document, result.history);
+        acceptAndRecover();
+      }).catch(err => {
+        console.error('[App] apply staged critique insight failed:', err);
+      });
+      return;
+    }
+
+    if (insight.kind === 'connection') {
+      const drafts = Array.isArray((insight.payload as { drafts?: unknown[] } | undefined)?.drafts)
+        ? (insight.payload as { drafts: Array<Record<string, unknown>> }).drafts
+        : [];
+      if (drafts.length === 0) return;
+      const stagedConnections = drafts
+        .filter(draft => Array.isArray(draft.ideaIds) && typeof draft.kind === 'string' && typeof draft.rationale === 'string' && typeof draft.strength === 'string')
+        .map(draft => ({
+          id: crypto.randomUUID(),
+          boardId,
+          ideaIds: (draft.ideaIds as unknown[]).filter((value): value is string => typeof value === 'string'),
+          kind: draft.kind as Connection['kind'],
+          rationale: draft.rationale as string,
+          strength: draft.strength as Connection['strength'],
+          supportingDocIds: Array.isArray(draft.supportingDocIds)
+            ? (draft.supportingDocIds as unknown[]).filter((value): value is string => typeof value === 'string')
+            : undefined,
+          createdAt: Date.now(),
+        }))
+        .filter(connection => connection.ideaIds.length >= 2);
+      if (stagedConnections.length === 0) return;
+      void boardController.replaceConnections({
+        connections: [...connections, ...stagedConnections],
+        actor: { type: 'user', source: 'canvas', label: 'robotNotes' },
+        summary: `Accepted ${stagedConnections.length} staged connection${stagedConnections.length === 1 ? '' : 's'}`,
+      }).then(result => {
+        applyCommittedBoard(result.document, result.history);
+        acceptAndRecover();
+      }).catch(err => {
+        console.error('[App] apply staged connection insight failed:', err);
+      });
+    }
+  };
+
+  const appView = hash === '#/options'
+    ? <Options onBack={() => navigate('')} />
+    : (
+      <BoardAppView
+        header={{
+          advancingFromTool,
+          boardTheme,
+          boardSubtitle,
+          captureActionLabel: latestCapture ? (captureReveal ? 'Centering…' : 'Show note') : null,
+          canvasBusy,
+          captureFeedback,
+          captureOpen,
+          creating,
+          historyState,
+          historyOpen,
+          linkModeEnabled,
+          boardTitle,
+          onCaptureAction: captureReveal
+            ? () => {
+              const pending = captureReveal;
+              void Promise.resolve().then(() => {
+                const revealed = revealCreatedIdea(pending.ideaId, pending.panel);
+                setCaptureFeedback({
+                  tone: revealed ? 'success' : 'error',
+                  message: revealed
+                    ? 'Note centered on the board.'
+                    : 'Note was saved, but is still not confirmed onscreen.',
+                });
+              });
             }
-          >
-            {typeof window !== 'undefined' && window.navigator.modelContext
-              ? 'WebMCP active'
-              : 'WebMCP unavailable'}
-          </span>
-          <button
-            type="button"
-            onClick={() => setFacilitatorPaused(value => !value)}
-            className={`text-xs px-2 py-0.5 rounded-full border ${
-              facilitatorPaused
-                ? 'bg-gray-100 text-gray-600 border-gray-300'
-                : 'bg-amber-50 text-amber-800 border-amber-200'
-            }`}
-          >
-            {facilitatorPaused ? 'Facilitator paused' : 'Facilitator active'}
-          </button>
-          {aiActions[0] && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-              ai:{aiActions[0].kind}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => navigate('#/options')}
-            className="text-sm text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400 rounded px-2 py-1"
-          >
-            Options
-          </button>
-        </div>
-      </header>
-
-      {hasApiKey === false && (
-        <div className="shrink-0 mx-5 my-3 rounded-md bg-amber-50 border border-amber-300 px-3 py-2 text-xs text-amber-800 flex items-center justify-between">
-          <span>
-            <strong>No provider configured.</strong>{' '}
-            Add an API key in Options to start brainstorming.
-          </span>
-          <button
-            type="button"
-            className="underline hover:text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500 rounded"
-            onClick={() => navigate('#/options')}
-          >
-            Open Options
-          </button>
-        </div>
-      )}
-
-      <div className="shrink-0 px-5 py-3">
-        <div className="ml-auto flex w-full max-w-[360px] flex-col items-end gap-3">
-          <ConnectionsPanel
-            connections={connections}
-            busy={findingConnections}
-            lastRunAt={lastConnectionsRunAt}
-            onRun={runConnectionFinder}
-            onHighlight={handleHighlight}
+            : latestCapture
+              ? () => {
+                const revealed = revealCreatedIdea(latestCapture.ideaId, latestCapture.panel);
+                setCaptureFeedback({
+                  tone: revealed ? 'success' : 'error',
+                  message: revealed
+                    ? 'Note centered on the board.'
+                    : 'Note was saved, but is still not confirmed onscreen.',
+                });
+              }
+              : undefined,
+          onOpenCapture: openCaptureComposer,
+          onUndo: handleUndo,
+          onRedo: handleRedo,
+          onToggleLinkMode: () => setLinkModeEnabled(value => !value),
+          onToggleHistory: () => setHistoryOpen(value => !value),
+          onSetBoardTheme: setBoardTheme,
+          onOpenOptions: openOptions,
+        }}
+        showApiKeyBanner={hasApiKey === false}
+        onOpenOptions={openOptions}
+        beadStrip={selectedCanvasIdea ? (
+          <BoardBeadStrip
+            idea={selectedCanvasIdea}
+            onOpenInspector={usingDemoBoard ? undefined : () => setInspectorOpen(true)}
           />
-
-          <button
-            type="button"
-            onClick={() => { void runScout(); }}
-            disabled={scouting}
-            className="flex w-full items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm shadow hover:shadow-md focus:outline-none focus:ring-4 focus:ring-teal-200 disabled:opacity-60"
-            aria-label={scouting ? 'Scout running' : 'Ask the scout to suggest ideas'}
-            title={
-              lastScoutRunAt
-                ? `Last scout run ${formatSince(lastScoutRunAt)}. Click to refresh.`
-                : 'Ask the scout to propose ideas adjacent to the board.'
-            }
-          >
-            <span>🔭</span>
-            <span className="font-semibold text-teal-700">
-              {scouting ? 'Scouting…' : suggestions.length > 0 ? `Scout (${suggestions.length})` : 'Scout'}
-            </span>
-          </button>
-
-          {showSoftModeHint && (
-            <SoftModeHint
-              assessment={softModeAssessment}
-              actionLabel={softModeActionLabel()}
-              busy={softModeBusy}
-              onAction={softModeActionLabel() ? () => { void handleSoftModeAction(); } : undefined}
-              onDismiss={() => setActivity(prev => dismissSoftModeHint(prev))}
-            />
-          )}
-        </div>
-      </div>
-
-      <div className="relative flex flex-1 overflow-hidden">
-        {/* Canvas fills the full area */}
-        <main className="flex-1 overflow-hidden" aria-label="Canvas">
-          <Canvas
-            ideas={visibleIdeas}
-            groups={groups}
-            connections={connections}
-            animatedConnectionIds={animatedConnectionIds}
-            animatedSuggestionIds={animatedSuggestionIds}
-            suppressAnimations={suppressRevealAnimations}
-            overlayContent={
-              <CritiqueCardsLayer
-                ideas={visibleIdeas}
-                critiques={critiques}
-                busyIdeaIds={
-                  Object.entries(critiqueBusyByIdea)
-                    .filter(([, busy]) => busy)
-                    .map(([ideaId]) => ideaId)
-                }
-                activeIdeaId={critiqueFocusIdeaId}
-                hoveredIdeaId={hoverIdeaId}
-                editingIdeaId={editingIdeaId}
-                animatedCritiqueIds={animatedCritiqueIds}
-                suppressAnimations={suppressRevealAnimations}
-                onDismiss={handleDismissCritique}
-              />
-            }
-            docCounts={docCounts}
-            highlightIds={highlightIds}
-            onConnectionClick={handleHighlight}
-            suggestions={visibleCanvasSuggestions}
-            suggestionOverflowCount={suggestionOverflowCount}
-            suggestionsExpanded={suggestionsExpanded}
-            suggestionBusy={suggestionBusy}
-            onFocusIdeaChange={setHoverIdeaId}
-            onDragStateChange={setDragActive}
-            onMove={handleMove}
-            onOpen={id => setSelectedId(id)}
-            onOpenDocs={id => setDocsIdeaId(id)}
-            onGroup={handleGroup}
-            onUngroup={handleUngroup}
-            onMerge={handleMerge}
-            onDiscard={handleDiscard}
-            onAdmitSuggestion={handleAdmitSuggestion}
-            onElaborateSuggestion={handleElaborateSuggestion}
-            onDismissSuggestion={handleDismissSuggestion}
-            onExpandSuggestions={() => setSuggestionsExpanded(true)}
-            onCollapseSuggestions={() => setSuggestionsExpanded(false)}
+        ) : null}
+        discardPile={discardedIdeas.length > 0 ? (
+          <DiscardPile
+            ideas={discardedIdeas}
+            onRestore={handleRestore}
+            onPreview={id => {
+              setSelectedId(id);
+              setInspectorOpen(true);
+            }}
           />
-        </main>
-
-        {/* Discard pile drawer (bottom-left) */}
-        <DiscardPile
-          ideas={discardedIdeas}
-          onRestore={handleRestore}
-          onPreview={id => setSelectedId(id)}
-        />
-
-        <CaptureIdeaPopover
-          open={captureOpen}
-          creating={creating}
-          text={newIdeaText}
-          tags={newIdeaTags}
-          onToggle={() => setCaptureOpen(value => !value)}
-          onTextChange={setNewIdeaText}
-          onTagsChange={setNewIdeaTags}
-          onClose={() => setCaptureOpen(false)}
-          onSubmit={handleCapture}
-        />
-
-        {/* Supporting docs modal */}
-        {docsIdeaId && (() => {
-          const docsIdea = ideas.find(i => i.id === docsIdeaId);
-          if (!docsIdea) return null;
-          return (
-            <DocsModal
-              ideaId={docsIdeaId}
-              ideaTitle={docsIdea.rawText.slice(0, 80)}
-              open={true}
+        ) : null}
+        turnLogPanel={turnLogOpen && selectedBoardIdea ? (
+          <IdeaTurnLogPanel
+            idea={selectedBoardIdea}
+            open={turnLogOpen}
+            onClose={() => setTurnLogOpen(false)}
+            onTransfer={handleTransferFromTurnLog}
+            onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
+          />
+        ) : null}
+        peerStrip={facilitatorSync.peers.length > 0 ? (
+          <PeerPresenceStrip
+            hostClientId={facilitatorSync.hostClientId}
+            localClientId={facilitatorSync.localClientId}
+            peers={facilitatorSync.peers}
+          />
+        ) : null}
+        historyPanel={historyOpen ? (
+          <BoardHistoryPanel
+            entries={historyEntries}
+            cursor={historyState.cursor}
+            totalChanges={Math.max(0, historyState.nextSeq - 1)}
+            canUndo={historyState.canUndo}
+            canRedo={historyState.canRedo}
+            onClose={() => setHistoryOpen(false)}
+          />
+        ) : null}
+        reviewPanel={activeBeatReviewSession && activeBeatReviewItems.length > 0 ? (
+          <BeatReviewPanel
+            session={activeBeatReviewSession}
+            items={activeBeatReviewItems}
+            busyByItem={beatReviewBusyByItem}
+            batchBusy={beatReviewBatchBusy}
+            onKeep={itemId => { void handleKeepBeatReviewItem(itemId); }}
+            onScratch={itemId => { void handleScratchBeatReviewItem(itemId); }}
+            onKeepAll={() => { void handleKeepAllBeatReviewItems(); }}
+            onScratchAll={() => { void handleScratchAllBeatReviewItems(); }}
+            onClose={closeBeatReviewSession}
+          />
+        ) : null}
+        companionRail={{
+          hasApiKey, facilitatorPaused, activeBeatRun, softModeAssessment, interactionSuppressed, idleMs,
+          autoIdleMs: AUTO_IDLE_MS, lastAiAction, lastScoutRunAt, lastConnectionsRunAt, companionActionLabel,
+          softModeBusy, lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
+          showSoftModeHint, ideas: canvasIdeas, connections: canvasConnections, findingConnections, scouting, suggestions: canvasSuggestions, handleSoftModeAction, toggleFacilitatorPause,
+          undoRobotLabel: aiUndoTarget?.tooltip,
+          runConnectionFinder: () => {
+            facilitatorSync.recordRecoverySignal('Direct connection request from the dock.');
+            void runConnectionFinder();
+          },
+          runScout: () => {
+            facilitatorSync.recordRecoverySignal('Direct scout request from the dock.');
+            void runScout();
+          },
+          dismissHint,
+          onOpenTurnLog: selectedBoardIdea
+            ? () => {
+              setDocsIdeaId(null);
+              setTurnLogOpen(true);
+            }
+            : undefined,
+          turnLogCount: selectedBoardIdea?.turnLog.length ?? 0,
+          onUndoRobot: aiUndoTarget
+            ? () => {
+              void boardController.undoAiChange({
+                changeSetId: aiUndoTarget.changeSetId,
+                actor: { type: 'user', source: 'canvas', label: 'undoRobot' },
+              }).then(result => {
+                if (result) applyCommittedBoard(result.document, result.history);
+              }).catch(err => {
+                console.error('[App] undo robot failed:', err);
+              });
+            }
+            : undefined,
+          boardBeatReviewSession,
+          boardBeatReviewItems,
+          onOpenBoardBeatReview: boardBeatReviewSession ? () => focusBeatReviewSession(boardBeatReviewSession.id) : undefined,
+          onRunClusterBeat: () => triggerManualBoardBeat('cluster'),
+          onRunSummariseBeat: () => triggerManualBoardBeat('summarise'),
+          autonomy: {
+            sharedPause: facilitatorSync.sharedPause,
+            autonomyState: facilitatorSync.autonomyState,
+            recentAiActionOutcomes: facilitatorSync.recentAiActionOutcomes,
+            stagedInsightCount: facilitatorSync.stagedInsights?.length ?? 0,
+          },
+          robotNotes: {
+            items: facilitatorSync.stagedInsights ?? [],
+            onApply: applyStagedInsight,
+            onDismiss: insightId => facilitatorSync.setAiActionOutcomeForPendingInsight(insightId, 'rejected'),
+          },
+          session: {
+            localClientId: facilitatorSync.localClientId,
+            hostClientId: facilitatorSync.hostClientId,
+            manualHostClientId: facilitatorSync.manualHostClientId,
+            sharedPause: facilitatorSync.sharedPause,
+            peers: facilitatorSync.peers,
+            lastAiAction: facilitatorSync.lastAiAction,
+            lastBoardMutation: facilitatorSync.lastBoardMutation,
+            recentSessionEvents: facilitatorSync.recentSessionEvents,
+          },
+        }}
+        canvasStage={{
+          boardTheme,
+          ideas: canvasIdeas, groups, connections: canvasConnections, critiques: canvasCritiques, critiqueBusyByIdea, critiqueFocusIdeaId, hoverIdeaId, editingIdeaId,
+          selectedIdeaId: selectedCanvasIdea?.id ?? null,
+          showClarificationOverlay: false,
+          animatedConnectionIds, animatedCritiqueIds, animatedSuggestionIds, suppressAnimations: suppressRevealAnimations, docCounts, highlightIds: highlightedIdeaIds,
+          suggestions: canvasSuggestions,
+          suggestionOverflowCount, suggestionsExpanded, suggestionBusy,
+          onDismissCritique: usingDemoBoard
+            ? critiqueId => setDismissedDemoCritiqueIds(current => (current.includes(critiqueId) ? current : [...current, critiqueId]))
+            : handleDismissCritique,
+          onAcceptCritique: usingDemoBoard
+            ? critiqueId => setDismissedDemoCritiqueIds(current => (current.includes(critiqueId) ? current : [...current, critiqueId]))
+            : handleAcceptCritique,
+          onConnectionClick: handleHighlight, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
+          linkModeEnabled,
+          onOpen: id => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(false);
+            setSelectedAttentionItemId(null);
+            setSelectedId(id);
+          },
+          onOpenSuggestion: openSuggestionDrawer,
+          onOpenDocs: openDocsPanel,
+          onGroup: usingDemoBoard ? (() => {}) : handleGroup,
+          onGroupSelection: usingDemoBoard ? (async () => {}) : handleGroupSelection,
+          onUngroup: usingDemoBoard ? (() => {}) : handleUngroup,
+          onMerge: usingDemoBoard ? (() => {}) : handleMerge,
+          onDiscard: usingDemoBoard ? undefined : handleDiscard,
+          onCreateConnection: usingDemoBoard ? undefined : createManualConnection,
+          onAdmitSuggestion: usingDemoBoard
+            ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+            : handleAdmitSuggestion,
+          onElaborateSuggestion: usingDemoBoard ? (() => {}) : handleElaborateSuggestion,
+          onDismissSuggestion: usingDemoBoard
+            ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+            : handleDismissSuggestion,
+          onMoveSuggestion: usingDemoBoard ? (() => {}) : handleMoveSuggestion,
+          onExpandSuggestions: expandSuggestions, onCollapseSuggestions: collapseSuggestions,
+          onIdeaUpdate: handleIdeaUpdate,
+          onActivateAttentionItem: ({ ideaId, attentionId }) => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(false);
+            setSelectedId(ideaId);
+            setSelectedAttentionItemId(attentionId);
+          },
+        }}
+        workspaceOverlays={{
+          ideas, selectedBoardIdea: selectedCanvasIdea, docCounts,
+          isInspectorOpen: Boolean(selectedSuggestion) || (!usingDemoBoard && inspectorOpen),
+          capturePopover: {
+            open: captureOpen, creating, feedback: captureFeedback, text: newIdeaText, tags: newIdeaTags, onToggle: toggleCaptureComposer,
+            onTextChange: handleCaptureTextChange, onTagsChange: handleCaptureTagsChange, onClose: closeCaptureComposer,
+            onSubmit: handleCapture,
+          },
+          docsPanel: (
+            <IdeaDocsPanel
+              boardId={boardId}
+              idea={ideas.find(idea => idea.id === docsIdeaId) ?? null}
+              open={Boolean(docsIdeaId)}
               onClose={() => setDocsIdeaId(null)}
               onDocsChanged={(id, count) => setDocCounts(prev => ({ ...prev, [id]: count }))}
+              docMutations={supportingDocMutations}
+              refineDoc={refineSupportingDoc}
             />
-          );
-        })()}
+          ),
+          selectedIdeaDockContent: selectedCanvasIdea ? (
+            usingDemoBoard
+              ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-900">Demo note preview</p>
+                  <p className="text-sm text-gray-600">
+                    This board is showing fallback demo notes. Selection is live, but editing and inspector actions stay disabled until real board data exists.
+                  </p>
+                </div>
+              )
+              : (
+                <>
+                  <IdeaAttentionPanel
+                    idea={selectedCanvasIdea}
+                    critiques={canvasCritiques}
+                    highlightedAttentionId={selectedAttentionItemId}
+                  />
+                  <WorkspacePhaseFlow
+                    idea={selectedCanvasIdea}
+                    onUpdate={handleIdeaUpdate}
+                    source="canvas"
+                    ambiguityPresentation="full"
+                  />
+                </>
+              )
+          ) : null,
+          inspectorContent: selectedSuggestion ? (
+            <WorkspaceScoutInspector
+              idea={selectedSuggestionIdea}
+              boardIdeas={ideas}
+              suggestion={selectedSuggestion}
+              onUpdate={selectedSuggestionIdea ? handleIdeaUpdate : undefined}
+              docCount={selectedSuggestionIdea ? (docCounts[selectedSuggestionIdea.id] ?? 0) : 0}
+              onOpenDocs={selectedSuggestionIdea ? openDocsPanel : undefined}
+              onAdmitSuggestion={usingDemoBoard
+                ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+                : handleAdmitSuggestion}
+              onElaborateSuggestion={usingDemoBoard ? undefined : handleElaborateSuggestion}
+              onDismissSuggestion={usingDemoBoard
+                ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+                : handleDismissSuggestion}
+              suggestionBusy={selectedSuggestionId ? (suggestionBusy[selectedSuggestionId] ?? null) : null}
+              onClose={closeSuggestionDrawer}
+            />
+          ) : selectedBoardIdea ? (
+            <Workspace
+              idea={selectedBoardIdea}
+              onUpdate={handleIdeaUpdate}
+              docCount={docCounts[selectedBoardIdea.id] ?? 0}
+              onOpenDocs={openDocsPanel}
+              onClose={() => setInspectorOpen(false)}
+            />
+          ) : null,
+          isTurnLogOpen: !usingDemoBoard && turnLogOpen,
+          onToggleTurnLog: usingDemoBoard ? undefined : () => {
+            setDocsIdeaId(null);
+            setTurnLogOpen(value => !value);
+          },
+          onOpenDocs: usingDemoBoard ? undefined : openDocsPanel,
+          onOpenInspector: usingDemoBoard ? undefined : () => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(true);
+          },
+          onCloseInspector: () => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(false);
+          },
+          onCloseSelectedIdea: () => {
+            setInspectorOpen(false);
+            setTurnLogOpen(false);
+            setDocsIdeaId(null);
+            setSelectedAttentionItemId(null);
+            setSelectedSuggestionId(null);
+            setSelectedId(null);
+          },
+        }}
+      />
+    );
 
-        {/* Workspace slideover */}
-        {selectedIdea && (
-          <>
-            <div
-              className="absolute inset-0 bg-black/20 z-30"
-              onClick={() => setSelectedId(null)}
-              aria-hidden="true"
-            />
-            <aside
-              className="absolute top-0 right-0 h-full w-full sm:w-[640px] max-w-full bg-white shadow-2xl z-40 border-l border-gray-200 flex flex-col"
-              aria-label="Workspace"
-            >
-              <div className="shrink-0 flex items-center justify-end px-3 py-2 border-b border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(null)}
-                  className="text-sm text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-400 rounded px-2 py-1"
-                  aria-label="Back to canvas"
-                >
-                  ← Back to canvas
-                </button>
-              </div>
-              <div className="flex-1 min-h-0">
-                <Workspace
-                  idea={selectedIdea}
-                  onUpdate={handleIdeaUpdate}
-                  docCount={docCounts[selectedIdea.id] ?? 0}
-                  onOpenDocs={id => setDocsIdeaId(id)}
-                />
-              </div>
-            </aside>
-          </>
-        )}
-      </div>
-    </div>
+  return (
+    <>
+      {appView}
+      {webMcpModalOpen && webMcpUnavailableStatus ? (
+        <WebMcpAvailabilityModal
+          open={webMcpModalOpen}
+          status={webMcpUnavailableStatus}
+          onClose={() => setWebMcpModalOpen(false)}
+        />
+      ) : null}
+    </>
   );
-}
-
-function formatSince(ms: number): string {
-  const delta = Math.max(0, Date.now() - ms);
-  if (delta < 60_000) return `${Math.round(delta / 1000)}s ago`;
-  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
-  return `${Math.round(delta / 3_600_000)}h ago`;
 }
 
 // Re-export dispatchAndWait for use in event listeners above (suppress unused warning)
