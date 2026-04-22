@@ -164,7 +164,7 @@ function EmptyBoardAnimated({ onNav, tweaks }) {
       {isLocked && (
         <PersonaDock
           name={tweaks.personaName || "Dev"}
-          role={tweaks.personaRole || "Engineering Manager"}
+          role={tweaks.personaRole || "Bot"}
           line={
             phase === "captured" ? "Got it. Let me sit with this for a beat."
           : phase === "observing" ? "Two seconds. I'm looking for loosely-related neighbors, not filler."

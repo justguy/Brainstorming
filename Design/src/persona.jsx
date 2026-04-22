@@ -57,7 +57,7 @@ function PersonaAvatar({ size = 60, pulsing = false, name = "Dev" }) {
   );
 }
 
-function PersonaDock({ name = "Dev", role = "Engineering Manager", line, hint, pulsing = false,
+function PersonaDock({ name = "Dev", role = "Bot", line, hint, pulsing = false,
                       onAct, activity = "idle", onOpenLog, paused = false, onTogglePause, thinking = false }) {
   return (
     <div className="persona-dock">

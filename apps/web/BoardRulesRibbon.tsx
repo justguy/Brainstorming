@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Idea } from '../../src/types';
-import { dispatchAndWait } from './webmcp-tools';
+import { dispatchAndWait } from '../../src/webmcp/toolDispatch';
 
 interface BoardRulesRibbonProps {
   idea: Idea | null;

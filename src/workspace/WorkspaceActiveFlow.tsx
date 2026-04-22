@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { DEFAULT_BOARD_ID } from '../board/types';
+import { deriveIdeaBeadState, type DerivedBeadStatus } from '../orchestrator/beadState';
 import { advance } from '../orchestrator/stateMachine';
 import { nextPhaseNumber } from '../orchestrator/subPhases';
 import { getSettings } from '../storage/settings';
@@ -16,17 +17,21 @@ import ApproachTemplate from './fallbacks/ApproachTemplate';
 import PremortemQuestions from './fallbacks/PremortemQuestions';
 import StressTestTiles from './StressTestTiles';
 import { WorkspaceToolContextPanel } from './WorkspaceToolContextPanel';
+import { findLatestPhaseRun } from './phaseRunTrace';
+import { AmbiguityResolutionPanel } from './AmbiguityResolutionPanel';
 
 export interface WorkspaceActiveFlowProps {
   idea: Idea;
   onUpdate?: (updated: Idea) => void;
   source?: 'canvas' | 'workspace';
+  ambiguityPresentation?: 'full' | 'summary';
 }
 
 export function WorkspaceActiveFlow({
   idea: initialIdea,
   onUpdate,
   source = 'canvas',
+  ambiguityPresentation = 'full',
 }: WorkspaceActiveFlowProps): React.ReactElement {
   const [idea, setIdea] = useState<Idea>(initialIdea);
   const [userInput, setUserInput] = useState('');
@@ -37,9 +42,21 @@ export function WorkspaceActiveFlow({
   const phaseAdapter = createLegacyWorkspaceAdapter(idea);
   const { activeSpec, currentPhase, showFallback } = phaseAdapter;
   const sourceLabel = source === 'workspace' ? 'Workspace' : 'Canvas';
+  const beadState = deriveIdeaBeadState(idea);
+  const activeBeadIndex = beadState.beads.findIndex(bead => bead.status === 'active');
+  const completedBeadCount = beadState.beads.filter(bead => bead.status === 'completed').length;
+  const processIndex = activeBeadIndex >= 0 ? activeBeadIndex + 1 : Math.max(0, completedBeadCount);
+  const processLabel = activeBeadIndex >= 0
+    ? beadState.beads[activeBeadIndex]?.shortLabel
+    : completedBeadCount >= beadState.beads.length
+      ? 'done'
+      : 'queued';
   const activeArtifact = idea.artifactMd && activeSpec?.kind === 'main'
     ? extractPhaseSection(idea.artifactMd, Math.floor(currentPhase))
     : null;
+  const latestRun = findLatestPhaseRun(idea.turnLog);
+  const latestRunIsAmbiguity = latestRun ? isAmbiguityRun(latestRun) : false;
+  const isAmbiguitySurface = activeSpec?.componentKey === 'ambiguity' || activeSpec?.componentKey === 'clarify';
 
   useEffect(() => {
     setIdea(initialIdea);
@@ -67,7 +84,9 @@ export function WorkspaceActiveFlow({
         ideaId: updated.id,
         patch: updated,
         actor: { type: 'user', source },
-        summary: skip ? `${sourceLabel} skipped advance` : `${sourceLabel} advanced idea`,
+        summary: skip
+          ? `${sourceLabel} skipped ${activeSpec?.label ?? `step ${currentPhase}`}`
+          : `${sourceLabel} ran ${activeSpec?.label ?? `step ${currentPhase}`}`,
       });
       handleIdeaUpdate(updated);
     } catch (err) {
@@ -143,58 +162,27 @@ export function WorkspaceActiveFlow({
   }
 
   function renderAmbiguityState(primaryLabel: string): React.ReactNode {
-    return (
-      <div className="space-y-3">
-        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-slate-800">Ambiguity state</p>
-            <span className="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              {idea.ambiguities.length} item{idea.ambiguities.length === 1 ? '' : 's'}
-            </span>
-          </div>
-          {idea.ambiguities.length === 0 ? (
-            <p className="text-sm text-slate-600">No explicit ambiguities recorded yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {idea.ambiguities.map(ambiguity => {
-                const resolutionStatus = ambiguity.resolution?.status ?? 'open';
-                const linkedQuestions = idea.clarifications.filter(question => question.ambiguityId === ambiguity.id);
-                return (
-                  <div key={ambiguity.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
-                        {resolutionStatus}
-                      </span>
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800">
-                        {ambiguity.severity}
-                      </span>
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-800">
-                        {ambiguity.resolutionMode}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm font-medium text-slate-800">{ambiguity.plainLanguage}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{ambiguity.type}</p>
-                    {ambiguity.resolution?.note && (
-                      <p className="mt-2 text-xs text-slate-600">Note: {ambiguity.resolution.note}</p>
-                    )}
-                    {linkedQuestions.length > 0 && (
-                      <div className="mt-2 space-y-1 text-xs text-slate-600">
-                        {linkedQuestions.map(question => (
-                          <p key={question.id}>
-                            Clarification: {question.question}
-                            {question.answer ? ` Answered: ${question.answer}` : ''}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+    if (ambiguityPresentation === 'summary') {
+      const openCount = idea.ambiguities.filter(entry => (entry.resolution?.status ?? 'open') !== 'resolved').length;
+      return (
+        <div className="bo-process-card__artifact">
+          <p className="bo-process-card__eyebrow bo-process-card__eyebrow--accent">
+            On-board questions
+          </p>
+          <h4 className="bo-process-card__title">{openCount} clarification prompt{openCount === 1 ? '' : 's'} pinned on the board</h4>
+          <p className="bo-process-card__copy">
+            Use the handwritten callout next to this note to answer one item at a time, let Bot draft both, or skip for now without losing the thread.
+          </p>
         </div>
-        {renderAdvanceRow(primaryLabel)}
-      </div>
+      );
+    }
+    return (
+      <AmbiguityResolutionPanel
+        idea={idea}
+        onIdeaUpdate={handleIdeaUpdate}
+        mode={activeSpec?.componentKey === 'clarify' ? 'clarify' : 'ambiguity'}
+        footer={renderAdvanceRow(primaryLabel)}
+      />
     );
   }
 
@@ -335,39 +323,107 @@ export function WorkspaceActiveFlow({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[24px] border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-            {activeSpec?.kind === 'micro' ? 'Micro step' : 'Active step'}
+      <div className="bo-process-card">
+        <div className="bo-process-strip" aria-label={`Process progress ${processIndex} of ${beadState.beads.length}`}>
+          <span className="bo-process-strip__label">Lifecycle</span>
+          <div className="bo-process-strip__bar" aria-hidden="true">
+            {beadState.beads.map(bead => (
+              <span
+                key={bead.id}
+                className={processSegmentClassName(bead.status)}
+                title={`${bead.shortLabel}: ${bead.summary}`}
+              />
+            ))}
+          </div>
+          <span className="bo-process-strip__summary">
+            {processIndex} / {beadState.beads.length} · {processLabel ?? 'queued'}
           </span>
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-            Step {currentPhase} / 8
-          </span>
-          {idea.providerUsed && (
-            <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
-              {idea.providerUsed}
-            </span>
-          )}
         </div>
 
-        <div className="mt-3 space-y-3">
+        <div className="mt-4 space-y-3">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">{activeSpec?.label ?? 'Unknown step'}</h3>
-            <p className="mt-1 text-sm leading-snug text-slate-600">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="bo-process-card__eyebrow">
+                {activeSpec?.kind === 'micro' ? 'Micro step' : 'Active step'}
+              </span>
+              <span className="bo-process-card__eyebrow bo-process-card__eyebrow--muted">
+                Step {currentPhase}
+              </span>
+              {idea.providerUsed && (
+                <span className="bo-process-card__eyebrow bo-process-card__eyebrow--accent">
+                  {idea.providerUsed}
+                </span>
+              )}
+            </div>
+            <h3 className="bo-process-card__title">{activeSpec?.label ?? 'Unknown step'}</h3>
+            <p className="bo-process-card__copy">
               Keep the board visible while you move this idea forward. The inspector is only for deeper review.
             </p>
           </div>
           {activeArtifact && (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+            <div className="bo-process-card__artifact">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                <p className="bo-process-card__eyebrow bo-process-card__eyebrow--muted">
                   Current artifact
                 </p>
-                <span className="text-[11px] text-slate-400">{density}</span>
+                <span className="bo-process-card__density">{density}</span>
               </div>
               <div className="max-h-48 overflow-y-auto">
                 <Markdown content={activeArtifact} density={density} />
               </div>
+            </div>
+          )}
+
+          {latestRun && !isAmbiguitySurface && (
+            <div className="bo-process-run">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="bo-process-card__eyebrow bo-process-card__eyebrow--accent">
+                  Latest run
+                </p>
+                <span className="bo-process-run__chip">
+                  {latestRun.phaseLabel}
+                </span>
+                <span className="bo-process-run__chip">
+                  {latestRun.roleLabel}
+                </span>
+                <span className="bo-process-run__chip">
+                  {latestRun.providerLabel}
+                </span>
+              </div>
+              <p className="bo-process-run__summary">
+                {latestRun.toolSummary}
+              </p>
+              {latestRunIsAmbiguity ? (
+                <div className="bo-process-run__ambiguities">
+                  <p className="bo-process-run__ambiguities-copy">
+                    {idea.ambiguities.length > 0
+                      ? `${idea.ambiguities.length} ambiguity${idea.ambiguities.length === 1 ? '' : 'ies'} surfaced in the last run.`
+                      : 'The last run checked for ambiguities, but no open ambiguity items are stored on this note.'}
+                  </p>
+                  {idea.ambiguities.length > 0 && (
+                    <div className="bo-process-run__ambiguity-list">
+                      {idea.ambiguities.slice(0, 4).map(ambiguity => {
+                        const status = ambiguity.resolution?.status ?? 'open';
+                        return (
+                          <div key={ambiguity.id} className="bo-process-run__ambiguity-item">
+                            <div className="bo-process-run__ambiguity-chips">
+                              <span className="bo-process-run__chip">{status}</span>
+                              <span className="bo-process-run__chip">{ambiguity.severity}</span>
+                              <span className="bo-process-run__chip">{ambiguity.resolutionMode}</span>
+                              <span className="bo-process-run__chip">{ambiguity.type.replace(/_/g, ' ')}</span>
+                            </div>
+                            <p className="bo-process-run__ambiguity-copy">{ambiguity.plainLanguage}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <pre className="bo-process-run__content">
+                  {latestRun.content}
+                </pre>
+              )}
             </div>
           )}
 
@@ -377,5 +433,28 @@ export function WorkspaceActiveFlow({
 
       <WorkspaceToolContextPanel idea={idea} onIdeaUpdate={handleIdeaUpdate} source={source} />
     </div>
+  );
+}
+
+function processSegmentClassName(status: DerivedBeadStatus): string {
+  const classMap: Record<DerivedBeadStatus, string> = {
+    locked: 'bo-process-strip__segment',
+    active: 'bo-process-strip__segment bo-process-strip__segment--active',
+    completed: 'bo-process-strip__segment bo-process-strip__segment--done',
+    needs_attention: 'bo-process-strip__segment bo-process-strip__segment--attention',
+    soft_nudge: 'bo-process-strip__segment bo-process-strip__segment--nudge',
+  };
+
+  return classMap[status];
+}
+
+function isAmbiguityRun(latestRun: NonNullable<ReturnType<typeof findLatestPhaseRun>>): boolean {
+  const phaseLabel = latestRun.phaseLabel.toLowerCase();
+  const roleLabel = latestRun.roleLabel.toLowerCase();
+  const content = latestRun.content.toLowerCase();
+  return (
+    phaseLabel.includes('ambiguity')
+    || roleLabel.includes('ambiguity')
+    || content.includes('"ambiguities"')
   );
 }

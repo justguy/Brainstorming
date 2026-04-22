@@ -11,9 +11,23 @@ export type Density = 'simple' | 'standard' | 'expert';
 export type ProviderId = 'gemini' | 'openai' | 'anthropic';
 
 // --- Provider-agnostic message format (like OpenAI chat schema) ---
+export interface LlmMessageMeta {
+  phase?: Phase;
+  phaseLabel?: string;
+  roleId?: string;
+  provider?: ProviderId;
+  model?: string;
+  source?: 'phase_run' | 'user_input' | 'system' | 'workspace' | 'webmcp_tool';
+  entryKind?: 'start' | 'task' | 'result' | 'fallback' | 'note';
+  runSurface?: 'llm_role' | 'webmcp_tool' | 'user_edit' | 'system';
+  liveToolOrigin?: string;
+  liveToolNames?: string[];
+}
+
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  meta?: LlmMessageMeta;
 }
 
 // --- Role-specific artifacts produced by each micro-agent ---

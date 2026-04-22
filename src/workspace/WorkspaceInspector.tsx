@@ -1,59 +1,95 @@
-import React, { useEffect, useState } from 'react';
-import type { Density, Idea } from '../types';
-import { getSettings } from '../storage/settings';
-import Badge from '../ui/Badge';
-import Button from '../ui/Button';
-import ChallengesList from './ChallengesList';
-import { BeadStateReadSurface } from './BeadStateReadSurface';
+import React, { useEffect, useMemo, useState } from 'react';
+import { deriveIdeaBeadState, type DerivedBeadEntry } from '../orchestrator/beadState';
+import { getIdeaPhaseHistory, type IdeaPhaseHistoryEvent } from '../storage/phaseHistory';
+import type { Idea } from '../types';
 import { createLegacyWorkspaceAdapter } from './legacyPhaseAdapter';
-import LensGrid from './LensGrid';
-import Markdown from './markdown';
-import PhaseSection from './PhaseSection';
-import StressTestTiles from './StressTestTiles';
+import { findLatestPhaseRun } from './phaseRunTrace';
+import { WorkspaceScoutInspectorBody } from './WorkspaceScoutInspector';
 
 export interface WorkspaceInspectorProps {
   idea: Idea;
   onUpdate?: (updated: Idea) => void;
   docCount?: number;
   onOpenDocs?: (ideaId: string) => void;
+  onClose?: () => void;
+}
+
+interface HistoryState {
+  events: IdeaPhaseHistoryEvent[];
+  loading: boolean;
+  error: string | null;
 }
 
 export function WorkspaceInspector({
-  idea: initialIdea,
+  idea,
   onUpdate,
   docCount = 0,
   onOpenDocs,
+  onClose,
 }: WorkspaceInspectorProps): React.ReactElement {
-  const [idea, setIdea] = useState<Idea>(initialIdea);
-  const [density, setDensity] = useState<Density>('standard');
+  const [currentIdea, setCurrentIdea] = useState<Idea>(idea);
+  const [history, setHistory] = useState<HistoryState>({ events: [], loading: true, error: null });
   const [exported, setExported] = useState(false);
-  const phaseAdapter = createLegacyWorkspaceAdapter(idea);
-  const { activeSpec, currentPhase } = phaseAdapter;
+  const [activeSurface, setActiveSurface] = useState<'idea' | 'scout'>('idea');
+  const beadState = deriveIdeaBeadState(currentIdea);
+  const phaseAdapter = createLegacyWorkspaceAdapter(currentIdea);
+  const latestRun = findLatestPhaseRun(currentIdea.turnLog);
+  const events = useMemo(() => [...history.events].reverse(), [history.events]);
+  const newestEvent = events[0] ?? null;
+  const activeIndex = beadState.beads.findIndex(bead => bead.status === 'active');
+  const processIndex = activeIndex >= 0
+    ? activeIndex + 1
+    : beadState.beads.filter(bead => bead.status === 'completed').length;
+  const activeBead = activeIndex >= 0 ? beadState.beads[activeIndex] ?? null : null;
+  const scoutSurfaceAvailable = currentIdea.briefState.lenses.length > 0;
 
   useEffect(() => {
-    setIdea(initialIdea);
-  }, [initialIdea]);
+    let active = true;
+    setHistory({ events: [], loading: true, error: null });
+
+    void getIdeaPhaseHistory({ ideaId: idea.id, limit: 18 })
+      .then(page => {
+        if (!active) return;
+        setHistory({ events: page.events, loading: false, error: null });
+      })
+      .catch(err => {
+        if (!active) return;
+        setHistory({
+          events: [],
+          loading: false,
+          error: err instanceof Error ? err.message : 'Failed to load inspector history.',
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [idea.id]);
 
   useEffect(() => {
-    getSettings().then(settings => setDensity(settings.density)).catch(() => {});
-  }, []);
+    setCurrentIdea(idea);
+  }, [idea]);
+
+  useEffect(() => {
+    setActiveSurface('idea');
+  }, [idea.id]);
 
   function handleIdeaUpdate(updated: Idea): void {
-    setIdea(updated);
+    setCurrentIdea(updated);
     onUpdate?.(updated);
   }
 
   async function handleExport(): Promise<void> {
-    if (!idea.artifactMd) return;
+    if (!currentIdea.artifactMd) return;
 
-    const blob = new Blob([idea.artifactMd], { type: 'text/markdown; charset=utf-8' });
+    const blob = new Blob([currentIdea.artifactMd], { type: 'text/markdown; charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const filename = `handoff_${slugify(idea.rawText || idea.id)}.md`;
+    const filename = `handoff_${slugify(currentIdea.rawText || currentIdea.id)}.md`;
 
     try {
-      await navigator.clipboard.writeText(idea.artifactMd);
+      await navigator.clipboard.writeText(currentIdea.artifactMd);
     } catch {
-      // Copying is a convenience, not a hard requirement.
+      // clipboard copy is convenience only
     }
 
     if (typeof chrome !== 'undefined' && chrome.downloads) {
@@ -69,171 +105,300 @@ export function WorkspaceInspector({
     }
 
     setExported(true);
-    window.setTimeout(() => setExported(false), 3000);
+    window.setTimeout(() => setExported(false), 2400);
   }
 
-  function renderMicroReadOnly(key: string): React.ReactNode {
-    if (key === 'lens') return <LensGrid idea={idea} onUpdate={handleIdeaUpdate} />;
-    if (key === 'challenge') return <ChallengesList idea={idea} onUpdate={handleIdeaUpdate} />;
-    if (key === 'stress') return <StressTestTiles idea={idea} onUpdate={handleIdeaUpdate} />;
-    return null;
-  }
-
-  return (
-    <div className="flex h-full flex-col overflow-hidden bg-white">
-      <header className="shrink-0 border-b border-gray-200 bg-white px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold leading-tight text-gray-900">
-              {idea.rawText.slice(0, 80)}{idea.rawText.length > 80 ? '…' : ''}
+  const body = activeSurface === 'scout'
+    ? (
+      <WorkspaceScoutInspectorBody
+        idea={currentIdea}
+        onUpdate={handleIdeaUpdate}
+        docCount={docCount}
+        onOpenDocs={onOpenDocs}
+        onClose={() => setActiveSurface('idea')}
+        closeLabel="Back to idea inspector"
+      />
+    )
+    : (
+      <>
+        <div className="bo-insp-head">
+          <div className="min-w-0">
+            <div className="bo-insp-head__who">Dev · inspecting</div>
+            <h2 className="bo-insp-head__title" title={currentIdea.rawText}>
+              {currentIdea.rawText}
             </h2>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <Badge color={idea.readiness}>{idea.readiness}</Badge>
-              <span className="text-xs text-gray-500">
-                Step {currentPhase} / 8 — {activeSpec?.label ?? 'Unknown'}
+          </div>
+          {onClose && (
+            <button type="button" onClick={onClose} className="bo-insp-head__close" aria-label="Close inspector">
+              ×
+            </button>
+          )}
+        </div>
+
+        <div className="bo-insp-provenance">
+          <div className="bo-insp-provenance__row">
+            <span className="bo-insp-provenance__key">Origin</span>
+            <span className="bo-insp-provenance__value">
+              <span className="bo-insp-provenance__chip">{originActorLabel(newestEvent, latestRun)}</span>
+              {newestEvent?.summary ?? 'This note is on the board and ready for review.'}
+            </span>
+          </div>
+          <div className="bo-insp-provenance__row">
+            <span className="bo-insp-provenance__key">Model</span>
+            <span className="bo-insp-provenance__value">
+              <span className="bo-insp-provenance__model">
+                {latestRun?.providerLabel ?? currentIdea.providerUsed ?? 'provider not recorded'}
               </span>
-              {activeSpec?.kind === 'micro' && (
-                <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700">
-                  Micro
-                </span>
-              )}
-              {idea.providerUsed && (
-                <span className="text-xs text-gray-400">{idea.providerUsed}</span>
-              )}
+              <span>{latestRun ? 'most recent phase run' : 'no recent phase run recorded'}</span>
+            </span>
+          </div>
+          <div className="bo-insp-provenance__row">
+            <span className="bo-insp-provenance__key">Added</span>
+            <span className="bo-insp-provenance__value">
+              {formatRelativeTime(newestEvent?.at ?? currentIdea.lastTurnAt ?? currentIdea.updatedAt)} · {autonomyCaption(currentIdea)}
+            </span>
+          </div>
+          <div className="bo-insp-provenance__row">
+            <span className="bo-insp-provenance__key">Reversible</span>
+            <span className="bo-insp-provenance__value">
+              {currentIdea.turnLog.length > 0 ? 'Tracked in board history and turn memory.' : 'No reversible AI action recorded yet.'}
+            </span>
+          </div>
+        </div>
+
+        <div className="bo-insp-section-label">
+          <span>Lifecycle for this idea</span>
+          <span className="bo-insp-section-label__right">
+            {processIndex} / {beadState.beads.length} · {activeBead?.label ?? phaseAdapter.activeSpec?.label ?? 'Queued'}
+          </span>
+        </div>
+
+        <div className="bo-insp-journey">
+          <div className="bo-insp-journey__track">
+            <div className="bo-insp-journey__line" aria-hidden="true">
+              <div
+                className="bo-insp-journey__filled"
+                style={{ width: `${filledJourneyWidth(beadState.beads, processIndex)}%` }}
+              />
             </div>
-            {idea.tags.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {idea.tags.map(tag => (
-                  <span key={tag} className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
+            <div className="bo-insp-journey__beads">
+              {beadState.beads.map(bead => (
+                <div key={bead.id} className={journeyBeadClassName(bead)}>
+                  <div className="bo-insp-journey__dot">
+                    {bead.status === 'completed' ? '✓' : bead.kind === 'micro' ? '' : bead.phaseNumber}
+                  </div>
+                  <div className="bo-insp-journey__label">{bead.shortLabel}</div>
+                </div>
+              ))}
+            </div>
           </div>
+          <div className="bo-insp-journey__meta">
+            <span>{formatRelativeTime(currentIdea.createdAt)} start</span>
+            <span>{beadState.summary}</span>
+          </div>
+        </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <select
-              value={density}
-              onChange={event => setDensity(event.target.value as Density)}
-              className="rounded border border-gray-200 bg-white px-1.5 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-400"
-              aria-label="Density view override"
-              title="Override output density for this inspector view"
-            >
-              <option value="simple">Simple</option>
-              <option value="standard">Standard</option>
-              <option value="expert">Expert</option>
-            </select>
+        <div className="bo-insp-now">
+          <div className="bo-insp-now__name">{phaseAdapter.activeSpec?.label ?? 'Waiting to start'}</div>
+          <div className="bo-insp-now__sub">
+            {phaseAdapter.activeSpec?.kind === 'micro' ? 'Optional micro-step.' : 'Main lifecycle step.'} {activeBead?.summary ?? ''}
+          </div>
+          <div className="bo-insp-now__say">
+            <b>Dev · {latestRun?.roleLabel ?? 'facilitator'}</b>
+            {narrateNowCard({ idea: currentIdea, latestRun, activeBead })}
+          </div>
+          <div className="bo-insp-now__actions">
+            {scoutSurfaceAvailable && (
+              <button type="button" className="bo-insp-btn bo-insp-btn--primary" onClick={() => setActiveSurface('scout')}>
+                Open scout
+              </button>
+            )}
             {onOpenDocs && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenDocs(idea.id)}
-                aria-label="Open supporting docs"
-                title="Attach reference material the orchestrator can cite during phases."
-              >
-                Docs{docCount > 0 ? ` (${docCount})` : ''}
-              </Button>
+              <button type="button" className="bo-insp-btn" onClick={() => onOpenDocs(currentIdea.id)}>
+                Docs
+              </button>
             )}
-            <Button
-              variant={exported ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => {
-                void handleExport();
-              }}
-              disabled={idea.readiness !== 'green' || !idea.artifactMd}
-              aria-label="Export handoff document"
-              title={idea.readiness !== 'green' ? 'Export is available once readiness is green' : 'Download handoff document and copy to clipboard'}
-            >
-              {exported ? 'Copied!' : 'Export'}
-            </Button>
+            {currentIdea.artifactMd && (
+              <button type="button" className="bo-insp-btn" onClick={() => { void handleExport(); }}>
+                {exported ? 'Copied' : 'Export'}
+              </button>
+            )}
+            {onClose && (
+              <button type="button" className="bo-insp-btn" onClick={onClose}>
+                Show on board
+              </button>
+            )}
           </div>
         </div>
-      </header>
 
-      <div className="shrink-0 border-b border-violet-100 bg-violet-50/70 px-5 py-3">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-700">
-          Secondary inspector
-        </p>
-        <p className="mt-1 text-sm leading-snug text-violet-900">
-          The active brainstorm loop now runs on the board. Use this drawer to review the full phase trail,
-          attached docs, and export when the idea is ready.
-        </p>
-      </div>
-
-      <BeadStateReadSurface idea={idea} />
-
-      {idea.liveToolContext && idea.liveToolContext.tools.length > 0 && (
-        <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">
-            Live context snapshot
-          </p>
-          <p className="mt-1 text-sm text-gray-700">
-            {idea.liveToolContext.origin} exposed {idea.liveToolContext.tools.length} tool
-            {idea.liveToolContext.tools.length === 1 ? '' : 's'} from <em>{idea.liveToolContext.title}</em>.
-          </p>
+        <div className="bo-insp-section-label">
+          <span>Attached</span>
+          <span className="bo-insp-section-label__right">
+            {artifactCount(currentIdea, docCount)} artifact{artifactCount(currentIdea, docCount) === 1 ? '' : 's'}
+          </span>
         </div>
-      )}
 
-      {(idea.insights?.length ?? 0) > 0 && (
-        <div className="shrink-0 border-b border-emerald-100 bg-emerald-50/70 px-5 py-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
-            Linked insights
-          </p>
-          <div className="mt-2 space-y-2">
-            {idea.insights?.slice(-2).reverse().map(insight => (
-              <div key={insight.id} className="rounded-xl border border-emerald-100 bg-white/80 px-3 py-2">
-                <p className="text-sm leading-snug text-gray-800">{insight.text}</p>
-                {insight.sourceRefs.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {insight.sourceRefs.map(ref => (
-                      <span key={`${insight.id}-${ref.kind}-${ref.id}`} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800">
-                        {ref.kind}: {ref.label ?? ref.id}
-                      </span>
-                    ))}
-                  </div>
-                )}
+        <div className="bo-insp-artifacts">
+          {onOpenDocs && (
+            <button type="button" className="bo-insp-artifact" onClick={() => onOpenDocs(currentIdea.id)}>
+              <span className="bo-insp-artifact__icon">📎</span>
+              Supporting docs
+              <span className="bo-insp-artifact__count">{docCount}</span>
+            </button>
+          )}
+          {currentIdea.artifactMd && (
+            <button type="button" className="bo-insp-artifact" onClick={() => { void handleExport(); }}>
+              <span className="bo-insp-artifact__icon">✎</span>
+              Handoff draft
+              <span className="bo-insp-artifact__count">1</span>
+            </button>
+          )}
+          {currentIdea.liveToolContext && (
+            <div className="bo-insp-artifact">
+              <span className="bo-insp-artifact__icon">🔗</span>
+              {currentIdea.liveToolContext.title}
+              <span className="bo-insp-artifact__count">{currentIdea.liveToolContext.tools.length}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="bo-insp-section-label">
+          <span>What has happened to this idea</span>
+          <span className="bo-insp-section-label__right">newest first</span>
+        </div>
+
+        <div className="bo-insp-timeline">
+          {history.loading && <p className="bo-insp-empty">Loading history…</p>}
+          {!history.loading && history.error && <p className="bo-insp-error">{history.error}</p>}
+          {!history.loading && !history.error && events.length === 0 && (
+            <p className="bo-insp-empty">No dated interventions have been recorded for this note yet.</p>
+          )}
+          {!history.loading && !history.error && events.map(event => (
+            <article
+              key={`${event.source}-${event.sourceId ?? event.sourceSeq ?? event.at}`}
+              className={`${timelineRowClassName(event)} ${scoutSurfaceAvailable && isScoutHistoryEvent(event) ? 'bo-insp-timeline__row--interactive' : ''}`}
+              onClick={scoutSurfaceAvailable && isScoutHistoryEvent(event) ? () => setActiveSurface('scout') : undefined}
+            >
+              <div className="bo-insp-timeline__head">
+                <span className="bo-insp-timeline__who">{timelineActorLabel(event)}</span>
+                <span>{event.changeKinds.join(' · ')}</span>
+                <span className="bo-insp-timeline__when">{formatWhen(event.at)}</span>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 space-y-1 overflow-y-auto px-5 py-4">
-        {phaseAdapter.sections.map(section => (
-          <div
-            key={section.spec.id}
-            className={section.isMicro ? 'ml-2 border-l-2 border-violet-200 pl-6' : ''}
-          >
-            <PhaseSection
-              phaseNumber={section.phaseNumber}
-              title={section.title}
-              locked={section.isLocked}
-              active={section.isActive}
-            >
-              {!section.isLocked && !section.isActive && !section.isMicro && section.artifactContent && (
-                <Markdown content={section.artifactContent} density={density} />
-              )}
-
-              {!section.isLocked && !section.isActive && section.isMicro && renderMicroReadOnly(section.spec.componentKey)}
-
-              {section.isActive && (
-                <div className="space-y-4">
-                  {!section.isMicro && section.artifactContent && (
-                    <Markdown content={section.artifactContent} density={density} />
+              <p className="bo-insp-timeline__body">{event.summary}</p>
+              {(onClose || (scoutSurfaceAvailable && isScoutHistoryEvent(event))) && (
+                <div className="bo-insp-timeline__tools">
+                  {scoutSurfaceAvailable && isScoutHistoryEvent(event) && (
+                    <button type="button" onClick={() => setActiveSurface('scout')}>open scout</button>
                   )}
-                  {section.isMicro && renderMicroReadOnly(section.spec.componentKey)}
-                  <div className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/80 px-4 py-3 text-sm text-violet-900">
-                    Continue this step from the board focus dock to keep the canvas visible while the idea moves.
-                  </div>
+                  {onClose && (
+                    <button type="button" onClick={onClose}>show on board</button>
+                  )}
                 </div>
               )}
-            </PhaseSection>
-          </div>
-        ))}
+            </article>
+          ))}
+        </div>
+      </>
+    );
+
+  return (
+    <aside className="bo-inspector-drawer" aria-label="Inspector drawer">
+      <div className="bo-inspector-drawer__scroll">
+        {body}
       </div>
-    </div>
+    </aside>
   );
+}
+
+function journeyBeadClassName(bead: DerivedBeadEntry): string {
+  return [
+    'bo-insp-journey__bead',
+    `bo-insp-journey__bead--${bead.status.replace('_', '-')}`,
+    bead.kind === 'micro' ? 'bo-insp-journey__bead--optional' : '',
+  ].filter(Boolean).join(' ');
+}
+
+function filledJourneyWidth(beads: DerivedBeadEntry[], processIndex: number): number {
+  if (beads.length <= 1) return 100;
+  return Math.max(0, Math.min(100, ((Math.max(processIndex, 1) - 1) / (beads.length - 1)) * 100));
+}
+
+function narrateNowCard(input: {
+  idea: Idea;
+  latestRun: ReturnType<typeof findLatestPhaseRun>;
+  activeBead: DerivedBeadEntry | null;
+}): string {
+  if (input.latestRun) {
+    const firstLine = input.latestRun.content.split('\n').map(line => line.trim()).find(Boolean);
+    if (firstLine) return firstLine;
+  }
+  return input.activeBead?.summary ?? input.idea.rawText;
+}
+
+function originActorLabel(event: IdeaPhaseHistoryEvent | null, latestRun: ReturnType<typeof findLatestPhaseRun>): string {
+  if (event) return timelineActorLabel(event);
+  return latestRun?.roleLabel ?? 'Board';
+}
+
+function timelineActorLabel(event: IdeaPhaseHistoryEvent): string {
+  if (event.actor.type === 'ai') return event.actor.label ?? `${roleTitle(event.actor.beat)} role`;
+  if (event.actor.type === 'tool') return event.actor.label ?? 'Lifecycle tool';
+  if (event.actor.type === 'user') return event.actor.label ?? 'You';
+  return event.actor.label ?? 'System';
+}
+
+function isScoutHistoryEvent(event: IdeaPhaseHistoryEvent): boolean {
+  const actor = timelineActorLabel(event).toLowerCase();
+  const summary = event.summary.toLowerCase();
+  return actor.includes('scout') || summary.includes('lens');
+}
+
+function roleTitle(value?: string): string {
+  switch (value) {
+    case 'scout': return 'Scout';
+    case 'connect': return 'Synthesizer';
+    case 'critique': return 'Challenger';
+    case 'summarise': return 'Summarizer';
+    case 'cluster': return 'Cluster';
+    default: return 'AI';
+  }
+}
+
+function timelineRowClassName(event: IdeaPhaseHistoryEvent): string {
+  const tone = event.actor.type === 'user' ? 'user' : event.actor.type === 'tool' ? 'edit' : 'ai';
+  return `bo-insp-timeline__row bo-insp-timeline__row--${tone}`;
+}
+
+function autonomyCaption(idea: Idea): string {
+  return idea.liveToolContext
+    ? `active-tab tools from ${idea.liveToolContext.origin}`
+    : 'board autonomy mode not recorded';
+}
+
+function artifactCount(idea: Idea, docCount: number): number {
+  return (docCount > 0 ? 1 : 0) + (idea.artifactMd ? 1 : 0) + (idea.liveToolContext ? 1 : 0);
+}
+
+function formatWhen(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const deltaMs = Math.max(0, Date.now() - timestamp);
+  const minutes = Math.round(deltaMs / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 min ago';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours === 1) return '1 hr ago';
+  if (hours < 48) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 function slugify(text: string): string {

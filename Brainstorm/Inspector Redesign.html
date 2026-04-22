@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inspector — before / after</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@500;700&family=Patrick+Hand&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f5efe1;
+    --paper-dark: #ebe4d3;
+    --ink: #1a1814;
+    --ink-soft: #4a443a;
+    --ink-faint: rgba(26,24,20,0.45);
+    --ink-ghost: rgba(26,24,20,0.22);
+    --accent-contradict: #c94a3a;
+    --accent-revive: #2a8a4a;
+    --accent-ai: #2e86c7;
+    --accent-warn: #d89328;
+    --sticky-yellow: #f5e27a;
+    --sticky-pink: #f4b4b0;
+    --sticky-blue: #b4d4e8;
+    --sticky-peach: #f4c88c;
+    --sticky-green: #bcd9a8;
+    --sticky-lilac: #c9bde0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #e5e0d1; font-family: "Inter", system-ui, sans-serif; color: var(--ink); }
+  body {
+    background-color: #e5e0d1;
+    background-image: radial-gradient(circle, rgba(26,24,20,0.04) 1px, transparent 1.5px);
+    background-size: 28px 28px;
+    min-height: 100vh;
+    padding: 40px 48px 100px;
+  }
+  .page-head {
+    max-width: 1600px; margin: 0 auto 36px;
+    display: flex; align-items: flex-end; gap: 32px; justify-content: space-between;
+  }
+  .page-head .tag-above {
+    font-family: "JetBrains Mono", monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 6px;
+  }
+  .page-head h1 {
+    font-family: "Caveat", cursive;
+    font-size: 44px; font-weight: 700; margin: 0;
+    letter-spacing: -0.5px; max-width: 800px; line-height: 1.05;
+  }
+  .page-head .lede {
+    font-size: 14px; color: var(--ink-soft); max-width: 520px; line-height: 1.55;
+  }
+  .grid {
+    max-width: 1600px; margin: 0 auto;
+    display: grid; grid-template-columns: 540px 1fr; gap: 32px;
+  }
+  .panel {
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 4px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2), 0 12px 28px rgba(26,24,20,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px; border-bottom: 1.4px solid var(--ink);
+    background: var(--paper);
+  }
+  .panel-header .tag {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .panel-header .tag.bad  { color: var(--accent-contradict); }
+  .panel-header .tag.good { color: var(--accent-revive); }
+  .panel-header h2 {
+    margin: 0;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 24px;
+  }
+
+  /* ───────── BEFORE (screenshot recreation) ───────── */
+  .before-body {
+    padding: 0;
+    background: #fbf9f4;
+    min-height: 1300px;
+  }
+  .before-wrap {
+    padding: 18px 22px 24px;
+  }
+  .bf-label {
+    font-family: "Inter"; font-weight: 700; font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: #5b4f3a;
+  }
+  .bf-title1 {
+    font-family: "Inter"; font-weight: 700; font-size: 13.5px;
+    margin: 2px 0 10px; color: #1a1814;
+  }
+  .bf-close {
+    position: absolute; right: 20px; top: 14px;
+    font-size: 12px; color: #555; cursor: pointer;
+  }
+  .bf-title2 {
+    font-family: "Inter"; font-weight: 700; font-size: 15px;
+    color: #1a1814; margin: 10px 0 6px; line-height: 1.25;
+  }
+  .bf-toolbar {
+    display: flex; gap: 8px; align-items: center;
+    margin: 4px 0 10px;
+  }
+  .bf-toolbar select, .bf-toolbar button {
+    font-size: 11.5px; border: 1px solid #ccc;
+    padding: 4px 8px; border-radius: 4px; background: white;
+    font-family: "Inter"; color: #333;
+  }
+  .bf-meta {
+    display: flex; gap: 5px; align-items: center; flex-wrap: wrap;
+    margin: 0 0 8px;
+  }
+  .bf-meta .dot {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #fcd0c6; color: #8a1f0f;
+    font-size: 10.5px; font-weight: 600;
+    padding: 2px 8px 2px 6px; border-radius: 999px;
+  }
+  .bf-meta .dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #c94a3a; }
+  .bf-meta .step {
+    font-family: "Inter"; font-size: 11.5px; color: #333;
+  }
+  .bf-meta .mini {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+    background: #222; color: white;
+    padding: 2px 6px; border-radius: 3px; text-transform: uppercase;
+  }
+  .bf-meta .gem { font-size: 11px; color: #666; }
+  .bf-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 14px; }
+  .bf-chip {
+    background: #eceae3; color: #444;
+    font-size: 10.5px; padding: 2px 7px; border-radius: 3px;
+  }
+
+  .bf-callout {
+    background: #f0e8ff;
+    padding: 12px 14px 14px; border-radius: 4px;
+    margin: 0 0 16px;
+  }
+  .bf-callout .bf-label { color: #6a4ad9; }
+  .bf-callout .body { font-size: 12px; color: #444; margin-top: 4px; line-height: 1.5; }
+
+  .bf-coord {
+    background: #e6f0ff;
+    padding: 12px 14px 14px; border-radius: 4px;
+  }
+  .bf-coord-head {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; margin-bottom: 8px;
+  }
+  .bf-coord-head .bf-label { color: #2a5ad9; }
+  .bf-coord-legend {
+    display: flex; gap: 10px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  .bf-coord-legend span.a { color: #2e86c7; }
+  .bf-coord-legend span.c { color: #2a8a4a; }
+  .bf-coord-legend span.n { color: #c94a3a; }
+  .bf-coord-legend span.s { color: #d89328; }
+  .bf-coord .body { font-size: 11.5px; color: #555; margin-bottom: 10px; line-height: 1.4; }
+
+  .bf-beadgrid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .bf-bead {
+    background: white; border-radius: 4px;
+    padding: 8px 10px; position: relative;
+    border-left: 3px solid #d0cfc8;
+  }
+  .bf-bead.done   { border-left-color: #2a8a4a; background: #e8f5ec; }
+  .bf-bead.active { border-left-color: #2e86c7; background: white; }
+  .bf-bead .n {
+    font-size: 9.5px; font-weight: 700; color: #777;
+    letter-spacing: 0.08em;
+  }
+  .bf-bead .t {
+    font-size: 12.5px; font-weight: 700; color: #1a1814;
+    margin: 2px 0 2px;
+  }
+  .bf-bead .sub {
+    font-size: 10.5px; color: #888;
+  }
+  .bf-bead .status {
+    position: absolute; right: 10px; top: 10px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    color: #888;
+  }
+  .bf-bead.done   .status { color: #2a8a4a; }
+  .bf-bead.active .status { color: #2e86c7; }
+
+  .bf-accordion {
+    background: white; border: 1px solid #e8e4d8;
+    border-radius: 4px; padding: 10px 12px;
+    margin: 10px 0 0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .bf-accordion .l {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12.5px; color: #444;
+  }
+  .bf-accordion .circle {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #2a8a4a; color: white; font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  .bf-accordion .lock { font-size: 10.5px; color: #888; }
+  .bf-accordion.active {
+    background: #f0e8ff; border-color: #d0c0f0;
+  }
+  .bf-accordion.active .circle { background: #8a4ad9; }
+
+  .bf-inner {
+    background: #f5efff; padding: 12px 14px; margin-top: -2px;
+    border: 1px dashed #d0c0f0; border-radius: 0 0 4px 4px;
+  }
+  .bf-inner .hint { font-size: 11.5px; color: #666; font-style: italic; margin-bottom: 8px; line-height: 1.5;}
+  .bf-inner .cta {
+    border: 1px dashed #c0b0e0; background: #faf7ff;
+    padding: 8px 10px; border-radius: 4px;
+    font-size: 11.5px; color: #555; line-height: 1.5;
+  }
+
+  /* Red annotations overlaid on BEFORE */
+  .anno {
+    position: absolute; pointer-events: none;
+    font-family: "Caveat", cursive; font-weight: 700;
+    color: var(--accent-contradict);
+    font-size: 16px; line-height: 1.15;
+    max-width: 180px;
+    z-index: 10;
+  }
+  .anno svg { display: block; }
+
+  /* ───────── AFTER ───────── */
+  .after-wrap {
+    display: grid; grid-template-columns: 1fr 440px;
+    min-height: 1300px;
+  }
+  .after-board {
+    position: relative;
+    background:
+      repeating-linear-gradient(0deg, rgba(26,24,20,0.06) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, rgba(26,24,20,0.06) 0 1px, transparent 1px 28px),
+      var(--paper);
+    padding: 26px;
+    overflow: hidden;
+  }
+
+  /* idea card being inspected */
+  .focus-idea {
+    position: absolute; left: 80px; top: 110px;
+    width: 220px;
+    padding: 14px 16px;
+    font-family: "Kalam", cursive;
+    font-size: 15px; line-height: 1.35;
+    color: var(--ink);
+    background: var(--sticky-yellow);
+    box-shadow: 3px 4px 0 rgba(26,24,20,0.3), 6px 10px 24px rgba(26,24,20,0.2);
+    transform: rotate(-2.5deg);
+    z-index: 4;
+  }
+  .focus-idea .tt { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .focus-idea .meta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(26,24,20,0.55); margin-top: 6px;
+  }
+  .focus-idea .sel-ring {
+    position: absolute; inset: -12px;
+    border: 2.5px dashed var(--accent-ai);
+    border-radius: 6px;
+    animation: slow-rot 12s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes slow-rot {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* surrounding context stickies (dimmed) */
+  .ctx-sticky {
+    position: absolute;
+    padding: 10px 12px;
+    font-family: "Kalam", cursive;
+    font-size: 13px; line-height: 1.3;
+    background: var(--sticky-blue);
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.18);
+    width: 150px; opacity: 0.45;
+    transform: rotate(1.5deg);
+  }
+  .ctx-sticky.c-pink { background: var(--sticky-pink); transform: rotate(-2deg); }
+  .ctx-sticky.c-peach { background: var(--sticky-peach); transform: rotate(2.2deg); }
+
+  /* ink connector from idea to inspector */
+  .ink-tether {
+    position: absolute; pointer-events: none; z-index: 3;
+  }
+
+  /* margin notes */
+  .margin-note {
+    position: absolute;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 16px;
+    color: var(--accent-revive);
+    line-height: 1.1;
+    max-width: 170px;
+    pointer-events: none;
+  }
+  .margin-note.info { color: var(--accent-ai); }
+  .margin-note svg { display: block; margin-top: 2px; }
+
+  /* INSPECTOR (right column) */
+  .inspector {
+    background: #fffdf5;
+    border-left: 1.8px solid var(--ink);
+    padding: 20px 22px 120px;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .insp-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 14px;
+  }
+  .insp-head .who {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--accent-ai); font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .insp-head .idea-title {
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 28px; line-height: 1.05;
+    color: var(--ink); margin: 0;
+    letter-spacing: -0.4px;
+  }
+  .insp-head .close {
+    border: 1.4px solid var(--ink);
+    background: #fffdf5;
+    width: 28px; height: 28px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+    font-family: "JetBrains Mono", monospace; font-size: 14px;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.18);
+  }
+
+  .insp-provenance {
+    border: 1.4px solid var(--ink);
+    border-radius: 4px;
+    padding: 11px 14px 12px;
+    background: var(--paper);
+    margin-bottom: 14px;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.15);
+  }
+  .insp-provenance .row {
+    display: flex; gap: 10px; align-items: baseline;
+    font-size: 12.5px; line-height: 1.45;
+  }
+  .insp-provenance .row + .row { margin-top: 4px; }
+  .insp-provenance .k {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint); min-width: 68px; flex-shrink: 0;
+  }
+  .insp-provenance .v { color: var(--ink); }
+  .insp-provenance .v em { font-style: normal; font-weight: 700; }
+  .insp-provenance .v .chip {
+    background: var(--sticky-peach);
+    font-family: "Kalam", cursive; font-size: 12.5px;
+    padding: 0 6px; border-radius: 3px;
+    border: 1px solid rgba(26,24,20,0.25);
+  }
+  .insp-provenance .v .model {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px; background: var(--ink); color: #fffdf5;
+    padding: 1px 5px; border-radius: 2px;
+  }
+  .insp-provenance .v .undo-link {
+    font-family: "Inter"; font-size: 11px;
+    color: var(--accent-contradict); font-weight: 600;
+    cursor: pointer; text-decoration: underline;
+  }
+
+  .insp-sect-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 600;
+    margin: 20px 0 10px;
+    display: flex; justify-content: space-between;
+  }
+  .insp-sect-label .right {
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+
+  /* journey strip — horizontal bead walk */
+  .journey {
+    background: var(--paper-dark);
+    border: 1.4px solid var(--ink);
+    border-radius: 6px;
+    padding: 14px 14px 10px;
+    position: relative;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.15);
+  }
+  .journey-track {
+    position: relative;
+    padding-bottom: 30px;
+  }
+  .journey-line {
+    position: absolute;
+    top: 11px; left: 12px; right: 12px;
+    height: 2px;
+  }
+  .journey-line::before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 9px);
+    opacity: 0.28;
+  }
+  .journey-line .filled {
+    position: absolute; top: 0; left: 0;
+    height: 100%; width: 32%;
+    background: var(--ink);
+  }
+  .journey-beads {
+    display: flex; justify-content: space-between;
+    position: relative;
+  }
+  .jbead {
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+    flex: 1; min-width: 0;
+  }
+  .jbead .dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #fffdf5;
+    border: 2px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; font-weight: 700;
+    position: relative; z-index: 2;
+  }
+  .jbead.done .dot { background: var(--ink); color: #fffdf5; }
+  .jbead.done .dot::after {
+    content: "✓"; font-size: 11px; line-height: 1;
+  }
+  .jbead.done .dot .num { display: none; }
+  .jbead.active .dot {
+    background: var(--accent-ai); color: white;
+    border-color: var(--ink);
+    box-shadow: 0 0 0 4px rgba(46,134,199,0.2);
+  }
+  .jbead.active .dot::after {
+    content: ""; position: absolute; inset: -6px;
+    border: 2px dashed var(--accent-ai);
+    border-radius: 50%;
+    animation: slow-rot 8s linear infinite;
+  }
+  .jbead.soft .dot { background: #ffe68a; border-style: solid; }
+  .jbead.flag .dot {
+    background: var(--accent-contradict);
+    color: white; border-color: var(--ink);
+  }
+  .jbead .lbl {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8.5px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-top: 8px;
+    text-align: center;
+    white-space: nowrap;
+    transform: rotate(-28deg) translate(-18px, 10px);
+    transform-origin: top center;
+  }
+  .jbead.done .lbl { color: var(--ink-soft); }
+  .jbead.active .lbl {
+    color: var(--accent-ai);
+    font-weight: 700;
+    font-size: 9.5px;
+  }
+  .jbead.optional .dot {
+    width: 16px; height: 16px;
+    background: #fffdf5; border-style: dashed;
+    border-width: 1.5px;
+  }
+  .jbead.optional.done .dot { background: var(--ink); }
+  .jbead.optional .lbl { opacity: 0.7; }
+
+  .journey-meta {
+    display: flex; justify-content: space-between;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px dashed rgba(26,24,20,0.22);
+  }
+
+  /* active-step card */
+  .now-card {
+    background: #fffdf5;
+    border: 1.8px solid var(--ink);
+    border-radius: 6px;
+    padding: 14px 16px;
+    box-shadow: 3px 3px 0 rgba(26,24,20,0.22);
+    position: relative;
+    margin-top: 12px;
+  }
+  .now-card::before {
+    content: "NOW";
+    position: absolute;
+    top: -11px; left: 14px;
+    background: var(--accent-ai); color: white;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em;
+    padding: 3px 8px; border-radius: 3px;
+    border: 1.4px solid var(--ink);
+  }
+  .now-card .step-name {
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 22px; line-height: 1.1;
+    margin: 2px 0 4px;
+  }
+  .now-card .step-sub {
+    font-family: "Inter"; font-size: 11.5px;
+    color: var(--ink-soft); line-height: 1.45;
+    margin-bottom: 10px;
+  }
+  .now-card .say {
+    font-family: "Kalam", cursive;
+    font-size: 14px; line-height: 1.4;
+    background: var(--paper);
+    padding: 10px 12px; border-radius: 4px;
+    border: 1.4px dashed rgba(26,24,20,0.35);
+    color: var(--ink);
+  }
+  .now-card .say b {
+    font-family: "Inter"; font-size: 10px; letter-spacing: 0.09em;
+    text-transform: uppercase; font-weight: 600;
+    color: var(--accent-ai);
+    display: block; margin-bottom: 4px;
+  }
+  .now-card .actions {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .now-card .btn {
+    font-family: "Inter"; font-weight: 600; font-size: 12.5px;
+    padding: 7px 12px;
+    border: 1.5px solid var(--ink);
+    border-radius: 5px;
+    background: #fffdf5; color: var(--ink);
+    cursor: pointer;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.22);
+  }
+  .now-card .btn.primary { background: var(--ink); color: #fffdf5; }
+
+  /* timeline of intervention history */
+  .timeline {
+    position: relative;
+    padding-left: 20px;
+  }
+  .timeline::before {
+    content: ""; position: absolute;
+    left: 7px; top: 6px; bottom: 6px;
+    width: 1.5px;
+    background: repeating-linear-gradient(180deg, var(--ink) 0 3px, transparent 3px 7px);
+    opacity: 0.35;
+  }
+  .tl-row {
+    position: relative;
+    padding: 10px 0 10px 6px;
+    border-bottom: 1px dashed rgba(26,24,20,0.15);
+  }
+  .tl-row:last-child { border-bottom: none; }
+  .tl-row::before {
+    content: ""; position: absolute;
+    left: -16px; top: 14px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+  }
+  .tl-row.ai::before { background: var(--accent-ai); border-color: var(--ink); }
+  .tl-row.user::before { background: var(--sticky-yellow); border-color: var(--ink); }
+  .tl-row.edit::before { background: var(--sticky-peach); border-color: var(--ink); }
+  .tl-row .tl-head {
+    display: flex; gap: 8px; align-items: baseline;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 3px;
+  }
+  .tl-row .tl-head .who {
+    color: var(--accent-ai); font-weight: 700;
+  }
+  .tl-row.user .tl-head .who { color: var(--ink); }
+  .tl-row.edit .tl-head .who { color: #8a5a20; }
+  .tl-row .tl-head .when {
+    color: var(--ink-faint); margin-left: auto;
+  }
+  .tl-row .tl-body {
+    font-family: "Kalam", cursive; font-size: 14px;
+    color: var(--ink); line-height: 1.4;
+  }
+  .tl-row .tl-body em {
+    background: rgba(46,134,199,0.14);
+    padding: 0 4px; border-radius: 2px; font-style: normal;
+  }
+  .tl-row .tl-tools {
+    display: flex; gap: 8px; margin-top: 6px;
+  }
+  .tl-row .tl-tools button {
+    font-family: "Inter"; font-size: 10.5px; font-weight: 500;
+    color: var(--ink-soft);
+    background: transparent;
+    border: none; cursor: pointer;
+    padding: 0; text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+  }
+  .tl-row .tl-tools button:hover { color: var(--ink); }
+
+  /* attached artifacts footer */
+  .artifacts {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;
+  }
+  .artif {
+    display: flex; align-items: center; gap: 6px;
+    background: #fffdf5;
+    border: 1.4px solid var(--ink);
+    padding: 6px 10px; border-radius: 5px;
+    font-family: "Inter"; font-size: 11.5px; font-weight: 500;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.18);
+    cursor: pointer;
+  }
+  .artif .icn { font-family: "JetBrains Mono"; font-size: 11px; color: var(--ink-faint); }
+  .artif .n {
+    background: var(--ink); color: #fffdf5;
+    font-family: "JetBrains Mono"; font-size: 9.5px;
+    padding: 0 5px; border-radius: 2px;
+  }
+
+  /* principles footer */
+  .principles {
+    max-width: 1600px; margin: 40px auto 0;
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 6px;
+    padding: 22px 28px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.18);
+  }
+  .principles h3 {
+    font-family: "Caveat", cursive;
+    font-size: 26px; margin: 0 0 14px;
+  }
+  .principles .grid5 {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 22px;
+  }
+  .principles .p { border-left: 3px solid var(--ink); padding-left: 14px; }
+  .principles .p .n {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em;
+    color: var(--ink-faint);
+  }
+  .principles .p .t {
+    font-family: "Caveat", cursive;
+    font-size: 20px; font-weight: 700;
+    margin: 2px 0 6px;
+  }
+  .principles .p .d {
+    font-size: 13px; color: var(--ink-soft); line-height: 1.5;
+  }
+  .principles .p .d em { background: rgba(46,134,199,0.14); padding: 0 3px; font-style: normal; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div>
+    <div class="tag-above">Inspector · UX alignment</div>
+    <h1>The inspector is a <em style="font-style: italic; background: rgba(46,134,199,0.15); padding: 0 6px;">turn log</em>, not mission control.</h1>
+  </div>
+  <div class="lede">
+    The current inspector repeats the title, repeats the bead list <b>twice</b>, narrates empty state for all 12 locked steps, and wraps it all in SaaS chrome. Below: what breaks, and an aligned version that puts provenance first, shows the lifecycle as a single journey, and lets <b>Dev</b> speak about what's happening now.
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- ───────── BEFORE ───────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="tag bad">BEFORE · current inspector</span>
+      <h2>"Every intervention…"</h2>
+      <span class="tag bad">1,300px of scroll</span>
+    </div>
+    <div class="before-body">
+      <div class="before-wrap">
+        <div class="bf-close">Close</div>
+        <div class="bf-label">Inspector</div>
+        <div class="bf-title1">Every intervention on the board should carry its provenance, detailing what trig…</div>
+
+        <div class="bf-title2">Every intervention on the board should carry its provenance, detailing what trig…</div>
+        <div class="bf-toolbar">
+          <select><option>Standard</option></select>
+          <button>Docs</button>
+          <button>Export</button>
+        </div>
+        <div class="bf-meta">
+          <span class="dot">red</span>
+          <span class="step">Step 0.5 / 8 — Outside-in lens</span>
+          <span class="mini">MICRO</span>
+          <span class="gem">gemini</span>
+        </div>
+        <div class="bf-chips">
+          <span class="bf-chip">provenance</span>
+          <span class="bf-chip">undo</span>
+          <span class="bf-chip">audit-trail</span>
+          <span class="bf-chip">AI</span>
+          <span class="bf-chip">facilitator-surface</span>
+          <span class="bf-chip">from-scout</span>
+        </div>
+
+        <div class="bf-callout">
+          <div class="bf-label">Secondary Inspector</div>
+          <div class="body">The active brainstorm loop now runs on the board. Use this drawer to review the full phase trail, attached docs, and export when the idea is ready.</div>
+        </div>
+
+        <div class="bf-coord">
+          <div class="bf-coord-head">
+            <div class="bf-label">Bead coordination</div>
+            <div class="bf-coord-legend">
+              <span class="a">ACTIVE</span><span class="c">COMPLETED</span><span class="n">NEEDS ATTENTION</span><span class="s">SOFT NUDGE</span>
+            </div>
+          </div>
+          <div class="body">The runtime stays derived from the current phase. Review flags and nudges layer on top without moving the idea.</div>
+          <div class="bf-beadgrid">
+            <div class="bf-bead done">
+              <div class="n">0 · AMBIGUITIES</div>
+              <div class="t">Ambiguity detection</div>
+              <div class="sub">6 open ambiguities</div>
+              <div class="status">COMPLETED</div>
+            </div>
+            <div class="bf-bead active">
+              <div class="n">0.5 · LENS</div>
+              <div class="t">Outside-in lens</div>
+              <div class="sub">0 lenses</div>
+              <div class="status">ACTIVE</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">1 · CLARIFY</div>
+              <div class="t">Clarification questions</div>
+              <div class="sub">No clarification questions yet</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">2 · APPROACHES</div>
+              <div class="t">Approach synthesis</div>
+              <div class="sub">0 approaches explored</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">2.5 · CHALLENGES</div>
+              <div class="t">Devil's advocate</div>
+              <div class="sub">0 challenges recorded</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">3 · RULES</div>
+              <div class="t">Must-stay-true rules</div>
+              <div class="sub">0 must-stay-true rules</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">4 · PREMORTEM</div>
+              <div class="t">Premortem / red team</div>
+              <div class="sub">0 risks in register</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">4.5 · STRESS-TEST</div>
+              <div class="t">Stress-test the rules</div>
+              <div class="sub">0 stress tests</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">5 · BRIEF</div>
+              <div class="t">Brief composition</div>
+              <div class="sub">No brief draft yet</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">6 · REVIEW</div>
+              <div class="t">Self-review</div>
+              <div class="sub">2 open questions after self-review</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">7 · READINESS</div>
+              <div class="t">Readiness decision</div>
+              <div class="sub">Readiness is red</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">8 · DONE</div>
+              <div class="t">Handoff ready</div>
+              <div class="sub">Awaiting next-step capture</div>
+              <div class="status">LOCKED</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bf-accordion" style="margin-top: 18px;">
+          <div class="l">
+            <span class="circle">0</span>
+            <span>Ambiguity detection</span>
+          </div>
+          <div class="lock">^</div>
+        </div>
+        <div class="bf-accordion active" style="margin-top: 0;">
+          <div class="l">
+            <span class="circle">0.5</span>
+            <span>Outside-in lens (optional) <span style="color: #8a4ad9; font-weight: 700;">Active</span></span>
+          </div>
+          <div class="lock">^</div>
+        </div>
+        <div class="bf-inner">
+          <div class="hint">No lenses surfaced yet. Run this step to see unexpected angles on your idea.</div>
+          <div class="cta">Continue this step from the board focus dock to keep the canvas visible while the idea moves.</div>
+        </div>
+
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">1</span><span>Clarification questions</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">2</span><span>Approach synthesis</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">2.5</span><span>Devil's advocate (optional)</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">3</span><span>Must-stay-true rules</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">4</span><span>Premortem / red team</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">4.5</span><span>Stress-test the rules (optional)</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- red annotations -->
+    <div class="anno" style="top: 42px; right: 14px;">
+      title shown<br>twice ↓
+      <svg width="40" height="60" viewBox="0 0 40 60"><path d="M30 8 Q 20 30 15 55" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M15 55 l 0 -6 l -5 3 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 140px; right: 8px; color: var(--accent-contradict);">
+      6 meta-chips +<br>mini pill + model<br>= tag soup
+      <svg width="50" height="30" viewBox="0 0 50 30"><path d="M10 8 Q 25 18 48 14" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M48 14 l -6 -2 l 2 6 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 250px; right: 6px;">
+      this is just<br>UI copy for<br>no one
+      <svg width="40" height="30" viewBox="0 0 40 30"><path d="M8 14 Q 20 8 38 20" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M38 20 l -6 -1 l 2 6 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 530px; right: 2px;">
+      12 beads as grid<br>kills the <i>flow</i> —<br>it's a journey,<br>not a dashboard
+    </div>
+    <div class="anno" style="top: 820px; right: 10px;">
+      empty counts for<br>every locked row<br>(dead weight)
+      <svg width="50" height="30" viewBox="0 0 50 30"><path d="M6 6 Q 20 14 44 8" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M44 8 l -5 -3 l 0 6 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 1060px; right: 6px;">
+      beads shown<br>AGAIN as<br>accordions below
+    </div>
+    <div class="anno" style="top: 1170px; left: 14px; color: var(--accent-contradict);">
+      ← meta-instructions<br>pretending to be<br>an affordance
+    </div>
+  </div>
+
+  <!-- ───────── AFTER ───────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="tag good">AFTER · aligned turn log</span>
+      <h2>Provenance first, lifecycle as a journey</h2>
+      <span class="tag good">one idea · one story</span>
+    </div>
+
+    <div class="after-wrap">
+
+      <!-- left: canvas context showing what the inspector is ABOUT -->
+      <div class="after-board">
+        <!-- surrounding context -->
+        <div class="ctx-sticky c-pink" style="left: 32px; top: 46px;">Onboarding pain · new hires freeze day 1</div>
+        <div class="ctx-sticky c-peach" style="left: 330px; top: 240px;">Runbook automation · "if-X-then-Y"</div>
+        <div class="ctx-sticky" style="left: 46px; top: 420px;">Manager digest · weekly summary email</div>
+
+        <!-- focus idea being inspected -->
+        <div class="focus-idea">
+          <div class="sel-ring"></div>
+          <div class="tt">Outside-in lens</div>
+          <div>What would an ops lead from a competitor do on day 1?</div>
+          <div class="meta">ai · scout · 3 turns</div>
+        </div>
+
+        <!-- ink tether from idea to inspector -->
+        <svg class="ink-tether" style="left: 290px; top: 140px; width: 260px; height: 120px;" viewBox="0 0 260 120">
+          <path d="M 10 80 Q 80 20 250 30"
+                stroke="#1a1814" stroke-width="1.8" fill="none"
+                stroke-linecap="round" opacity="0.55"
+                stroke-dasharray="0"/>
+          <circle cx="248" cy="30" r="3" fill="#1a1814" opacity="0.55"/>
+        </svg>
+
+        <div class="margin-note info" style="left: 86px; top: 300px;">
+          selected · inspector<br>is <i>about</i> this idea
+          <svg width="40" height="30" viewBox="0 0 40 30"><path d="M5 24 Q 15 10 35 6" stroke="#2e86c7" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-dasharray="3 3"/><path d="M35 6 l 0 5 l -5 -1 z" fill="#2e86c7"/></svg>
+        </div>
+
+        <div class="margin-note" style="left: 38px; bottom: 90px;">
+          board stays visible ·<br>no modal takeover
+          <svg width="40" height="30" viewBox="0 0 40 30"><path d="M32 24 Q 20 10 5 6" stroke="#2a8a4a" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-dasharray="3 3"/><path d="M5 6 l 5 -1 l 0 6 z" fill="#2a8a4a"/></svg>
+        </div>
+      </div>
+
+      <!-- right: inspector -->
+      <div class="inspector">
+        <div class="insp-head">
+          <div>
+            <div class="who">Dev · inspecting</div>
+            <h3 class="idea-title">Outside-in lens</h3>
+          </div>
+          <button class="close" title="Close inspector (Esc)">×</button>
+        </div>
+
+        <!-- provenance card -->
+        <div class="insp-provenance">
+          <div class="row">
+            <div class="k">origin</div>
+            <div class="v"><span class="chip">Scout</span> found this while reviewing 4 ops-domain papers</div>
+          </div>
+          <div class="row">
+            <div class="k">model</div>
+            <div class="v"><span class="model">gemini-2.5-pro</span> · micro-run · 0.5¢</div>
+          </div>
+          <div class="row">
+            <div class="k">added</div>
+            <div class="v">2 min ago · on autonomy <b>Active Challenger</b></div>
+          </div>
+          <div class="row">
+            <div class="k">reversible</div>
+            <div class="v"><span class="undo-link">↶ undo (Dev added this)</span></div>
+          </div>
+        </div>
+
+        <!-- journey strip -->
+        <div class="insp-sect-label">
+          <span>Lifecycle for this idea</span>
+          <span class="right">3 of 8 · <b>0.5 · outside-in</b></span>
+        </div>
+        <div class="journey">
+          <div class="journey-track">
+            <div class="journey-line"><div class="filled"></div></div>
+            <div class="journey-beads">
+              <div class="jbead done"><div class="dot"><span class="num">0</span></div><div class="lbl">Ambiguities</div></div>
+              <div class="jbead done optional"><div class="dot"></div><div class="lbl">0.5 Lens</div></div>
+              <div class="jbead active"><div class="dot">0.5</div><div class="lbl">Outside-in</div></div>
+              <div class="jbead"><div class="dot"><span class="num">1</span></div><div class="lbl">Clarify</div></div>
+              <div class="jbead"><div class="dot"><span class="num">2</span></div><div class="lbl">Approaches</div></div>
+              <div class="jbead optional"><div class="dot"></div><div class="lbl">2.5 Devil's</div></div>
+              <div class="jbead"><div class="dot"><span class="num">3</span></div><div class="lbl">Rules</div></div>
+              <div class="jbead"><div class="dot"><span class="num">4</span></div><div class="lbl">Premortem</div></div>
+              <div class="jbead optional"><div class="dot"></div><div class="lbl">4.5 Stress</div></div>
+              <div class="jbead"><div class="dot"><span class="num">5</span></div><div class="lbl">Brief</div></div>
+              <div class="jbead"><div class="dot"><span class="num">6</span></div><div class="lbl">Review</div></div>
+              <div class="jbead"><div class="dot"><span class="num">7</span></div><div class="lbl">Ready</div></div>
+              <div class="jbead"><div class="dot"><span class="num">8</span></div><div class="lbl">Handoff</div></div>
+            </div>
+          </div>
+          <div class="journey-meta">
+            <span>started 8 min ago</span>
+            <span>est · 2 more minutes</span>
+          </div>
+        </div>
+
+        <!-- NOW card: only the active step gets a full surface -->
+        <div class="now-card">
+          <div class="step-name">Looking through other people's eyes</div>
+          <div class="step-sub">
+            Outside-in lens · optional step. Running this surfaces angles that insiders miss. Skip if you trust your framing.
+          </div>
+          <div class="say">
+            <b>Dev · Scout</b>
+            I'd want to talk to an ops lead at a shop with 10× your team size. They solved day-1 freeze with shadowing, not docs. Worth looking at before we commit to runbooks?
+          </div>
+          <div class="actions">
+            <button class="btn primary">keep going →</button>
+            <button class="btn">skip this lens</button>
+            <button class="btn">show reasoning</button>
+          </div>
+        </div>
+
+        <!-- attached artifacts (paperclips) -->
+        <div class="insp-sect-label">
+          <span>Attached</span>
+          <span class="right">3 artifacts</span>
+        </div>
+        <div class="artifacts">
+          <div class="artif"><span class="icn">📎</span>ops-onboarding-2024.pdf<span class="n">1</span></div>
+          <div class="artif"><span class="icn">🔗</span>competitor teardown<span class="n">2</span></div>
+          <div class="artif"><span class="icn">✎</span>user notes<span class="n">3</span></div>
+        </div>
+
+        <!-- intervention timeline (provenance trail — the "turn log") -->
+        <div class="insp-sect-label">
+          <span>What has happened to this idea</span>
+          <span class="right">newest first</span>
+        </div>
+        <div class="timeline">
+          <div class="tl-row ai">
+            <div class="tl-head"><span class="who">Dev · Scout</span><span>micro · lens</span><span class="when">2m ago</span></div>
+            <div class="tl-body">Suggested <em>outside-in lens</em>: "What would an ops lead at 10× scale do?"</div>
+            <div class="tl-tools">
+              <button>pin</button><button>show reasoning</button><button>transfer to board</button><button>↶ undo</button>
+            </div>
+          </div>
+          <div class="tl-row edit">
+            <div class="tl-head"><span class="who">You</span><span>edit</span><span class="when">7m ago</span></div>
+            <div class="tl-body">Tightened wording · "new hires freeze" → "new hires freeze <em>on day 1</em>"</div>
+          </div>
+          <div class="tl-row ai">
+            <div class="tl-head"><span class="who">Dev · Synthesizer</span><span>connection</span><span class="when">8m ago</span></div>
+            <div class="tl-body">Drew <em>shared_theme</em> connection to "Manager digest" — both are day-1 surfaces.</div>
+            <div class="tl-tools">
+              <button>view on board</button><button>↶ undo</button>
+            </div>
+          </div>
+          <div class="tl-row ai">
+            <div class="tl-head"><span class="who">Dev · Historian</span><span>ambiguity</span><span class="when">11m ago</span></div>
+            <div class="tl-body">Flagged 6 ambiguities · resolved 5, 1 deferred to brief step.</div>
+            <div class="tl-tools">
+              <button>see 1 open</button>
+            </div>
+          </div>
+          <div class="tl-row user">
+            <div class="tl-head"><span class="who">You</span><span>created</span><span class="when">14m ago</span></div>
+            <div class="tl-body">Added idea from the onboarding cluster.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Principles recap -->
+<div class="principles">
+  <h3>Five rules for any "inspector-style" drawer</h3>
+  <div class="grid5">
+    <div class="p">
+      <div class="n">01</div>
+      <div class="t">Provenance first</div>
+      <div class="d">Top of the drawer is <em>where did this come from, can I undo it, what did it cost</em>. Users open the inspector to trust, not to configure.</div>
+    </div>
+    <div class="p">
+      <div class="n">02</div>
+      <div class="t">Journey, not grid</div>
+      <div class="d">Lifecycle steps are a <em>walk</em>. A horizontal strip with done/active/locked states tells the story. A 2×6 grid of boxes doesn't.</div>
+    </div>
+    <div class="p">
+      <div class="n">03</div>
+      <div class="t">Only the active step speaks</div>
+      <div class="d">The NOW card is the only step that gets voice, text, and actions. Locked steps stay dots. No narrating emptiness.</div>
+    </div>
+    <div class="p">
+      <div class="n">04</div>
+      <div class="t">Don't cover the board</div>
+      <div class="d">Inspector is a right-side drawer, not a full modal. Ink tether from the idea shows <em>what</em> the drawer is about without hiding context.</div>
+    </div>
+    <div class="p">
+      <div class="n">05</div>
+      <div class="t">Let Dev tell the story</div>
+      <div class="d">Every row in the timeline is dated, typed, signed by a role (Scout/Synthesizer/etc.), and reversible. The inspector is the turn log, not a config panel.</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

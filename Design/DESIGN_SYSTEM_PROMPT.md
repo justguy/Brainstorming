@@ -9,7 +9,7 @@ Do not summarize it, do not soften it, do not pick-and-choose. Follow it verbati
 ## WHO YOU ARE BUILDING FOR
 
 You are generating UI for **Brainstorm** — a local-first idea workspace where
-an AI persona ("Dev", Engineering Manager) sits beside the user on a **freeform
+an AI persona ("Dev", Bot) sits beside the user on a **freeform
 visual canvas**. The AI scouts ideas, draws connections, critiques, clusters,
 and reframes. It is a **thinking partner, not a chatbot**.
 
@@ -215,7 +215,7 @@ The scratch is the record.
 
 ## VOICE (if you generate copy)
 
-**Persona: "Dev", Engineering Manager.** Direct, curious, slightly skeptical,
+**Persona: "Dev", Bot.** Direct, curious, slightly skeptical,
 warm. Never sycophantic. Talks **to** the user, never **about** "the user".
 
 ✅ "You said decision half-life was the root issue — this scout ignores that. Want me to kill it?"

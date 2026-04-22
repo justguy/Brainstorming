@@ -1,12 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BoardThemeMode } from '../../src/types';
-import { setSettings } from '../../src/storage/settings';
+import { getSettings, setSettings } from '../../src/storage/settings';
 
 export function useBoardTheme(): {
   boardTheme: BoardThemeMode;
   setBoardTheme: (theme: BoardThemeMode) => Promise<void>;
 } {
   const [boardTheme, setBoardThemeState] = useState<BoardThemeMode>('whiteboard');
+  const userOverrideRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getSettings()
+      .then(settings => {
+        if (cancelled || userOverrideRef.current) return;
+        setBoardThemeState(settings.boardTheme);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -17,6 +33,7 @@ export function useBoardTheme(): {
   }, [boardTheme]);
 
   async function setBoardTheme(theme: BoardThemeMode): Promise<void> {
+    userOverrideRef.current = true;
     setBoardThemeState(theme);
     await setSettings({ boardTheme: theme });
   }

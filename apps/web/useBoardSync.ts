@@ -62,6 +62,7 @@ export function useBoardSync() {
   const [beatReviewSessions, setBeatReviewSessions] = useState<BeatReviewSessionRecord[]>([]);
   const [beatReviewItems, setBeatReviewItems] = useState<BeatReviewItemRecord[]>([]);
   const [tweaks, setTweaks] = useState<BoardTweaksRecord | null>(null);
+  const [boardReady, setBoardReady] = useState(false);
   const [historyState, setHistoryState] = useState<BoardHistoryState>({
     canUndo: false,
     canRedo: false,
@@ -198,6 +199,8 @@ export function useBoardSync() {
       setSelectedId(prev => (prev && snapshot.ideas.some(idea => idea.id === prev) ? prev : seededIdeaId ?? null));
     } catch {
       // non-fatal
+    } finally {
+      setBoardReady(true);
     }
   }
 
@@ -263,6 +266,7 @@ export function useBoardSync() {
     boardTitle,
     boardRepository,
     boardController,
+    boardReady,
     ideas,
     groups,
     docs,

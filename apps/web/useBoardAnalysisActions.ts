@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { DEFAULT_BOARD_TITLE, type BoardDocument } from '../../src/board/types';
 import type { BeatResult, ConnectBeatContext, CritiqueBeatContext } from '../../src/beats/types';
-import { listCritiquesForIdea } from '../../src/storage/critiques';
+import { getCritique, listCritiquesForIdea } from '../../src/storage/critiques';
 import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
 import type {
@@ -19,6 +19,7 @@ import {
   replaceGeneratedConnections,
   upsertConnection,
 } from './connectionState';
+import { acceptCritiqueWithToolPlan } from './acceptCritiqueWithToolPlan';
 
 const HIGHLIGHT_FLASH_MS = 320;
 const REVEAL_WINDOW_MS = 1_800;
@@ -49,7 +50,7 @@ interface UseBoardAnalysisActionsArgs {
   runBoardBeat: RunBoardBeat;
   onCritiqueOutcome?: (input: {
     critiqueId: string;
-    outcome: 'rejected';
+    outcome: 'accepted' | 'rejected';
   }) => void;
 }
 
@@ -72,6 +73,19 @@ export function useBoardAnalysisActions({
   const flashTimerRef = useRef<number | null>(null);
   const connectionRevealTimerRef = useRef<number | null>(null);
   const critiqueRevealTimerRef = useRef<number | null>(null);
+
+  async function archiveCritique(
+    id: string,
+    source: 'canvas' | 'webmcp',
+    outcome: 'accepted' | 'rejected',
+  ): Promise<void> {
+    const result = await boardController.dismissCritique({
+      critiqueId: id,
+      actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
+    });
+    applyCommittedBoard(result.document, result.history);
+    onCritiqueOutcome?.({ critiqueId: id, outcome });
+  }
 
   useEffect(() => {
     return () => {
@@ -295,14 +309,37 @@ export function useBoardAnalysisActions({
     source: 'canvas' | 'webmcp' = 'canvas',
   ): Promise<void> {
     try {
-      const result = await boardController.dismissCritique({
-        critiqueId: id,
-        actor: { type: source === 'webmcp' ? 'tool' : 'user', source },
-      });
-      applyCommittedBoard(result.document, result.history);
-      onCritiqueOutcome?.({ critiqueId: id, outcome: 'rejected' });
+      await archiveCritique(id, source, 'rejected');
     } catch (err) {
       console.error('[App] dismiss critique failed:', err);
+    }
+  }
+
+  async function handleAcceptCritique(
+    id: string,
+    source: 'canvas' | 'webmcp' = 'canvas',
+  ): Promise<void> {
+    const critique = await getCritique(id);
+    if (!critique) {
+      console.error('[App] accept critique failed: missing critique', id);
+      return;
+    }
+
+    const idea = ideas.find(entry => entry.id === critique.ideaId);
+    if (!idea) {
+      console.error('[App] accept critique failed: missing idea', critique.ideaId);
+      return;
+    }
+
+    setCritiqueBusyByIdea(prev => ({ ...prev, [idea.id]: true }));
+    try {
+      await acceptCritiqueWithToolPlan({ idea, critique });
+      await archiveCritique(id, source, 'accepted');
+      handleHighlight([idea.id]);
+    } catch (err) {
+      console.error('[App] accept critique failed:', err);
+    } finally {
+      setCritiqueBusyByIdea(prev => ({ ...prev, [idea.id]: false }));
     }
   }
 
@@ -318,6 +355,7 @@ export function useBoardAnalysisActions({
     runConnectionFinder,
     createManualConnection,
     runCritiqueIdea,
+    handleAcceptCritique,
     handleDismissCritique,
   };
 }

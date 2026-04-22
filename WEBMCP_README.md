@@ -99,9 +99,9 @@ Facilitator coordination
   set_ai_paused             write
 ```
 
-Important current-state note: as of `2026-04-20`, the W3 web app mounts the global board-first tool surface including critique, scout, beat, autonomy, and board-read tools. The lifecycle tools below are the canonical bead-flow interface, but that phase-local registration layer still needs to be re-mounted on W3.
+Important current-state note: as of `2026-04-21`, the W3 web app mounts the global board-first tool surface, the facilitator control-plane tools, and the selected-idea lifecycle/bead tool surface. Lifecycle tools appear only when an idea is selected, and they remount when that idea or its phase changes.
 
-### Lifecycle (canonical bead-flow surface; target W3 remount)
+### Lifecycle (selected-idea bead-flow surface on W3)
 
 ```
 Phase driver
@@ -128,18 +128,14 @@ Phase-8 (wrap-up)
   choose_next_step          write
 ```
 
-### Planned bead-state coordination tools
+### Bead-state coordination tools
 
 ```
 Bead state / facilitation nudges
   get_bead_state            read    (derived view over SUB_PHASES + idea state)
   suggest_next_bead         write   (soft nudge / pulse, not a hard transition)
   flag_bead_for_review      write   (marks a completed bead for revisit)
-
-Autonomy controls
-  get_ai_autonomy_state     read    (current facilitator profile + recent backoff signals)
-  set_ai_autonomy_mode      write   (Passive Observer | Guided Co-Pilot | Active Challenger)
-  undo_ai_change            write   (reverts a targeted AI-authored change set)
+  get_phase_history         read    (derived lifecycle and phase-memory audit trail)
 ```
 
 `slide_bead` is intentionally not listed as a separate tool. The bead UI may expose that label, but the only hard transition path should remain `advance_phase`.
@@ -183,7 +179,7 @@ Three surfaces share the same `src/` code. They differ in *where* `navigator.mod
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4a. Tool-registration lifecycle (current vs target on W3)
+### 4a. Tool-registration lifecycle on W3
 
 Current W3 registration state:
 
@@ -197,41 +193,37 @@ App mount
         │     safeRegisterTool(captureIdea, ...)
         │     … (global board-first tools)
         │
-        └─ no phase-local lifecycle controller mounted on W3 today
-
-App unmount
-  globalAc.abort()
-```
-
-Target bead-flow registration state:
-
-```
-App mount / selected idea changes
-  └─ useBrainstormingTools(selectedIdea)
-        │
-        ├─ globalAc = new AbortController()
-        │     safeRegisterTool(listIdeas, ...)
-        │     safeRegisterTool(captureIdea, ...)
-        │     safeRegisterTool(findConnections, ...)
-        │     safeRegisterTool(drawConnection, ...)
-        │     …
+        ├─ facilitatorAc = new AbortController()
+        │     safeRegisterTool(listPeers, ...)
+        │     safeRegisterTool(getAiAutonomyState, ...)
+        │     safeRegisterTool(claimAiHost, ...)
+        │     … (facilitator control-plane tools)
         │
         └─ lifecycleAc = new AbortController()
               keyed to { selectedIdea.id, selectedIdea.phase }
-              safeRegisterTool(advancePhase, ...)
+              safeRegisterTool(advancePhase, ...)             (or phase-specific replacement)
               safeRegisterTool(submitClarifications, ...)     (phase 2)
               safeRegisterTool(selectApproach, ...)           (phase 3)
               safeRegisterTool(pinLens/dismissLens/noteLens)  (phase 0.5)
               safeRegisterTool(respondToChallenge, ...)       (phase 2.5)
               safeRegisterTool(markStressHandled, ...)        (phase 4.5)
-              safeRegisterTool(chooseNextStep, ...)           (phase 8)
+              safeRegisterTool(chooseNextStep, ...)           (phase 8+)
               safeRegisterTool(getBeadState, ...)             (read-only)
               safeRegisterTool(suggestNextBead, ...)          (soft nudge)
               safeRegisterTool(flagBeadForReview, ...)        (review marker)
+              safeRegisterTool(getPhaseHistory, ...)          (read-only)
 
-Idea / phase changes
+Selected idea / phase changes
   lifecycleAc.abort()
   lifecycleAc = new AbortController()
+
+No selected idea
+  lifecycleAc remains unmounted
+
+App unmount
+  globalAc.abort()
+  facilitatorAc.abort()
+  lifecycleAc.abort()
 ```
 
 `safeRegisterTool()` swallows the `InvalidStateError: Duplicate tool name` that the Chrome 146 preview throws when React.StrictMode remount races the abort signal. It logs a warning; the original registration stays live for the page lifetime.
@@ -313,7 +305,7 @@ Use the canonical `SUB_PHASES` numbering when binding these roles:
 | Synthesizer | Find shared themes, synergies, and contradictions across active ideas. | W3 board graph, live ideas, connections, groups | `find_connections`, `draw_connection`, `group_ideas` | `2`, `5` |
 | Challenger | Break the happy path before implementation. Surface hidden assumptions and edge cases. | dominant idea, existing critiques, rules, stress state | `critique_idea`, `mark_stress_handled` | `2.5`, `4`, `4.5` |
 | Historian | Preserve long-term board memory so earlier ideas are not lost when context shifts. | discarded index, current ambiguity/rules state, board history | `restore_idea`, `discard_idea` | `1`, `3` |
-| Facilitator | Keep momentum, enforce the bead flow, and lock in constraints and next steps. | bead state, readiness, rules, history, autonomy mode | `advance_phase`, planned `add_rule` / `remove_rule`, `choose_next_step`, `export_handoff` | `3`, `6`, `7`, `8` |
+| Facilitator | Keep momentum, enforce the bead flow, and lock in constraints and next steps. | bead state, readiness, rules, history, autonomy mode | `advance_phase`, `add_rule` / `remove_rule`, `choose_next_step`, `export_handoff` | `3`, `6`, `7`, `8` |
 
 Canonical directives for each role:
 
@@ -466,7 +458,7 @@ High-autonomy moves need a first-class escape hatch.
 npm install
 npm run dev:web           # Vite dev server on http://localhost:6611
 ```
-Open http://localhost:6611. Visit `#/options`, paste an API key (Gemini / OpenAI / Anthropic). Open the Model Context Tool Inspector — you should see the global board-first tools registered today. The lifecycle bead-flow remount described above is target architecture, not the current W3 registration state.
+Open http://localhost:6611. Visit `#/options`, paste an API key (Gemini / OpenAI / Anthropic). Open the Model Context Tool Inspector — you should see the global board-first tools immediately, and the lifecycle/bead tool set after you select an idea.
 
 ### Try a current scripted agent flow
 A quick manual script you can run from the inspector on W3 today:
@@ -480,7 +472,7 @@ A quick manual script you can run from the inspector on W3 today:
 8. `draw_connection` on a high-signal pair — the relationship becomes visible directly on the canvas.
 9. `discard_idea` on a weak idea, then `restore_idea` — confirm the robot can shelve and revive work without leaving the board metaphor.
 
-The lifecycle bead-flow tools (`advance_phase`, `submit_clarifications`, `select_approach`, and the micro-step patch tools) remain the canonical interface for the 12-step flow, but the W3 remount is still pending.
+The lifecycle bead-flow tools (`advance_phase`, `submit_clarifications`, `select_approach`, and the micro-step patch tools) are mounted on W3 when an idea is selected. They remain the canonical interface for the 12-step flow.
 
 ### Try the cross-idea tools
 Build up a handful of ideas first, then:
@@ -559,7 +551,7 @@ src/canvas/
 |---|---|---|
 | W1 | Extension consumes tabs' WebMCP tools | `Shipped`. Phase 0/1 snapshots into `Idea.liveToolContext`. Rendered in every phase prompt. |
 | W2 | Extension side panel *exposes* tools | `Implemented (not mounted)`. Awaiting Chrome support for `chrome-extension://` origins. |
-| W3 | Standalone web app exposes tools | `Shipped` for the global board-first surface. Lifecycle bead-flow remount is `Implemented (not mounted)`. |
+| W3 | Standalone web app exposes tools | `Shipped` for the global board-first surface, facilitator control-plane surface, and selected-idea lifecycle/bead surface. |
 
 ## 9. Where to Contribute
 

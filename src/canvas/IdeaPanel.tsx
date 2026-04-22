@@ -13,7 +13,7 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
-import type { Idea } from '../types';
+import type { BoardThemeMode, Idea } from '../types';
 import Badge from '../ui/Badge';
 import type { IdeaTone } from './canvasFocus';
 
@@ -43,82 +43,66 @@ function paperRotationDeg(id: string): number {
   return ((hashSeed(id) % 18) - 9) / 7;
 }
 
-function notePaletteFromTags(tags: string[]): {
+type NotePalette = {
   borderColor: string;
   backgroundColor: string;
   inkColor: string;
   shadow: string;
-} | null {
+};
+
+const WHITEBOARD_NOTE_PALETTES: Record<string, NotePalette> = {
+  blue: { borderColor: '#7a9ae2', backgroundColor: '#f7fbff', inkColor: '#5570b8', shadow: '0 18px 34px -30px rgba(78, 110, 181, 0.24)' },
+  yellow: { borderColor: '#d3b64c', backgroundColor: '#fffdf2', inkColor: '#bb9a21', shadow: '0 18px 34px -30px rgba(176, 146, 46, 0.22)' },
+  pink: { borderColor: '#d28998', backgroundColor: '#fff7fa', inkColor: '#b45b75', shadow: '0 18px 34px -30px rgba(173, 92, 118, 0.22)' },
+  peach: { borderColor: '#d3a06a', backgroundColor: '#fff8f1', inkColor: '#b77b3d', shadow: '0 18px 34px -30px rgba(179, 123, 64, 0.22)' },
+  lavender: { borderColor: '#8e7ed6', backgroundColor: '#faf8ff', inkColor: '#6f5bbb', shadow: '0 18px 34px -30px rgba(101, 80, 176, 0.22)' },
+  green: { borderColor: '#88b56b', backgroundColor: '#f6fcf3', inkColor: '#5d9445', shadow: '0 18px 34px -30px rgba(89, 144, 58, 0.22)' },
+};
+
+const SKETCH_NOTE_PALETTES: Record<string, NotePalette> = {
+  blue: { borderColor: '#4d9cdd', backgroundColor: '#bfe4fa', inkColor: '#23384d', shadow: '0 18px 34px -28px rgba(47, 101, 155, 0.5)' },
+  yellow: { borderColor: '#efb736', backgroundColor: '#ffe986', inkColor: '#3a2f18', shadow: '0 18px 34px -28px rgba(164, 124, 32, 0.5)' },
+  pink: { borderColor: '#ea7b9d', backgroundColor: '#f8bfd1', inkColor: '#442534', shadow: '0 18px 34px -28px rgba(152, 68, 98, 0.45)' },
+  peach: { borderColor: '#df955e', backgroundColor: '#ffd0ad', inkColor: '#432b1f', shadow: '0 18px 34px -28px rgba(153, 95, 43, 0.46)' },
+  lavender: { borderColor: '#8f79d3', backgroundColor: '#d9c7fb', inkColor: '#33294d', shadow: '0 18px 34px -28px rgba(88, 67, 153, 0.45)' },
+  green: { borderColor: '#7ab85e', backgroundColor: '#cdeca0', inkColor: '#243d1d', shadow: '0 18px 34px -28px rgba(78, 129, 53, 0.45)' },
+};
+
+function paletteSet(boardTheme: BoardThemeMode): Record<string, NotePalette> {
+  return boardTheme === 'sketch' ? SKETCH_NOTE_PALETTES : WHITEBOARD_NOTE_PALETTES;
+}
+
+function notePaletteFromTags(tags: string[], boardTheme: BoardThemeMode): NotePalette | null {
+  const palettes = paletteSet(boardTheme);
   if (tags.includes('paper-blue')) {
-    return {
-      borderColor: '#4d9cdd',
-      backgroundColor: '#bfe4fa',
-      inkColor: '#23384d',
-      shadow: '0 18px 34px -28px rgba(47, 101, 155, 0.5)',
-    };
+    return palettes.blue;
   }
   if (tags.includes('paper-yellow')) {
-    return {
-      borderColor: '#efb736',
-      backgroundColor: '#ffe986',
-      inkColor: '#3a2f18',
-      shadow: '0 18px 34px -28px rgba(164, 124, 32, 0.5)',
-    };
+    return palettes.yellow;
   }
   if (tags.includes('paper-pink')) {
-    return {
-      borderColor: '#ea7b9d',
-      backgroundColor: '#f8bfd1',
-      inkColor: '#442534',
-      shadow: '0 18px 34px -28px rgba(152, 68, 98, 0.45)',
-    };
+    return palettes.pink;
   }
   if (tags.includes('paper-peach')) {
-    return {
-      borderColor: '#df955e',
-      backgroundColor: '#ffd0ad',
-      inkColor: '#432b1f',
-      shadow: '0 18px 34px -28px rgba(153, 95, 43, 0.46)',
-    };
+    return palettes.peach;
   }
   if (tags.includes('paper-lavender')) {
-    return {
-      borderColor: '#8f79d3',
-      backgroundColor: '#d9c7fb',
-      inkColor: '#33294d',
-      shadow: '0 18px 34px -28px rgba(88, 67, 153, 0.45)',
-    };
+    return palettes.lavender;
   }
   if (tags.includes('paper-green')) {
-    return {
-      borderColor: '#7ab85e',
-      backgroundColor: '#cdeca0',
-      inkColor: '#243d1d',
-      shadow: '0 18px 34px -28px rgba(78, 129, 53, 0.45)',
-    };
+    return palettes.green;
   }
   return null;
 }
 
-function defaultNotePalette(id: string): {
-  borderColor: string;
-  backgroundColor: string;
-  inkColor: string;
-  shadow: string;
-} {
-  const palettes = [
-    { borderColor: '#4d9cdd', backgroundColor: '#bfe4fa', inkColor: '#23384d', shadow: '0 18px 34px -28px rgba(47, 101, 155, 0.5)' },
-    { borderColor: '#efb736', backgroundColor: '#ffe986', inkColor: '#3a2f18', shadow: '0 18px 34px -28px rgba(164, 124, 32, 0.5)' },
-    { borderColor: '#ea7b9d', backgroundColor: '#f8bfd1', inkColor: '#442534', shadow: '0 18px 34px -28px rgba(152, 68, 98, 0.45)' },
-    { borderColor: '#7ab85e', backgroundColor: '#cdeca0', inkColor: '#243d1d', shadow: '0 18px 34px -28px rgba(78, 129, 53, 0.45)' },
-    { borderColor: '#8f79d3', backgroundColor: '#d9c7fb', inkColor: '#33294d', shadow: '0 18px 34px -28px rgba(88, 67, 153, 0.45)' },
-    { borderColor: '#df955e', backgroundColor: '#ffd0ad', inkColor: '#432b1f', shadow: '0 18px 34px -28px rgba(153, 95, 43, 0.46)' },
-  ];
+function defaultNotePalette(id: string, boardTheme: BoardThemeMode): NotePalette {
+  const palettes = Object.values(paletteSet(boardTheme));
   return palettes[hashSeed(id) % palettes.length];
 }
 
 export interface IdeaPanelProps {
   idea: Idea;
+  selected?: boolean;
   /** Live x override during drag (ignores idea.panel.x while dragging). */
   liveX?: number;
   liveY?: number;
@@ -138,12 +122,15 @@ export interface IdeaPanelProps {
   onDiscard?: (ideaId: string) => void;
   linkModeEnabled?: boolean;
   linkModeAnchor?: boolean;
+  linkModePending?: boolean;
   onLinkStart?: (ideaId: string) => void;
   onLinkComplete?: (ideaId: string) => void;
+  boardTheme: BoardThemeMode;
 }
 
 export default function IdeaPanel({
   idea,
+  selected = false,
   liveX,
   liveY,
   groupColor,
@@ -161,8 +148,10 @@ export default function IdeaPanel({
   onDiscard,
   linkModeEnabled = true,
   linkModeAnchor = false,
+  linkModePending = false,
   onLinkStart,
   onLinkComplete,
+  boardTheme,
 }: IdeaPanelProps): React.ReactElement {
   const panel = idea.panel ?? { x: 0, y: 0, width: 260, height: 180 };
   const x = liveX ?? panel.x;
@@ -252,6 +241,8 @@ export default function IdeaPanel({
     ? 'ring-4 ring-sky-400'
     : highlight
     ? 'ring-2 ring-sky-300 bo-highlight-flash'
+    : selected
+    ? 'ring-4 ring-slate-900/15'
     : groupColor
     ? `ring-2`
     : '';
@@ -272,14 +263,17 @@ export default function IdeaPanel({
   const docPillLabel = docCount > 0 ? `${docCount}` : '0';
   const docPillAria = docCount > 0 ? `${docCount} supporting docs` : 'Open supporting docs';
   const paperSeed = `${idea.id}:${idea.panel?.x ?? ''}:${idea.panel?.y ?? ''}:${panel.height}`;
-  const notePalette = notePaletteFromTags(idea.tags) ?? defaultNotePalette(idea.id);
+  const notePalette = notePaletteFromTags(idea.tags, boardTheme) ?? defaultNotePalette(idea.id, boardTheme);
   const paperRotation = paperRotationDeg(paperSeed);
   const noteRotation = dragging ? paperRotation + 0.8 : paperRotation * 0.25;
-  const noteBorderColor = notePalette.borderColor;
+  const noteBorderColor = selected ? '#223448' : notePalette.borderColor;
+  const noteBorderWidth = selected ? 3.4 : 1.8;
   const noteBackgroundColor = notePalette.backgroundColor;
-  const noteShadow = notePalette.shadow;
+  const noteShadow = selected
+    ? `0 0 0 2px rgba(255, 255, 255, 0.92), 0 22px 42px -30px rgba(24, 36, 52, 0.42), ${notePalette.shadow}`
+    : notePalette.shadow;
   const noteFilter = panelFilter;
-  const noteZIndex = dragging ? 50 : beingMergedInto ? 40 : tone === 'active' ? 20 : tone === 'related' ? 10 : 8;
+  const noteZIndex = dragging ? 50 : beingMergedInto ? 40 : selected ? 28 : tone === 'active' ? 20 : tone === 'related' ? 10 : 8;
 
   return (
     <div
@@ -317,11 +311,11 @@ export default function IdeaPanel({
         opacity: panelOpacity,
         filter: noteFilter,
         transform: `rotate(${noteRotation}deg) scale(${scale})`,
-        borderWidth: 1.8,
+        borderWidth: noteBorderWidth,
         borderColor: noteBorderColor,
         backgroundColor: noteBackgroundColor,
         boxShadow: noteShadow,
-        ...(groupColor ? { borderColor: groupColor } : {}),
+        ...(groupColor && !selected ? { borderColor: groupColor } : {}),
       }}
       className={`bo-note-artifact relative select-none overflow-hidden cursor-grab rounded-[20px] border transition-[transform,box-shadow,filter] duration-200 ${dragging ? 'cursor-grabbing' : ''} ${surfaceClass} ${ringClass}`}
       aria-label={`Idea: ${title}`}
@@ -345,10 +339,14 @@ export default function IdeaPanel({
               e.stopPropagation();
               onLinkStart?.(idea.id);
             }}
-            className={`w-4.5 h-9 rounded-l-full border border-[#a8bed2]/80 bg-[#f8fbff]/94 px-1 text-[9px] font-semibold tracking-[0.18em] text-[#597185] uppercase transition-opacity ${
+            className={`w-4.5 h-9 rounded-l-full border px-1 text-[9px] font-semibold tracking-[0.18em] uppercase transition-opacity ${
+              linkModeAnchor
+                ? 'border-[#2f5f86] bg-[#d9edff]/96 text-[#204866]'
+                : 'border-[#a8bed2]/80 bg-[#f8fbff]/94 text-[#597185]'
+            } ${
               linkStartEnabled ? 'cursor-pointer hover:bg-[#edf5fb]/95 hover:border-[#6e91b1]' : 'opacity-55'
             }`}
-            title={linkStartEnabled ? 'Start link mode from this idea' : 'Link mode affordance'}
+            title={linkStartEnabled ? 'Connect from this note' : 'Connection handle'}
             aria-label="Start linking from this idea"
           >
             ⇄
@@ -364,10 +362,14 @@ export default function IdeaPanel({
               e.stopPropagation();
               onLinkComplete?.(idea.id);
             }}
-            className={`w-4.5 h-9 rounded-r-full border border-[#a8bed2]/80 bg-[#f8fbff]/94 px-1 text-[9px] font-semibold tracking-[0.18em] text-[#597185] uppercase transition-opacity ${
+            className={`w-4.5 h-9 rounded-r-full border px-1 text-[9px] font-semibold tracking-[0.18em] uppercase transition-opacity ${
+              linkModePending
+                ? 'border-[#2f5f86] bg-[#d9edff]/96 text-[#204866]'
+                : 'border-[#a8bed2]/80 bg-[#f8fbff]/94 text-[#597185]'
+            } ${
               linkCompleteEnabled ? 'cursor-pointer hover:bg-[#edf5fb]/95 hover:border-[#6e91b1]' : 'opacity-55'
             }`}
-            title={linkCompleteEnabled ? 'Finish link mode on this idea' : 'Link mode affordance'}
+            title={linkCompleteEnabled ? 'Connect to this note' : 'Connection handle'}
             aria-label="Complete linking to this idea"
           >
             ➜
@@ -443,12 +445,6 @@ export default function IdeaPanel({
           </div>
         )}
 
-        {linkModeAnchor && (
-          <div className="mt-2 text-[10px] uppercase tracking-[0.17em] text-[#69583f]">
-            Anchor selected for linking
-          </div>
-        )}
-
         {/* Merge-hold progress bar (only visible when hovering to merge) */}
         {mergeProgress > 0 && !beingMergedInto && (
           <div className="absolute inset-x-2 bottom-2 h-1 rounded bg-[#cad9e7]/70 overflow-hidden">
@@ -464,6 +460,12 @@ export default function IdeaPanel({
             <span className="bo-note-merge-overlay text-[10px] font-semibold uppercase tracking-wide text-sky-900">
               Hold to merge
             </span>
+          </div>
+        )}
+
+        {linkModeAnchor && (
+          <div className="pointer-events-none absolute bottom-3 left-3 rounded-full border border-[#b49352]/70 bg-[#fff4d8]/92 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#6d5431]">
+            Link start
           </div>
         )}
       </div>

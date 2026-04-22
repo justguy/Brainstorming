@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import type { Idea, IdeaCritique } from '../types';
+import type { BoardThemeMode, Idea, IdeaCritique } from '../types';
 
 const CARD_WIDTH = 236;
 const CARD_ESTIMATED_HEIGHT = 212;
 const STACK_STEP = 24;
 const SIDE_GAP = 18;
 const EDGE_MARGIN = 12;
-const COLLAPSED_TAB_HEIGHT = 34;
-const COLLAPSED_STACK_STEP = 16;
-const COLLAPSED_X_STEP = 8;
+const COLLAPSED_TAB_HEIGHT = 28;
+const COLLAPSED_STACK_STEP = 10;
+const COLLAPSED_X_STEP = 6;
 function hashSeed(value: string): number {
   let hash = 2246822519;
   for (let i = 0; i < value.length; i += 1) {
@@ -22,12 +22,39 @@ function critiqueRotationDeg(id: string): number {
   return ((hashSeed(id) % 20) - 10) / 8;
 }
 
-function critiqueSurfaceTone(confidence: 'early' | 'medium' | 'strong'): {
+function critiqueSurfaceTone(confidence: 'early' | 'medium' | 'strong', boardTheme: BoardThemeMode): {
   borderColor: string;
   ringColor: string;
   shadow: string;
   paper: string;
 } {
+  if (boardTheme === 'whiteboard') {
+    if (confidence === 'strong') {
+      return {
+        borderColor: 'rgba(198, 110, 116, 0.52)',
+        ringColor: 'rgba(198, 110, 116, 0.42)',
+        shadow: '0 18px 38px -30px rgba(160, 86, 95, 0.22)',
+        paper: 'linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 248, 0.98) 56%, rgba(252, 241, 241, 0.98) 100%)',
+      };
+    }
+
+    if (confidence === 'medium') {
+      return {
+        borderColor: 'rgba(101, 139, 186, 0.5)',
+        ringColor: 'rgba(101, 139, 186, 0.38)',
+        shadow: '0 18px 36px -30px rgba(77, 110, 154, 0.18)',
+        paper: 'linear-gradient(142deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 255, 0.98) 56%, rgba(240, 246, 252, 0.98) 100%)',
+      };
+    }
+
+    return {
+      borderColor: 'rgba(116, 147, 180, 0.44)',
+      ringColor: 'rgba(116, 147, 180, 0.34)',
+      shadow: '0 16px 34px -28px rgba(77, 110, 154, 0.16)',
+      paper: 'linear-gradient(140deg, rgba(255, 255, 255, 0.99), rgba(249, 252, 255, 0.99) 56%, rgba(242, 247, 252, 0.99) 100%)',
+    };
+  }
+
   if (confidence === 'strong') {
     return {
       borderColor: 'rgba(170, 84, 89, 0.44)',
@@ -99,6 +126,7 @@ export interface CritiqueCardsLayerProps {
   suppressAnimations?: boolean;
   onAccept?: (critiqueId: string) => void;
   onDismiss?: (critiqueId: string) => void;
+  boardTheme: BoardThemeMode;
 }
 
 export function CritiqueCardsLayer({
@@ -112,6 +140,7 @@ export function CritiqueCardsLayer({
   suppressAnimations = false,
   onAccept,
   onDismiss,
+  boardTheme,
 }: CritiqueCardsLayerProps): React.ReactElement | null {
   const busy = new Set(busyIdeaIds ?? []);
   const animatedIdSet = new Set(animatedCritiqueIds);
@@ -231,20 +260,20 @@ export function CritiqueCardsLayer({
             placedRects.push(chosenRect);
           }
 
-          const collapsedWidth = clamp(Math.min(CARD_WIDTH, Math.max(188, panel.width - 24)), 188, CARD_WIDTH);
-          const collapsedHeight = clamp(
-            Math.min(CARD_ESTIMATED_HEIGHT - 18, Math.max(COLLAPSED_TAB_HEIGHT + 58, panel.height - 16)),
-            COLLAPSED_TAB_HEIGHT + 58,
-            CARD_ESTIMATED_HEIGHT - 18,
+          const collapsedWidth = clamp(
+            Math.min(CARD_WIDTH - 56, Math.max(136, panel.width - 116)),
+            136,
+            176,
           );
+          const collapsedHeight = COLLAPSED_TAB_HEIGHT;
           const collapsedRect: Rect = {
             left: clamp(
-              panel.x + Math.round((panel.width - collapsedWidth) / 2) + index * COLLAPSED_X_STEP,
+              panel.x + panel.width - collapsedWidth - 12 + index * COLLAPSED_X_STEP,
               EDGE_MARGIN,
               Math.max(EDGE_MARGIN, viewportWidth - collapsedWidth - EDGE_MARGIN),
             ),
             top: clamp(
-              panel.y - COLLAPSED_TAB_HEIGHT - index * COLLAPSED_STACK_STEP,
+              panel.y - Math.round(collapsedHeight * 0.58) - 3 - index * COLLAPSED_STACK_STEP,
               EDGE_MARGIN,
               Math.max(EDGE_MARGIN, viewportHeight - collapsedHeight - EDGE_MARGIN),
             ),
@@ -261,10 +290,10 @@ export function CritiqueCardsLayer({
           const animateIn = animatedIdSet.has(critique.id) && !suppressAnimations;
           const confidence = critiqueConfidence(critique.critique);
           const confidenceMeta = critiqueConfidenceClass(confidence);
-          const tone = critiqueSurfaceTone(confidence);
+          const tone = critiqueSurfaceTone(confidence, boardTheme);
           const critiqueSeed = `${critique.id}:${ideaId}:${index}`;
           const rotateDeg = critiqueRotationDeg(critiqueSeed);
-          const zIndex = isExpanded ? 36 + index : 6 + index;
+          const zIndex = isExpanded ? 36 + index : 4 + index;
           const opacity = isExpanded
             ? (isReconsidering ? 0.76 : 1)
             : (isMuted ? 0.66 : 0.95);
@@ -310,11 +339,11 @@ export function CritiqueCardsLayer({
             >
               <div className="pointer-events-none absolute right-5 top-1 h-4 w-12 rounded-sm bg-[linear-gradient(90deg,rgba(248,251,255,0.9),rgba(226,236,245,0.78),rgba(248,251,255,0.58))] opacity-80 shadow-[inset_0_-1px_0_rgba(106,134,163,0.18)]" />
               <div
-                className={`flex justify-between gap-3 border-b px-3 ${isExpanded ? 'items-start py-2' : 'items-center py-2.5'}`}
+                className={`flex justify-between gap-3 border-b ${isExpanded ? 'items-start px-3 py-2' : 'items-center px-2.5 py-1.5'}`}
                 style={{ borderColor: tone.ringColor }}
               >
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#6a5469]">
+                  <p className={`font-bold uppercase tracking-[0.2em] text-[#6a5469] ${isExpanded ? 'text-[10px]' : 'text-[9px]'}`}>
                     Critique
                   </p>
                   {isExpanded ? (
@@ -362,7 +391,7 @@ export function CritiqueCardsLayer({
                       )}
                     </>
                   ) : (
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#59718b]">
+                    <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#59718b]">
                       Open
                     </span>
                   )}

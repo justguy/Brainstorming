@@ -40,6 +40,7 @@ export interface IdeaTurnRecord {
   sequence: number;
   role: LlmMessage['role'];
   content: string;
+  meta?: LlmMessage['meta'];
   createdAt: number;
 }
 

@@ -5,9 +5,13 @@ import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
 import { applyAmbiguityResolution, advance } from '../../src/orchestrator/stateMachine';
 import { isKnownBeadPhase, normalizeBeadCoordination } from '../../src/orchestrator/beadState';
-import type { Idea, AmbiguityResolutionStatus } from '../../src/types';
+import { findSubPhase } from '../../src/orchestrator/subPhases';
+import type { Idea, AmbiguityResolutionStatus, LlmMessage, ProviderId } from '../../src/types';
 
 const TOOL_ACTOR = { type: 'tool', source: 'webmcp' } as const;
+const VALID_NEXT_STEPS = ['planning', 'prototyping', 'research', 'stakeholder_review', 'defer'] as const;
+
+type AmbiguityApplyAction = 'resolve_only' | 'add_rule' | 'choose_next_step';
 
 interface UseBrainstormLifecycleEventsArgs {
   boardId: string;
@@ -42,11 +46,12 @@ export function useBrainstormLifecycleEvents({
       summary: string;
       mutate: (idea: Idea) => Partial<Idea>;
       errorLabel: string;
-      completion: Record<string, unknown>;
+      completion: Record<string, unknown> | ((updated: Idea) => Record<string, unknown>);
     }): Promise<void> {
+      const errorCompletion = typeof args.completion === 'function' ? {} : args.completion;
       const idea = ideas.find(entry => entry.id === args.ideaId);
       if (!idea) {
-        emitToolCompletion(args.requestId, { ok: false, ...args.completion, error: `No idea found with id "${args.ideaId}".` });
+        emitToolCompletion(args.requestId, { ok: false, ...errorCompletion, error: `No idea found with id "${args.ideaId}".` });
         return;
       }
 
@@ -59,11 +64,14 @@ export function useBrainstormLifecycleEvents({
           summary: args.summary,
         });
         applyCommittedBoard(committed.document, committed.history);
-        emitToolCompletion(args.requestId, { ok: true, ...args.completion });
+        const completion = typeof args.completion === 'function'
+          ? args.completion(committed.idea)
+          : args.completion;
+        emitToolCompletion(args.requestId, { ok: true, ...completion });
       } catch (err) {
         const error = err instanceof Error ? err.message : 'Update failed';
         console.error(args.errorLabel, err);
-        emitToolCompletion(args.requestId, { ok: false, ...args.completion, error });
+        emitToolCompletion(args.requestId, { ok: false, ...errorCompletion, error });
       }
     }
 
@@ -126,6 +134,26 @@ export function useBrainstormLifecycleEvents({
       if (typeof rule !== 'string') return null;
       const trimmed = rule.trim();
       return trimmed.length > 0 ? trimmed : null;
+    }
+
+    function normalizeProvider(provider: string | undefined): ProviderId | undefined {
+      if (provider === 'gemini' || provider === 'openai' || provider === 'anthropic') {
+        return provider;
+      }
+      return undefined;
+    }
+
+    function normalizeAmbiguityApplyAction(action: string | undefined): AmbiguityApplyAction {
+      if (action === 'add_rule' || action === 'choose_next_step') {
+        return action;
+      }
+      return 'resolve_only';
+    }
+
+    function normalizeNextStep(step: string | undefined): Idea['briefState']['nextStep'] | null {
+      return VALID_NEXT_STEPS.includes(step as (typeof VALID_NEXT_STEPS)[number])
+        ? step as Idea['briefState']['nextStep']
+        : null;
     }
 
     function normalizeBeadReason(reason: string | undefined): string | null {
@@ -374,6 +402,141 @@ export function useBrainstormLifecycleEvents({
       emitToolCompletion(requestId, { ideaId, error });
     };
 
+    const handleApplyAmbiguityResolution = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        ideaId: string;
+        ambiguityId: string;
+        status: string;
+        resolution?: string;
+        action?: string;
+        rule?: string;
+        nextStep?: string | null;
+        summary?: string;
+        roleId?: string;
+        provider?: string;
+        model?: string;
+        userResolution?: string;
+        requestId?: string;
+      }>;
+      const {
+        ideaId,
+        ambiguityId,
+        status,
+        resolution,
+        action,
+        rule,
+        nextStep,
+        summary,
+        roleId,
+        provider,
+        model,
+        userResolution,
+        requestId,
+      } = customEvent.detail;
+
+      const normalizedStatus = normalizeAmbiguityResolutionInput(status);
+      const normalizedResolution = normalizeRuleText(resolution) ?? undefined;
+      const normalizedRule = normalizeRuleText(rule);
+      const normalizedAction = normalizeAmbiguityApplyAction(action);
+      const normalizedNextStep = normalizeNextStep(nextStep ?? undefined);
+      const normalizedProvider = normalizeProvider(provider);
+
+      await patchIdea({
+        ideaId,
+        requestId,
+        summary: summary?.trim() || `Applied ambiguity resolution for ${ambiguityId}`,
+        errorLabel: '[App] applyAmbiguityResolution failed:',
+        mutate: idea => {
+          const ambiguity = idea.ambiguities.find(entry => entry.id === ambiguityId);
+          if (!ambiguity) {
+            throw new Error(`No ambiguity found with id "${ambiguityId}".`);
+          }
+
+          const resolvedIdea = applyAmbiguityResolution(idea, {
+            ambiguityId,
+            status: normalizedStatus,
+            note: normalizedResolution,
+            resolvedBy: roleId ?? 'apply_ambiguity_resolution',
+          });
+
+          let briefState = resolvedIdea.briefState;
+          let appliedWrite = 'Recorded the ambiguity resolution note.';
+          if (normalizedAction === 'add_rule' && normalizedRule && !briefState.mustStayTrueRules.includes(normalizedRule)) {
+            briefState = {
+              ...briefState,
+              mustStayTrueRules: [...briefState.mustStayTrueRules, normalizedRule],
+            };
+            appliedWrite = `Added rule "${normalizedRule}".`;
+          } else if (
+            normalizedAction === 'choose_next_step' &&
+            normalizedNextStep &&
+            briefState.nextStep !== normalizedNextStep
+          ) {
+            briefState = {
+              ...briefState,
+              nextStep: normalizedNextStep,
+            };
+            appliedWrite = `Set next step to "${normalizedNextStep}".`;
+          }
+
+          const phaseSpec = findSubPhase(resolvedIdea.phase);
+          const phaseLabel = phaseSpec?.label ?? `Step ${resolvedIdea.phase}`;
+          const now = Date.now();
+          const turnEntries: LlmMessage[] = [];
+
+          if (normalizeRuleText(userResolution) && normalizedStatus !== 'dismissed') {
+            turnEntries.push({
+              role: 'user',
+              content: `Chosen ambiguity resolution for "${ambiguity.plainLanguage}": ${normalizeRuleText(userResolution)}`,
+              meta: {
+                phase: resolvedIdea.phase,
+                phaseLabel,
+                roleId: 'ambiguity_resolution_choice',
+                source: 'user_input',
+                entryKind: 'task',
+                runSurface: 'user_edit',
+              },
+            });
+          }
+
+          turnEntries.push({
+            role: 'assistant',
+            content: [
+              `Ambiguity: ${ambiguity.plainLanguage}`,
+              `Status: ${normalizedStatus}`,
+              normalizedResolution ? `Resolution: ${normalizedResolution}` : null,
+              `Board change: ${appliedWrite}`,
+              summary?.trim() ? `Summary: ${summary.trim()}` : null,
+            ].filter(Boolean).join('\n'),
+            meta: {
+              phase: resolvedIdea.phase,
+              phaseLabel,
+              roleId: roleId ?? 'apply_ambiguity_resolution',
+              provider: normalizedProvider,
+              model,
+              source: 'webmcp_tool',
+              entryKind: 'result',
+              runSurface: 'webmcp_tool',
+              liveToolOrigin: 'brainstorm',
+              liveToolNames: ['apply_ambiguity_resolution'],
+            },
+          });
+
+          return {
+            ambiguities: resolvedIdea.ambiguities,
+            briefState,
+            turnLog: [...idea.turnLog, ...turnEntries],
+            lastTurnAt: now,
+          };
+        },
+        completion: updated => ({
+          idea: updated,
+          ambiguityId,
+          status: normalizedStatus,
+        }),
+      });
+    };
+
     const handleListRisks = (event: Event) => {
       const customEvent = event as CustomEvent<{ ideaId: string; requestId?: string }>;
       const { ideaId, requestId } = customEvent.detail;
@@ -612,6 +775,8 @@ export function useBrainstormLifecycleEvents({
       ['brainstorm:list_ambiguities', handleListAmbiguities as EventListener],
       ['brainstorm:resolveAmbiguity', handleResolveAmbiguity as EventListener],
       ['brainstorm:resolve_ambiguity', handleResolveAmbiguity as EventListener],
+      ['brainstorm:applyAmbiguityResolution', handleApplyAmbiguityResolution as EventListener],
+      ['brainstorm:apply_ambiguity_resolution', handleApplyAmbiguityResolution as EventListener],
     ];
 
     listeners.forEach(([name, listener]) => window.addEventListener(name, listener));

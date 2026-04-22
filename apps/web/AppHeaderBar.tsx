@@ -56,11 +56,11 @@ export function AppHeaderBar({
   onToggleHistory,
   onSetBoardTheme,
   onOpenOptions,
-  boardTitle = 'AI decision tool',
+  boardTitle = 'AI Brainstorming',
 }: AppHeaderBarProps): React.ReactElement {
   const normalizedTitle = boardTitle.trim();
   const visibleBoardTitle = !normalizedTitle || normalizedTitle === 'Main Board'
-    ? 'AI decision tool'
+    ? 'AI Brainstorming'
     : normalizedTitle;
   const visibleBoardSubtitle = boardSubtitle?.trim() || `${boardTheme} mode`;
   const nextTheme = boardTheme === 'whiteboard' ? 'sketch' : 'whiteboard';

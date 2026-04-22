@@ -1,10 +1,12 @@
 import React from 'react';
-import Canvas, { type CanvasProps } from '../../src/canvas/Canvas';
+import Canvas, { type CanvasProps } from '../../src/canvas/ReactFlowCanvas';
 import {
   CritiqueCardsLayer,
   type CritiqueCardsLayerProps,
 } from '../../src/canvas/CritiqueCardsLayer';
-import type { IdeaCritique } from '../../src/types';
+import { ClarificationBoardOverlay } from '../../src/canvas/ClarificationBoardOverlay';
+import { IdeaAttentionLayer } from '../../src/canvas/IdeaAttentionLayer';
+import type { Idea, IdeaCritique } from '../../src/types';
 
 type CritiqueBusyByIdea = Record<string, boolean | null | undefined>;
 
@@ -13,11 +15,15 @@ export interface BoardCanvasStageProps extends Omit<CanvasProps, 'overlayContent
   critiques: IdeaCritique[];
   critiqueBusyByIdea?: CritiqueBusyByIdea;
   critiqueFocusIdeaId?: string | null;
+  selectedIdeaId?: string | null;
   hoverIdeaId?: string | null;
   editingIdeaId?: string | null;
   animatedCritiqueIds?: string[];
   onAcceptCritique?: CritiqueCardsLayerProps['onAccept'];
   onDismissCritique?: CritiqueCardsLayerProps['onDismiss'];
+  onIdeaUpdate?: (updated: Idea) => void;
+  onActivateAttentionItem?: (input: { ideaId: string; attentionId: string }) => void;
+  showClarificationOverlay?: boolean;
 }
 
 function getBusyIdeaIds(critiqueBusyByIdea: CritiqueBusyByIdea | undefined): string[] {
@@ -30,15 +36,20 @@ function getBusyIdeaIds(critiqueBusyByIdea: CritiqueBusyByIdea | undefined): str
 
 export function BoardCanvasStage({
   children,
+  boardTheme,
   critiques,
   critiqueBusyByIdea,
   critiqueFocusIdeaId = null,
+  selectedIdeaId = null,
   hoverIdeaId = null,
   editingIdeaId = null,
   animatedCritiqueIds = [],
   suppressAnimations = false,
   onAcceptCritique,
   onDismissCritique,
+  onIdeaUpdate,
+  onActivateAttentionItem,
+  showClarificationOverlay = true,
   ideas,
   ...canvasProps
 }: BoardCanvasStageProps): React.ReactElement {
@@ -49,10 +60,13 @@ export function BoardCanvasStage({
       <main className="h-full w-full overflow-hidden" aria-label="Canvas">
         <Canvas
           {...canvasProps}
+          boardTheme={boardTheme}
           ideas={ideas}
+          selectedIdeaId={selectedIdeaId}
           suppressAnimations={suppressAnimations}
           overlayContent={
-            <CritiqueCardsLayer
+            <BoardCanvasOverlayStack
+              boardTheme={boardTheme}
               ideas={ideas}
               critiques={critiques}
               busyIdeaIds={busyIdeaIds}
@@ -61,13 +75,83 @@ export function BoardCanvasStage({
               editingIdeaId={editingIdeaId}
               animatedCritiqueIds={animatedCritiqueIds}
               suppressAnimations={suppressAnimations}
-              onAccept={onAcceptCritique}
-              onDismiss={onDismissCritique}
+              selectedIdeaId={selectedIdeaId}
+              onAcceptCritique={onAcceptCritique}
+              onDismissCritique={onDismissCritique}
+              onIdeaUpdate={onIdeaUpdate}
+              onActivateAttentionItem={onActivateAttentionItem}
+              showClarificationOverlay={showClarificationOverlay}
             />
           }
         />
       </main>
       {children}
     </div>
+  );
+}
+
+interface BoardCanvasOverlayStackProps {
+  boardTheme: BoardCanvasStageProps['boardTheme'];
+  ideas?: Idea[];
+  critiques: IdeaCritique[];
+  busyIdeaIds: string[];
+  activeIdeaId: string | null;
+  hoveredIdeaId: string | null;
+  editingIdeaId: string | null;
+  animatedCritiqueIds: string[];
+  suppressAnimations: boolean;
+  selectedIdeaId: string | null;
+  onAcceptCritique?: CritiqueCardsLayerProps['onAccept'];
+  onDismissCritique?: CritiqueCardsLayerProps['onDismiss'];
+  onIdeaUpdate?: (updated: Idea) => void;
+  onActivateAttentionItem?: (input: { ideaId: string; attentionId: string }) => void;
+  showClarificationOverlay: boolean;
+}
+
+function BoardCanvasOverlayStack({
+  boardTheme,
+  ideas = [],
+  critiques,
+  busyIdeaIds,
+  activeIdeaId,
+  hoveredIdeaId,
+  editingIdeaId,
+  animatedCritiqueIds,
+  suppressAnimations,
+  selectedIdeaId,
+  onAcceptCritique,
+  onDismissCritique,
+  onIdeaUpdate,
+  onActivateAttentionItem,
+  showClarificationOverlay,
+}: BoardCanvasOverlayStackProps): React.ReactElement {
+  return (
+    <>
+      <IdeaAttentionLayer
+        ideas={ideas}
+        critiques={critiques}
+        onActivate={input => onActivateAttentionItem?.(input)}
+      />
+      {showClarificationOverlay && selectedIdeaId && onIdeaUpdate ? (
+        <ClarificationBoardOverlay
+          ideas={ideas}
+          selectedIdeaId={selectedIdeaId}
+          onIdeaUpdate={onIdeaUpdate}
+        />
+      ) : null}
+      <CritiqueCardsLayer
+        boardTheme={boardTheme}
+        ideas={ideas}
+        critiques={critiques}
+        busyIdeaIds={busyIdeaIds}
+        activeIdeaId={activeIdeaId}
+        hoveredIdeaId={hoveredIdeaId}
+        editingIdeaId={editingIdeaId}
+        animatedCritiqueIds={animatedCritiqueIds}
+        suppressAnimations={suppressAnimations}
+        onAccept={onAcceptCritique}
+        onDismiss={onDismissCritique}
+      />
+    </>
   );
 }

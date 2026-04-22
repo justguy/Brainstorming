@@ -70,9 +70,9 @@
         "label": "P3 / Later"
       }
     ],
-    "scratchpad": "Canvas-first shell, note capture, link mode, persona dock, AI artifacts, turn-log, discard/docs/rules surfaces are implemented on branch. Deferred rabbit holes: bo-042 proof and bo-045 strict cross-theme sign-off. Follow-up work is now captured explicitly instead of pretending the web is ready: broad readiness audit/slicing is bo-061, and authoritative turn-log provenance is bo-062. Proof artifacts remain in /tmp for later revisit: board-1280x800-after.png, board-1440x900-after.png, board-390x844-after6.png, board-390x844-after7.png.",
-    "rev": 115,
-    "updatedAt": "2026-04-20T13:12:51.967Z"
+    "scratchpad": "The four 2026-04-19 reference screenshots are now the canonical UI target for both sketch and whiteboard. Prior close-out on the shell/design tranche overstated progress: the current branch has partial infrastructure, but it does not yet match the screenshot composition, surface language, or turn-log presentation. Reopening the screenshot-parity rows and deferring the generic readiness audit because the immediate job is direct convergence to the provided images.",
+    "rev": 116,
+    "updatedAt": "2026-04-20T13:17:33.194Z"
   },
   "tasks": [
     {
@@ -1938,7 +1938,7 @@
       "id": "bo-038",
       "title": "Design UI: replace the rail shell with canvas-first chrome",
       "goal": "Restructure the shell around the freeform canvas, compact topbar tools, a reserved peer-presence slot, a bead-strip home, and a bottom-left persona/discard zone so the app no longer depends on a persistent facilitator rail.",
-      "status": "complete",
+      "status": "in_progress",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p1"
@@ -1987,7 +1987,7 @@
           "persona-dock",
           "shell"
         ],
-        "notes": "Canvas-first shell landed: compact topbar, bead-strip home, rules ribbon, persona dock, discard pile, turn-log slot, and peer slot are all on the board surface instead of a persistent facilitator rail.",
+        "notes": "Partial shell cutover landed, but the current board still does not match the screenshot layout: wrong chrome composition, wrong spacing/density, and missing the strong centered-title / top-right tool-cluster composition visible in the references.",
         "files_touched": [
           "apps/web/BoardAppView.tsx",
           "apps/web/AppHeaderBar.tsx",
@@ -2079,7 +2079,7 @@
       "id": "bo-041",
       "title": "Design UI: make the facilitator a persona dock with autonomy cues",
       "goal": "Represent the facilitator as a compact bottom-left persona dock with one live line, a visible autonomy dial, explicit pause/cool-down/nudge/log controls, a hairline idle bar, and role/backoff cues while keeping AI output on the canvas.",
-      "status": "complete",
+      "status": "in_progress",
       "placement": {
         "swimlaneId": "facilitator",
         "priorityId": "p1"
@@ -2131,7 +2131,7 @@
           "canvas",
           "voice"
         ],
-        "notes": "The facilitator is now represented as a compact persona dock with autonomy cues, current role, idle/backoff state, and board-adjacent controls instead of a chat-like telemetry rail.",
+        "notes": "A persona dock exists, but it is not yet visually or structurally aligned with the screenshot target. The reference dock is a compact hand-drawn control surface with very specific composition and weight.",
         "files_touched": [
           "apps/web/AppCompanionRail.tsx",
           "apps/web/DevCompanionCard.tsx",
@@ -2286,7 +2286,7 @@
         "bo-047"
       ],
       "id": "bo-043",
-      "status": "complete",
+      "status": "in_progress",
       "title": "Design UI: move AI output onto the canvas as spatial artifacts and candidate ideas",
       "goal": "Render AI work as candidate ideas, anchored critiques, origin-marked connections, and other spatial artifacts on the canvas with visible provenance, confidence, and strength instead of summarizing it in chrome.",
       "placement": {
@@ -2338,7 +2338,7 @@
           "margin-note",
           "cluster-halo"
         ],
-        "notes": "AI work now lands as board-native artifacts with visible origin cues instead of living only in chrome summaries.",
+        "notes": "AI artifacts exist on the board, but they do not yet resemble the screenshot target. The references use irregular paper surfaces, speech-bubble critiques, dashed scouts, and much stronger spatial/visual distinction than the current branch.",
         "files_touched": [
           "src/canvas/IdeaPanel.tsx",
           "src/canvas/CritiqueCardsLayer.tsx",
@@ -2347,14 +2347,15 @@
           "apps/web/webmcp-tools.ts"
         ]
       },
-      "assignee": "codex"
+      "assignee": "codex",
+      "outcome": "partial_slice_landed"
     },
     {
       "dependencies": [
         "bo-059"
       ],
       "id": "bo-044",
-      "status": "complete",
+      "status": "in_progress",
       "title": "Design UI: add per-idea turn log as an on-demand right panel",
       "goal": "Replace generic history affordances with the reference turn log: a per-idea right-side inspector opened on demand, paginated and filterable, with origin badges plus pin, dismiss, and transfer actions.",
       "placement": {
@@ -2400,21 +2401,22 @@
           "right-panel",
           "transfer"
         ],
-        "notes": "Per-idea turn log is now on-demand on the right, pages in 20s, exposes All/AI/User/Critique/Edit filters, and supports transfer plus per-row pin/dismiss affordances. Origin/rationale remain heuristic because stored turn records still persist only role/content today.",
+        "notes": "A right-side turn log exists, but the current panel does not yet match the screenshot target in layout, row design, density, or overall visual treatment. Treat the provided screenshots as the design contract here.",
         "files_touched": [
           "apps/web/BoardAppView.tsx",
           "apps/web/IdeaTurnLogPanel.tsx",
           "apps/web/App.tsx"
         ]
       },
-      "assignee": "codex"
+      "assignee": "codex",
+      "outcome": "partial_slice_landed"
     },
     {
       "dependencies": [
         "bo-038"
       ],
       "id": "bo-045",
-      "status": "deferred",
+      "status": "in_progress",
       "title": "Design UI: apply the notebook design system to board primitives",
       "goal": "Bring the live app onto the reference visual language with strict theme parity, forbidden-trope enforcement, reduced-motion support, and typography that keeps board content hand-drawn while longer UI copy stays readable.",
       "placement": {
@@ -2463,7 +2465,7 @@
           "paper",
           "typography"
         ],
-        "notes": "Whiteboard-theme proof exists and sketch-theme CSS is implemented, but final parity proof is intentionally deferred until broader web readiness improves.",
+        "notes": "Theme infrastructure exists, but the current sketch/whiteboard rendering is still far from the provided references. The screenshots show the real target language: irregular sticky shapes, notebook/grid background, typography, borders, shadows, and panel treatment.",
         "files_touched": [
           "src/styles.css",
           "apps/web/AppHeaderBar.tsx",
@@ -2471,7 +2473,7 @@
           "src/canvas/GhostPanel.tsx"
         ]
       },
-      "assignee": null,
+      "assignee": "codex",
       "outcome": "partial_slice_landed",
       "blocker_reason": "Notebook visual system and reduced-motion work landed, but strict cross-theme parity/sign-off is deferred with bo-042 instead of continuing the proof rabbit hole."
     },
@@ -3472,7 +3474,7 @@
       "id": "bo-061",
       "title": "Web readiness: tranche-2 audit and follow-up slicing",
       "goal": "Audit the live canvas-first board against real interaction paths and open the next tranche of concrete readiness tasks before more polish or proof rabbit holes. Focus on what blocks confident daily use, not narrow viewport/theme perfection.",
-      "status": "not_started",
+      "status": "deferred",
       "placement": {
         "swimlaneId": "design-impl",
         "priorityId": "p0"
@@ -3506,8 +3508,9 @@
         "src/styles.css"
       ],
       "context": {
-        "notes": "Added after the initial shell/design tranche because the web still needs a broader readiness pass even though the first batch of explicit UI rows is implemented."
-      }
+        "notes": "Keep as a later cleanup row if needed, but the immediate work is no longer to audit broadly. It is to converge the UI directly to the four reference screenshots."
+      },
+      "blocker_reason": "Superseded by user-provided screenshot target. Generic readiness audit is lower value than direct screenshot-parity implementation right now."
     },
     {
       "dependencies": [

@@ -31,7 +31,7 @@ interface RobotBadgeIconProps {
 export function DevCompanionCard(props: DevCompanionCardProps): React.ReactElement {
   const mode = companionMode(props);
   const roleModel = companionRoleModel(props);
-  const roleLabel = 'Engineering Manager';
+  const roleLabel = 'Bot';
   const nudgeLabel = props.actionInProgress ? 'drafting…' : 'nudge me';
   const statusInline = props.facilitatorPaused
     ? 'paused'

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { Connection, Idea, IdeaGroup, ScoutSuggestion } from '../types';
+import type { BoardThemeMode, Connection, Idea, IdeaGroup, ScoutSuggestion } from '../types';
 import IdeaPanel from './IdeaPanel';
 import GhostPanel from './GhostPanel';
 import { ConnectionOverlay } from './ConnectionOverlay';
@@ -8,6 +8,11 @@ import { deriveCanvasFocus } from './canvasFocus';
 
 export const MERGE_HOLD_MS = 2000;
 export const GROUP_PROXIMITY_PX = 40;
+
+type SettledDropRecord = Record<string, { x: number; y: number; expiresAt: number }>;
+type CanvasPoint = { x: number; y: number };
+type MarqueeRect = { startX: number; startY: number; endX: number; endY: number };
+type NormalizedRect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 
 function colorForGroup(groupId: string): string {
   let hash = 0;
@@ -48,9 +53,93 @@ function minEdgeDistance(a: Idea, b: Idea, aX?: number, aY?: number): number {
   return Math.hypot(dx, dy);
 }
 
+function pointFromClient(canvas: HTMLElement, clientX: number, clientY: number): CanvasPoint {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: clientX - rect.left + canvas.scrollLeft,
+    y: clientY - rect.top + canvas.scrollTop,
+  };
+}
+
+function normalizeRect(rect: MarqueeRect): NormalizedRect {
+  const left = Math.min(rect.startX, rect.endX);
+  const right = Math.max(rect.startX, rect.endX);
+  const top = Math.min(rect.startY, rect.endY);
+  const bottom = Math.max(rect.startY, rect.endY);
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function panelFrame(
+  idea: Idea,
+  settledDropByIdeaId: SettledDropRecord,
+): { left: number; top: number; right: number; bottom: number } | null {
+  const panel = idea.panel;
+  if (!panel) return null;
+  const settledDrop = settledDropByIdeaId[idea.id];
+  const left = settledDrop?.x ?? panel.x;
+  const top = settledDrop?.y ?? panel.y;
+  return {
+    left,
+    top,
+    right: left + panel.width,
+    bottom: top + panel.height,
+  };
+}
+
+function ideaIntersectsRect(
+  idea: Idea,
+  rect: NormalizedRect,
+  settledDropByIdeaId: SettledDropRecord,
+): boolean {
+  const frame = panelFrame(idea, settledDropByIdeaId);
+  if (!frame) return false;
+  return !(
+    frame.right < rect.left ||
+    frame.left > rect.right ||
+    frame.bottom < rect.top ||
+    frame.top > rect.bottom
+  );
+}
+
+function selectionBounds(
+  ideas: Idea[],
+  selectedIds: string[],
+  settledDropByIdeaId: SettledDropRecord,
+): NormalizedRect | null {
+  const frames = selectedIds
+    .map(id => ideas.find(idea => idea.id === id))
+    .filter((idea): idea is Idea => !!idea)
+    .map(idea => panelFrame(idea, settledDropByIdeaId))
+    .filter((frame): frame is { left: number; top: number; right: number; bottom: number } => !!frame);
+
+  if (frames.length === 0) return null;
+
+  const left = Math.min(...frames.map(frame => frame.left));
+  const top = Math.min(...frames.map(frame => frame.top));
+  const right = Math.max(...frames.map(frame => frame.right));
+  const bottom = Math.max(...frames.map(frame => frame.bottom));
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
 export interface CanvasProps {
+  boardTheme: BoardThemeMode;
   ideas: Idea[];
   groups: IdeaGroup[];
+  selectedIdeaId?: string | null;
   connections?: Connection[];
   overlayContent?: React.ReactNode;
   docCounts?: Record<string, number>;
@@ -68,6 +157,7 @@ export interface CanvasProps {
   onOpenDocs?: (ideaId: string) => void;
   linkModeEnabled?: boolean;
   onGroup: (ideaIdA: string, ideaIdB: string) => void;
+  onGroupSelection?: (ideaIds: string[]) => Promise<void> | void;
   onUngroup: (ideaId: string) => void;
   onMerge: (draggedId: string, targetId: string) => void;
   onDiscard?: (ideaId: string) => void;
@@ -88,8 +178,10 @@ export interface CanvasProps {
 }
 
 export default function Canvas({
+  boardTheme,
   ideas,
   groups,
+  selectedIdeaId = null,
   connections,
   overlayContent,
   docCounts,
@@ -107,6 +199,7 @@ export default function Canvas({
   onOpenDocs,
   linkModeEnabled = false,
   onGroup,
+  onGroupSelection,
   onUngroup,
   onMerge,
   onDiscard,
@@ -120,8 +213,9 @@ export default function Canvas({
   onExpandSuggestions,
   onCollapseSuggestions,
 }: CanvasProps): React.ReactElement {
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [liveDrag, setLiveDrag] = useState<{ id: string; x: number; y: number } | null>(null);
-  const [settledDropByIdeaId, setSettledDropByIdeaId] = useState<Record<string, { x: number; y: number; expiresAt: number }>>({});
+  const [settledDropByIdeaId, setSettledDropByIdeaId] = useState<SettledDropRecord>({});
   const [liveSuggestionDrag, setLiveSuggestionDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [settledDropBySuggestionId, setSettledDropBySuggestionId] = useState<Record<string, { x: number; y: number; expiresAt: number }>>({});
   const [mergeCandidate, setMergeCandidate] = useState<string | null>(null);
@@ -137,10 +231,15 @@ export default function Canvas({
   } | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null);
+  const [marqueeSelectedIds, setMarqueeSelectedIds] = useState<string[]>([]);
+  const [groupSelectionBusy, setGroupSelectionBusy] = useState(false);
   const mergeStartRef = useRef<number | null>(null);
   const mergeTimerRef = useRef<number | null>(null);
   const flashTimerRef = useRef<number | null>(null);
+  const marqueeStartRef = useRef<CanvasPoint | null>(null);
   const connectionList = connections ?? [];
+  const canCreateConnections = Boolean(onCreateConnection);
 
   function setHoveredIdea(nextIdeaId: string | null): void {
     setHoveredIdeaId(nextIdeaId);
@@ -158,6 +257,8 @@ export default function Canvas({
   }
 
   function handleDragStart(ideaId: string): void {
+    setMarqueeSelectedIds([]);
+    setMarqueeRect(null);
     setSettledDropByIdeaId(current => {
       if (!current[ideaId]) return current;
       const next = { ...current };
@@ -249,6 +350,73 @@ export default function Canvas({
     }));
     onDragStateChange?.(false);
     onMoveSuggestion?.(suggestionId, x, y);
+  }
+
+  function updateMarqueeSelection(nextRect: MarqueeRect): void {
+    setMarqueeRect(nextRect);
+    const bounds = normalizeRect(nextRect);
+    if (bounds.width < 8 && bounds.height < 8) {
+      setMarqueeSelectedIds([]);
+      return;
+    }
+    setMarqueeSelectedIds(
+      ideas
+        .filter(idea => idea.status !== 'archived' && idea.status !== 'discarded')
+        .filter(idea => ideaIntersectsRect(idea, bounds, settledDropByIdeaId))
+        .map(idea => idea.id),
+    );
+  }
+
+  function finishMarqueeSelection(): void {
+    const activeRect = marqueeRect;
+    marqueeStartRef.current = null;
+    if (!activeRect) return;
+    const bounds = normalizeRect(activeRect);
+    setMarqueeRect(null);
+    if (bounds.width < 8 && bounds.height < 8) {
+      setMarqueeSelectedIds([]);
+    }
+  }
+
+  function handleCanvasPointerDown(event: React.PointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) return;
+    if (event.target !== event.currentTarget) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const point = pointFromClient(canvas, event.clientX, event.clientY);
+    marqueeStartRef.current = point;
+    updateMarqueeSelection({ startX: point.x, startY: point.y, endX: point.x, endY: point.y });
+    setLinkAnchorId(null);
+    setLinkDraft(null);
+    setLinkError(null);
+    setHoveredIdea(null);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleCanvasPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
+    if (!marqueeStartRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const point = pointFromClient(canvas, event.clientX, event.clientY);
+    updateMarqueeSelection({
+      startX: marqueeStartRef.current.x,
+      startY: marqueeStartRef.current.y,
+      endX: point.x,
+      endY: point.y,
+    });
+    event.preventDefault();
+  }
+
+  function handleCanvasPointerUp(event: React.PointerEvent<HTMLDivElement>): void {
+    if (!marqueeStartRef.current) return;
+    finishMarqueeSelection();
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }
+
+  function handleCanvasPointerCancel(): void {
+    if (!marqueeStartRef.current) return;
+    finishMarqueeSelection();
   }
 
   useEffect(() => {
@@ -374,14 +542,22 @@ export default function Canvas({
   }
 
   function handleLinkStart(ideaId: string): void {
-    if (!linkModeEnabled) return;
+    if (!canCreateConnections) return;
+    setMarqueeSelectedIds([]);
     setLinkDraft(null);
     setLinkError(null);
     setLinkAnchorId(prev => (prev === ideaId ? null : ideaId));
   }
 
   function handleLinkComplete(ideaId: string): void {
-    if (!linkAnchorId || linkAnchorId === ideaId) {
+    if (!canCreateConnections) return;
+    if (!linkAnchorId) {
+      setLinkDraft(null);
+      setLinkError(null);
+      setLinkAnchorId(ideaId);
+      return;
+    }
+    if (linkAnchorId === ideaId) {
       setLinkAnchorId(null);
       return;
     }
@@ -389,14 +565,43 @@ export default function Canvas({
       setLinkAnchorId(null);
       return;
     }
-    setLinkDraft({
+    const nextDraft: {
+      fromIdeaId: string;
+      toIdeaId: string;
+      kind: Connection['kind'];
+      rationale: string;
+    } = {
       fromIdeaId: linkAnchorId,
       toIdeaId: ideaId,
       kind: 'builds_on',
-      rationale: '',
-    });
+      rationale: linkModeEnabled ? '' : 'Connected on canvas.',
+    };
     setLinkError(null);
     setLinkAnchorId(null);
+    if (!linkModeEnabled) {
+      void saveQuickLink(nextDraft);
+      return;
+    }
+    setLinkDraft(nextDraft);
+  }
+
+  async function saveQuickLink(nextDraft: {
+    fromIdeaId: string;
+    toIdeaId: string;
+    kind: Connection['kind'];
+    rationale: string;
+  }): Promise<void> {
+    if (!onCreateConnection) return;
+    setLinkBusy(true);
+    setLinkError(null);
+    try {
+      await onCreateConnection(nextDraft);
+    } catch (err) {
+      setLinkDraft(nextDraft);
+      setLinkError(err instanceof Error ? err.message : 'Failed to save link.');
+    } finally {
+      setLinkBusy(false);
+    }
   }
 
   async function handleSaveLink(): Promise<void> {
@@ -430,17 +635,42 @@ export default function Canvas({
     [ideas, connectionList, activeIdeaId, flashState],
   );
   const highlightSet = new Set(flashState.ideaIds);
-  const showConnectionHint = connectionList.length === 0 && ideas.length >= 2 && liveDrag === null;
+  const linkingActive = linkModeEnabled || linkAnchorId !== null || linkDraft !== null || linkBusy;
+  const showConnectionHint = canCreateConnections && connectionList.length === 0 && ideas.length >= 2 && liveDrag === null && !linkingActive;
   const linkSourceIdea = linkDraft ? ideas.find(idea => idea.id === linkDraft.fromIdeaId) ?? null : null;
   const linkTargetIdea = linkDraft ? ideas.find(idea => idea.id === linkDraft.toIdeaId) ?? null : null;
+  const marqueeBounds = marqueeRect ? normalizeRect(marqueeRect) : null;
+  const marqueeSelectionBounds = selectionBounds(ideas, marqueeSelectedIds, settledDropByIdeaId);
+  const marqueeActionTop = marqueeSelectionBounds
+    ? marqueeSelectionBounds.top > 56
+      ? marqueeSelectionBounds.top - 44
+      : marqueeSelectionBounds.bottom + 8
+    : 0;
+
+  async function handleGroupSelectedIdeas(): Promise<void> {
+    if (!onGroupSelection || marqueeSelectedIds.length < 2 || groupSelectionBusy) return;
+    setGroupSelectionBusy(true);
+    try {
+      await onGroupSelection(marqueeSelectedIds);
+      setMarqueeSelectedIds([]);
+      setMarqueeRect(null);
+    } finally {
+      setGroupSelectionBusy(false);
+    }
+  }
 
   return (
     <div
+      ref={canvasRef}
       className="bo-canvas relative h-full w-full overflow-auto"
       style={{
         minHeight: '100%',
       }}
       aria-label="Idea canvas"
+      onPointerDown={handleCanvasPointerDown}
+      onPointerMove={handleCanvasPointerMove}
+      onPointerUp={handleCanvasPointerUp}
+      onPointerCancel={handleCanvasPointerCancel}
     >
       <ConnectionOverlay
         ideas={ideas}
@@ -453,24 +683,63 @@ export default function Canvas({
         onConnectionClick={onConnectionClick ? handleConnectionClick : undefined}
       />
       {overlayContent}
-      {linkModeEnabled && (
-        <div className="pointer-events-none absolute left-4 top-4 z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
+      {linkingActive && canCreateConnections && (
+        <div className="pointer-events-none absolute right-4 top-[6.75rem] z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur sm:top-[6.25rem]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
             Link mode
           </p>
           <p className="mt-1 text-xs font-semibold text-slate-900">
-            Pick a source handle, then a target handle, and write the reason on the canvas.
+            Pick a source note, then a target note. Toggle link mode when you want to set the reason and relation type before saving.
           </p>
         </div>
       )}
       {showConnectionHint && (
-        <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
+        <div className="pointer-events-none absolute right-4 top-[6.75rem] z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur sm:top-[6.25rem]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
             Connections
           </p>
           <p className="mt-1 text-xs font-semibold text-slate-900">
-            Toggle link mode to connect notes on the board, or ask the facilitator to scan this workspace.
+            Use the note arrows to connect fast, or toggle link mode to add a reason and relation type before saving.
           </p>
+        </div>
+      )}
+
+      {marqueeBounds && (
+        <div
+          className="pointer-events-none absolute z-[26] rounded-[24px] border border-sky-400/90 bg-sky-200/10 shadow-[inset_0_0_0_1px_rgba(125,211,252,0.32)]"
+          style={{
+            left: marqueeBounds.left,
+            top: marqueeBounds.top,
+            width: marqueeBounds.width,
+            height: marqueeBounds.height,
+          }}
+          aria-hidden="true"
+        />
+      )}
+
+      {marqueeSelectionBounds && marqueeSelectedIds.length > 1 && onGroupSelection && (
+        <div
+          className="absolute z-[31] flex items-center gap-2"
+          style={{
+            left: Math.max(12, marqueeSelectionBounds.left),
+            top: Math.max(12, marqueeActionTop),
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => { void handleGroupSelectedIdeas(); }}
+            disabled={groupSelectionBusy}
+            className="bo-shell-action bo-shell-action--primary"
+          >
+            {groupSelectionBusy ? 'Grouping…' : `Group ${marqueeSelectedIds.length} notes`}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMarqueeSelectedIds([])}
+            className="bo-shell-action"
+          >
+            Clear
+          </button>
         </div>
       )}
 
@@ -512,10 +781,13 @@ export default function Canvas({
         const isMergeTarget = mergeCandidate === idea.id;
         const groupColor = idea.panel?.groupId ? colorForGroup(idea.panel.groupId) : undefined;
         const settledDrop = !isDragging ? settledDropByIdeaId[idea.id] : undefined;
+        const isMarqueeSelected = marqueeSelectedIds.includes(idea.id);
         return (
           <IdeaPanel
             key={idea.id}
+            boardTheme={boardTheme}
             idea={idea}
+            selected={selectedIdeaId === idea.id || isMarqueeSelected}
             liveX={isDragging ? liveDrag!.x : settledDrop?.x}
             liveY={isDragging ? liveDrag!.y : settledDrop?.y}
             groupColor={groupColor}
@@ -528,13 +800,17 @@ export default function Canvas({
             onDrag={handleDrag}
             onDragEnd={handleDragEnd}
             onHoverChange={setHoveredIdea}
-            onOpen={onOpen}
+            onOpen={ideaId => {
+              setMarqueeSelectedIds([]);
+              onOpen(ideaId);
+            }}
             onOpenDocs={onOpenDocs}
             onDiscard={onDiscard}
-            linkModeEnabled={linkModeEnabled}
+            linkModeEnabled={linkingActive}
             linkModeAnchor={linkAnchorId === idea.id}
-            onLinkStart={handleLinkStart}
-            onLinkComplete={handleLinkComplete}
+            linkModePending={linkAnchorId !== null && linkAnchorId !== idea.id}
+            onLinkStart={canCreateConnections ? handleLinkStart : undefined}
+            onLinkComplete={canCreateConnections ? handleLinkComplete : undefined}
           />
         );
       })}

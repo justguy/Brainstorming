@@ -12,6 +12,7 @@ function toTurnMessage(turn: IdeaTurnRecord): LlmMessage {
   return {
     role: turn.role,
     content: turn.content,
+    meta: turn.meta,
   };
 }
 
@@ -60,6 +61,7 @@ export async function syncTurnsForIdea(
       sequence: index,
       role: message.role,
       content: message.content,
+      meta: message.meta,
       createdAt: lastTurnAt - offset,
     });
   }
@@ -82,6 +84,7 @@ export async function appendTurnRecord(
     sequence: rows.length,
     role: message.role,
     content: message.content,
+    meta: message.meta,
     createdAt,
   });
 }

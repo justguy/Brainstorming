@@ -3,6 +3,7 @@ import type { Connection, Idea, LlmMessage, Panel } from '../../src/types';
 import Options from './Options';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
 import Workspace, { WorkspacePhaseFlow } from '../../src/workspace/Workspace';
+import { IdeaAttentionPanel } from '../../src/workspace/IdeaAttentionPanel';
 import { createLegacyToolIdea } from '../../src/workspace/legacyPhaseAdapter';
 import { useBrainstormAnalysisEvents } from './useBrainstormAnalysisEvents';
 import { useBrainstormLifecycleEvents } from './useBrainstormLifecycleEvents';
@@ -30,6 +31,8 @@ import { PeerPresenceStrip } from './PeerPresenceStrip';
 import { runManualBoardBeat, selectBoardBeatReviewSurface } from './boardBeatReviewSurface';
 import { useBoardTheme } from './useBoardTheme';
 import { useFacilitatorSync } from './useFacilitatorSync';
+import { WebMcpAvailabilityModal } from './WebMcpAvailabilityModal';
+import { WorkspaceScoutInspector } from '../../src/workspace/WorkspaceScoutInspector';
 import {
   DEMO_FALLBACK_CONNECTIONS,
   DEMO_FALLBACK_CRITIQUES,
@@ -38,6 +41,7 @@ import {
 } from './demoBoardFallback';
 import { findLatestSafeAiUndoTarget } from '../../src/storage/boardAiUndo';
 import DiscardPile from '../../src/canvas/DiscardPile';
+import { detectWebMcpSupport, type SupportStatus } from '../../src/webmcp/detectSupport';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 const CAPTURE_CANVAS_SELECTOR = '.bo-canvas';
@@ -92,11 +96,19 @@ function centerPanelOnCanvas(canvas: HTMLElement, panel: Panel): void {
 
 const TURN_LOG_TRANSFER_TAGS = ['turn-log'];
 
+declare global {
+  interface Window {
+    __openWebMcpAvailabilityModal?: (reason?: Exclude<SupportStatus, { supported: true }>['reason']) => void;
+    __closeWebMcpAvailabilityModal?: () => void;
+  }
+}
+
 export default function App(): React.ReactElement {
+  const webMcpCheckRef = useRef(false);
   const [hash, navigate] = useHashRoute();
   const { boardTheme, setBoardTheme } = useBoardTheme();
   const {
-    boardId, boardTitle, boardRepository, boardController, ideas, groups, docs, selectedId, setSelectedId, hasApiKey,
+    boardId, boardTitle, boardRepository, boardController, boardReady, ideas, groups, docs, selectedId, setSelectedId, hasApiKey,
     docCounts, setDocCounts, connections, critiques, suggestions, beatReviewSessions, beatReviewItems, tweaks,
     historyState, changeSets, applyCommittedBoard, updateBoardTweaks, createBeatReviewSession, keepBeatReviewItem,
     scratchBeatReviewItem,
@@ -117,10 +129,14 @@ export default function App(): React.ReactElement {
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [turnLogOpen, setTurnLogOpen] = useState(false);
+  const [selectedAttentionItemId, setSelectedAttentionItemId] = useState<string | null>(null);
+  const [selectedSuggestionId, setSelectedSuggestionId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
   const [dismissedDemoSuggestionIds, setDismissedDemoSuggestionIds] = useState<string[]>([]);
   const [dismissedDemoCritiqueIds, setDismissedDemoCritiqueIds] = useState<string[]>([]);
+  const [webMcpUnavailableStatus, setWebMcpUnavailableStatus] = useState<Exclude<SupportStatus, { supported: true }> | null>(null);
+  const [webMcpModalOpen, setWebMcpModalOpen] = useState(false);
   const lastSharedBoardMutationIdRef = useRef<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
@@ -128,16 +144,51 @@ export default function App(): React.ReactElement {
 
   const visibleIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
   const discardedIdeas = ideas.filter(i => i.status === 'discarded');
-  const usingDemoBoard = visibleIdeas.length === 0 && connections.length === 0 && critiques.length === 0 && suggestions.length === 0;
+  const usingDemoBoard = boardReady && visibleIdeas.length === 0 && connections.length === 0 && critiques.length === 0 && suggestions.length === 0;
   const demoSuggestions = DEMO_FALLBACK_SUGGESTIONS.filter(suggestion => !dismissedDemoSuggestionIds.includes(suggestion.id));
   const demoCritiques = DEMO_FALLBACK_CRITIQUES.filter(critique => !dismissedDemoCritiqueIds.includes(critique.id));
   const canvasIdeas = usingDemoBoard ? DEMO_FALLBACK_IDEAS : visibleIdeas;
   const canvasConnections = usingDemoBoard ? DEMO_FALLBACK_CONNECTIONS : connections;
   const selectedBoardIdea = usingDemoBoard ? null : ideas.find(i => i.id === selectedId) ?? null;
+  const selectedCanvasIdea = canvasIdeas.find(idea => idea.id === selectedId) ?? null;
+  const selectedSuggestion = (usingDemoBoard ? demoSuggestions : suggestions)
+    .find(suggestion => suggestion.id === selectedSuggestionId) ?? null;
+  const selectedSuggestionIdea = selectedSuggestion
+    ? ideas.find(idea => selectedSuggestion.relatedIdeaIds?.includes(idea.id)) ?? null
+    : null;
   const selectedLegacyToolIdea = createLegacyToolIdea(selectedBoardIdea);
   const activeCritiques = critiques.filter(critique => critique.status === 'active');
   const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
-  const boardSubtitle = `${canvasIdeas.length} ideas \u00b7 ${canvasConnections.length} connections`;
+  const boardSubtitle = boardReady
+    ? `${canvasIdeas.length} ideas \u00b7 ${canvasConnections.length} connections`
+    : 'Loading board…';
+
+  useEffect(() => {
+    if (webMcpCheckRef.current) return;
+    webMcpCheckRef.current = true;
+
+    const status = detectWebMcpSupport();
+    window.__WEBMCP_STATUS = status;
+    if (!status.supported) {
+      setWebMcpUnavailableStatus(status);
+      setWebMcpModalOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.__openWebMcpAvailabilityModal = (reason = 'unknown') => {
+      setWebMcpUnavailableStatus({ supported: false, reason });
+      setWebMcpModalOpen(true);
+    };
+    window.__closeWebMcpAvailabilityModal = () => {
+      setWebMcpModalOpen(false);
+    };
+
+    return () => {
+      delete window.__openWebMcpAvailabilityModal;
+      delete window.__closeWebMcpAvailabilityModal;
+    };
+  }, []);
 
   useEffect(() => {
     if (!captureFeedback) return undefined;
@@ -153,6 +204,14 @@ export default function App(): React.ReactElement {
       setTurnLogOpen(false);
     }
   }, [selectedBoardIdea]);
+
+  useEffect(() => {
+    if (!selectedSuggestionId) return;
+    const availableSuggestions = usingDemoBoard ? demoSuggestions : suggestions;
+    if (!availableSuggestions.some(suggestion => suggestion.id === selectedSuggestionId)) {
+      setSelectedSuggestionId(null);
+    }
+  }, [demoSuggestions, selectedSuggestionId, suggestions, usingDemoBoard]);
 
   useEffect(() => {
     if (captureHighlightIds.length === 0) return undefined;
@@ -186,7 +245,7 @@ export default function App(): React.ReactElement {
   const {
     findingConnections, lastConnectionsRunAt, highlightIds, critiqueBusyByIdea, animatedConnectionIds,
     animatedCritiqueIds, markConnectionsRunAt, handleHighlight, runConnectionFinder, createManualConnection, runCritiqueIdea,
-    handleDismissCritique,
+    handleAcceptCritique, handleDismissCritique,
   } = useBoardAnalysisActions({
     boardId,
     ideas,
@@ -197,6 +256,9 @@ export default function App(): React.ReactElement {
     runBoardBeat,
     onCritiqueOutcome: ({ critiqueId, outcome }) => {
       facilitatorSync.setAiActionOutcomeForEntity(critiqueId, outcome);
+      if (outcome === 'accepted') {
+        facilitatorSync.recordRecoverySignal(`Critique ${critiqueId} was accepted.`);
+      }
     },
   });
   const {
@@ -219,7 +281,7 @@ export default function App(): React.ReactElement {
       }
     },
   });
-  const { handleMove, handleGroup, handleUngroup, handleMerge } = useCanvasIdeaMutations({
+  const { handleMove, handleGroup, handleGroupSelection, handleUngroup, handleMerge } = useCanvasIdeaMutations({
     ideas, boardController, applyCommittedBoard, setCanvasBusy, setSelectedId, markActivity,
   });
   const {
@@ -308,10 +370,23 @@ export default function App(): React.ReactElement {
   const critiqueFocusIdeaId = hoverIdeaId ?? selectedId ?? null;
   const editingIdeaId = textEntryActive ? selectedId : null;
   const suppressRevealAnimations = dragActive || textEntryActive;
-  const highlightedIdeaIds = [...new Set([...highlightIds, ...captureHighlightIds])];
+  const highlightedIdeaIds = [...new Set([
+    ...highlightIds,
+    ...captureHighlightIds,
+    ...(selectedSuggestion?.relatedIdeaIds ?? []),
+  ])];
   const canvasSuggestions = usingDemoBoard ? demoSuggestions : visibleCanvasSuggestions;
   const canvasCritiques = usingDemoBoard ? demoCritiques : critiques;
   const openOptions = () => navigate('#/options');
+  const closeSuggestionDrawer = () => setSelectedSuggestionId(null);
+  const openSuggestionDrawer = (suggestionId: string) => {
+    setSelectedAttentionItemId(null);
+    setInspectorOpen(false);
+    setTurnLogOpen(false);
+    setDocsIdeaId(null);
+    setSelectedId(null);
+    setSelectedSuggestionId(suggestionId);
+  };
   const openCaptureComposer = () => {
     setCaptureFeedback(null);
     setCaptureOpen(true);
@@ -523,262 +598,329 @@ export default function App(): React.ReactElement {
     }
   };
 
-  if (hash === '#/options') {
-    return <Options onBack={() => navigate('')} />;
-  }
-
-  return (
-    <BoardAppView
-      header={{
-        advancingFromTool,
-        boardTheme,
-        boardSubtitle,
-        captureActionLabel: latestCapture ? (captureReveal ? 'Centering…' : 'Show note') : null,
-        canvasBusy,
-        captureFeedback,
-        captureOpen,
-        creating,
-        historyState,
-        historyOpen,
-        linkModeEnabled,
-        boardTitle,
-        onCaptureAction: captureReveal
-          ? () => {
-            const pending = captureReveal;
-            void Promise.resolve().then(() => {
-              const revealed = revealCreatedIdea(pending.ideaId, pending.panel);
-              setCaptureFeedback({
-                tone: revealed ? 'success' : 'error',
-                message: revealed
-                  ? 'Note centered on the board.'
-                  : 'Note was saved, but is still not confirmed onscreen.',
-              });
-            });
-          }
-          : latestCapture
+  const appView = hash === '#/options'
+    ? <Options onBack={() => navigate('')} />
+    : (
+      <BoardAppView
+        header={{
+          advancingFromTool,
+          boardTheme,
+          boardSubtitle,
+          captureActionLabel: latestCapture ? (captureReveal ? 'Centering…' : 'Show note') : null,
+          canvasBusy,
+          captureFeedback,
+          captureOpen,
+          creating,
+          historyState,
+          historyOpen,
+          linkModeEnabled,
+          boardTitle,
+          onCaptureAction: captureReveal
             ? () => {
-              const revealed = revealCreatedIdea(latestCapture.ideaId, latestCapture.panel);
-              setCaptureFeedback({
-                tone: revealed ? 'success' : 'error',
-                message: revealed
-                  ? 'Note centered on the board.'
-                  : 'Note was saved, but is still not confirmed onscreen.',
+              const pending = captureReveal;
+              void Promise.resolve().then(() => {
+                const revealed = revealCreatedIdea(pending.ideaId, pending.panel);
+                setCaptureFeedback({
+                  tone: revealed ? 'success' : 'error',
+                  message: revealed
+                    ? 'Note centered on the board.'
+                    : 'Note was saved, but is still not confirmed onscreen.',
+                });
+              });
+            }
+            : latestCapture
+              ? () => {
+                const revealed = revealCreatedIdea(latestCapture.ideaId, latestCapture.panel);
+                setCaptureFeedback({
+                  tone: revealed ? 'success' : 'error',
+                  message: revealed
+                    ? 'Note centered on the board.'
+                    : 'Note was saved, but is still not confirmed onscreen.',
+                });
+              }
+              : undefined,
+          onOpenCapture: openCaptureComposer,
+          onUndo: handleUndo,
+          onRedo: handleRedo,
+          onToggleLinkMode: () => setLinkModeEnabled(value => !value),
+          onToggleHistory: () => setHistoryOpen(value => !value),
+          onSetBoardTheme: setBoardTheme,
+          onOpenOptions: openOptions,
+        }}
+        showApiKeyBanner={hasApiKey === false}
+        onOpenOptions={openOptions}
+        beadStrip={selectedCanvasIdea ? (
+          <BoardBeadStrip
+            idea={selectedCanvasIdea}
+            onOpenInspector={usingDemoBoard ? undefined : () => setInspectorOpen(true)}
+          />
+        ) : null}
+        discardPile={discardedIdeas.length > 0 ? (
+          <DiscardPile
+            ideas={discardedIdeas}
+            onRestore={handleRestore}
+            onPreview={id => {
+              setSelectedId(id);
+              setInspectorOpen(true);
+            }}
+          />
+        ) : null}
+        turnLogPanel={turnLogOpen && selectedBoardIdea ? (
+          <IdeaTurnLogPanel
+            idea={selectedBoardIdea}
+            open={turnLogOpen}
+            onClose={() => setTurnLogOpen(false)}
+            onTransfer={handleTransferFromTurnLog}
+            onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
+          />
+        ) : null}
+        peerStrip={facilitatorSync.peers.length > 0 ? (
+          <PeerPresenceStrip
+            hostClientId={facilitatorSync.hostClientId}
+            localClientId={facilitatorSync.localClientId}
+            peers={facilitatorSync.peers}
+          />
+        ) : null}
+        historyPanel={historyOpen ? (
+          <BoardHistoryPanel
+            entries={historyEntries}
+            cursor={historyState.cursor}
+            totalChanges={Math.max(0, historyState.nextSeq - 1)}
+            canUndo={historyState.canUndo}
+            canRedo={historyState.canRedo}
+            onClose={() => setHistoryOpen(false)}
+          />
+        ) : null}
+        reviewPanel={activeBeatReviewSession && activeBeatReviewItems.length > 0 ? (
+          <BeatReviewPanel
+            session={activeBeatReviewSession}
+            items={activeBeatReviewItems}
+            busyByItem={beatReviewBusyByItem}
+            batchBusy={beatReviewBatchBusy}
+            onKeep={itemId => { void handleKeepBeatReviewItem(itemId); }}
+            onScratch={itemId => { void handleScratchBeatReviewItem(itemId); }}
+            onKeepAll={() => { void handleKeepAllBeatReviewItems(); }}
+            onScratchAll={() => { void handleScratchAllBeatReviewItems(); }}
+            onClose={closeBeatReviewSession}
+          />
+        ) : null}
+        companionRail={{
+          hasApiKey, facilitatorPaused, activeBeatRun, softModeAssessment, interactionSuppressed, idleMs,
+          autoIdleMs: AUTO_IDLE_MS, lastAiAction, lastScoutRunAt, lastConnectionsRunAt, companionActionLabel,
+          softModeBusy, lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
+          showSoftModeHint, ideas: canvasIdeas, connections: canvasConnections, findingConnections, scouting, suggestions: canvasSuggestions, handleSoftModeAction, toggleFacilitatorPause,
+          undoRobotLabel: aiUndoTarget?.tooltip,
+          runConnectionFinder: () => {
+            facilitatorSync.recordRecoverySignal('Direct connection request from the dock.');
+            void runConnectionFinder();
+          },
+          runScout: () => {
+            facilitatorSync.recordRecoverySignal('Direct scout request from the dock.');
+            void runScout();
+          },
+          dismissHint,
+          onOpenTurnLog: selectedBoardIdea
+            ? () => {
+              setDocsIdeaId(null);
+              setTurnLogOpen(true);
+            }
+            : undefined,
+          turnLogCount: selectedBoardIdea?.turnLog.length ?? 0,
+          onUndoRobot: aiUndoTarget
+            ? () => {
+              void boardController.undoAiChange({
+                changeSetId: aiUndoTarget.changeSetId,
+                actor: { type: 'user', source: 'canvas', label: 'undoRobot' },
+              }).then(result => {
+                if (result) applyCommittedBoard(result.document, result.history);
+              }).catch(err => {
+                console.error('[App] undo robot failed:', err);
               });
             }
             : undefined,
-        onOpenCapture: openCaptureComposer,
-        onUndo: handleUndo,
-        onRedo: handleRedo,
-        onToggleLinkMode: () => setLinkModeEnabled(value => !value),
-        onToggleHistory: () => setHistoryOpen(value => !value),
-        onSetBoardTheme: setBoardTheme,
-        onOpenOptions: openOptions,
-      }}
-      showApiKeyBanner={hasApiKey === false}
-      onOpenOptions={openOptions}
-      beadStrip={selectedBoardIdea ? (
-        <BoardBeadStrip
-          idea={selectedBoardIdea}
-          onOpenInspector={() => setInspectorOpen(true)}
-        />
-      ) : null}
-      discardPile={discardedIdeas.length > 0 ? (
-        <DiscardPile
-          ideas={discardedIdeas}
-          onRestore={handleRestore}
-          onPreview={id => {
-            setSelectedId(id);
-            setInspectorOpen(true);
-          }}
-        />
-      ) : null}
-      turnLogPanel={turnLogOpen && selectedBoardIdea ? (
-        <IdeaTurnLogPanel
-          idea={selectedBoardIdea}
-          open={turnLogOpen}
-          onClose={() => setTurnLogOpen(false)}
-          onTransfer={handleTransferFromTurnLog}
-          onOpenInspector={selectedBoardIdea ? () => setInspectorOpen(true) : undefined}
-        />
-      ) : null}
-      peerStrip={facilitatorSync.peers.length > 0 ? (
-        <PeerPresenceStrip
-          hostClientId={facilitatorSync.hostClientId}
-          localClientId={facilitatorSync.localClientId}
-          peers={facilitatorSync.peers}
-        />
-      ) : null}
-      historyPanel={historyOpen ? (
-        <BoardHistoryPanel
-          entries={historyEntries}
-          cursor={historyState.cursor}
-          totalChanges={Math.max(0, historyState.nextSeq - 1)}
-          canUndo={historyState.canUndo}
-          canRedo={historyState.canRedo}
-          onClose={() => setHistoryOpen(false)}
-        />
-      ) : null}
-      reviewPanel={activeBeatReviewSession && activeBeatReviewItems.length > 0 ? (
-        <BeatReviewPanel
-          session={activeBeatReviewSession}
-          items={activeBeatReviewItems}
-          busyByItem={beatReviewBusyByItem}
-          batchBusy={beatReviewBatchBusy}
-          onKeep={itemId => { void handleKeepBeatReviewItem(itemId); }}
-          onScratch={itemId => { void handleScratchBeatReviewItem(itemId); }}
-          onKeepAll={() => { void handleKeepAllBeatReviewItems(); }}
-          onScratchAll={() => { void handleScratchAllBeatReviewItems(); }}
-          onClose={closeBeatReviewSession}
-        />
-      ) : null}
-      companionRail={{
-        hasApiKey, facilitatorPaused, activeBeatRun, softModeAssessment, interactionSuppressed, idleMs,
-        autoIdleMs: AUTO_IDLE_MS, lastAiAction, lastScoutRunAt, lastConnectionsRunAt, companionActionLabel,
-        softModeBusy, lastMeaningfulActivity, pendingBoardChange, autoRunReady, autoRunCountdownMs,
-        showSoftModeHint, ideas: canvasIdeas, connections: canvasConnections, findingConnections, scouting, suggestions: canvasSuggestions, handleSoftModeAction, toggleFacilitatorPause,
-        undoRobotLabel: aiUndoTarget?.tooltip,
-        runConnectionFinder: () => {
-          facilitatorSync.recordRecoverySignal('Direct connection request from the dock.');
-          void runConnectionFinder();
-        },
-        runScout: () => {
-          facilitatorSync.recordRecoverySignal('Direct scout request from the dock.');
-          void runScout();
-        },
-        dismissHint,
-        onOpenTurnLog: selectedBoardIdea
-          ? () => {
-            setDocsIdeaId(null);
-            setTurnLogOpen(true);
-          }
-          : undefined,
-        turnLogCount: selectedBoardIdea?.turnLog.length ?? 0,
-        onUndoRobot: aiUndoTarget
-          ? () => {
-            void boardController.undoAiChange({
-              changeSetId: aiUndoTarget.changeSetId,
-              actor: { type: 'user', source: 'canvas', label: 'undoRobot' },
-            }).then(result => {
-              if (result) applyCommittedBoard(result.document, result.history);
-            }).catch(err => {
-              console.error('[App] undo robot failed:', err);
-            });
-          }
-          : undefined,
-        boardBeatReviewSession,
-        boardBeatReviewItems,
-        onOpenBoardBeatReview: boardBeatReviewSession ? () => focusBeatReviewSession(boardBeatReviewSession.id) : undefined,
-        onRunClusterBeat: () => triggerManualBoardBeat('cluster'),
-        onRunSummariseBeat: () => triggerManualBoardBeat('summarise'),
-        autonomy: {
-          sharedPause: facilitatorSync.sharedPause,
-          autonomyState: facilitatorSync.autonomyState,
-          recentAiActionOutcomes: facilitatorSync.recentAiActionOutcomes,
-          stagedInsightCount: facilitatorSync.stagedInsights?.length ?? 0,
-        },
-        robotNotes: {
-          items: facilitatorSync.stagedInsights ?? [],
-          onApply: applyStagedInsight,
-          onDismiss: insightId => facilitatorSync.setAiActionOutcomeForPendingInsight(insightId, 'rejected'),
-        },
-        session: {
-          localClientId: facilitatorSync.localClientId,
-          hostClientId: facilitatorSync.hostClientId,
-          manualHostClientId: facilitatorSync.manualHostClientId,
-          sharedPause: facilitatorSync.sharedPause,
-          peers: facilitatorSync.peers,
-          lastAiAction: facilitatorSync.lastAiAction,
-          lastBoardMutation: facilitatorSync.lastBoardMutation,
-          recentSessionEvents: facilitatorSync.recentSessionEvents,
-        },
-      }}
-      canvasStage={{
-        ideas: canvasIdeas, groups, connections: canvasConnections, critiques: canvasCritiques, critiqueBusyByIdea, critiqueFocusIdeaId, hoverIdeaId, editingIdeaId,
-        animatedConnectionIds, animatedCritiqueIds, animatedSuggestionIds, suppressAnimations: suppressRevealAnimations, docCounts, highlightIds: highlightedIdeaIds,
-        suggestions: canvasSuggestions,
-        suggestionOverflowCount, suggestionsExpanded, suggestionBusy,
-        onDismissCritique: usingDemoBoard
-          ? critiqueId => setDismissedDemoCritiqueIds(current => (current.includes(critiqueId) ? current : [...current, critiqueId]))
-          : handleDismissCritique,
-        onAcceptCritique: usingDemoBoard
-          ? (() => {})
-          : critiqueId => {
-            facilitatorSync.setAiActionOutcomeForEntity(critiqueId, 'accepted');
-            facilitatorSync.recordRecoverySignal(`Critique ${critiqueId} was accepted.`);
+          boardBeatReviewSession,
+          boardBeatReviewItems,
+          onOpenBoardBeatReview: boardBeatReviewSession ? () => focusBeatReviewSession(boardBeatReviewSession.id) : undefined,
+          onRunClusterBeat: () => triggerManualBoardBeat('cluster'),
+          onRunSummariseBeat: () => triggerManualBoardBeat('summarise'),
+          autonomy: {
+            sharedPause: facilitatorSync.sharedPause,
+            autonomyState: facilitatorSync.autonomyState,
+            recentAiActionOutcomes: facilitatorSync.recentAiActionOutcomes,
+            stagedInsightCount: facilitatorSync.stagedInsights?.length ?? 0,
           },
-        onConnectionClick: handleHighlight, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
-        linkModeEnabled,
-        onOpen: id => {
-          if (usingDemoBoard) return;
-          setInspectorOpen(false);
-          setSelectedId(id);
-        },
-        onOpenDocs: openDocsPanel,
-        onGroup: usingDemoBoard ? (() => {}) : handleGroup,
-        onUngroup: usingDemoBoard ? (() => {}) : handleUngroup,
-        onMerge: usingDemoBoard ? (() => {}) : handleMerge,
-        onDiscard: usingDemoBoard ? undefined : handleDiscard,
-        onCreateConnection: usingDemoBoard ? undefined : createManualConnection,
-        onAdmitSuggestion: usingDemoBoard
-          ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
-          : handleAdmitSuggestion,
-        onElaborateSuggestion: usingDemoBoard ? (() => {}) : handleElaborateSuggestion,
-        onDismissSuggestion: usingDemoBoard
-          ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
-          : handleDismissSuggestion,
-        onMoveSuggestion: usingDemoBoard ? (() => {}) : handleMoveSuggestion,
-        onExpandSuggestions: expandSuggestions, onCollapseSuggestions: collapseSuggestions,
-      }}
-      workspaceOverlays={{
-        ideas, selectedBoardIdea, docCounts,
-        isInspectorOpen: inspectorOpen,
-        capturePopover: {
-          open: captureOpen, creating, feedback: captureFeedback, text: newIdeaText, tags: newIdeaTags, onToggle: toggleCaptureComposer,
-          onTextChange: handleCaptureTextChange, onTagsChange: handleCaptureTagsChange, onClose: closeCaptureComposer,
-          onSubmit: handleCapture,
-        },
-        docsPanel: (
-          <IdeaDocsPanel
-            boardId={boardId}
-            idea={ideas.find(idea => idea.id === docsIdeaId) ?? null}
-            open={Boolean(docsIdeaId)}
-            onClose={() => setDocsIdeaId(null)}
-            onDocsChanged={(id, count) => setDocCounts(prev => ({ ...prev, [id]: count }))}
-            docMutations={supportingDocMutations}
-            refineDoc={refineSupportingDoc}
-          />
-        ),
-        selectedIdeaDockContent: selectedBoardIdea ? (
-          <WorkspacePhaseFlow
-            idea={selectedBoardIdea}
-            onUpdate={handleIdeaUpdate}
-            source="canvas"
-          />
-        ) : null,
-        inspectorContent: selectedBoardIdea ? (
-          <Workspace
-            idea={selectedBoardIdea}
-            onUpdate={handleIdeaUpdate}
-            docCount={docCounts[selectedBoardIdea.id] ?? 0}
-            onOpenDocs={openDocsPanel}
-          />
-        ) : null,
-        isTurnLogOpen: turnLogOpen,
-        onToggleTurnLog: () => {
-          setDocsIdeaId(null);
-          setTurnLogOpen(value => !value);
-        },
-        onOpenDocs: openDocsPanel,
-        onOpenInspector: () => setInspectorOpen(true),
-        onCloseInspector: () => setInspectorOpen(false),
-        onCloseSelectedIdea: () => {
-          setInspectorOpen(false);
-          setTurnLogOpen(false);
-          setDocsIdeaId(null);
-          setSelectedId(null);
-        },
-      }}
-    />
+          robotNotes: {
+            items: facilitatorSync.stagedInsights ?? [],
+            onApply: applyStagedInsight,
+            onDismiss: insightId => facilitatorSync.setAiActionOutcomeForPendingInsight(insightId, 'rejected'),
+          },
+          session: {
+            localClientId: facilitatorSync.localClientId,
+            hostClientId: facilitatorSync.hostClientId,
+            manualHostClientId: facilitatorSync.manualHostClientId,
+            sharedPause: facilitatorSync.sharedPause,
+            peers: facilitatorSync.peers,
+            lastAiAction: facilitatorSync.lastAiAction,
+            lastBoardMutation: facilitatorSync.lastBoardMutation,
+            recentSessionEvents: facilitatorSync.recentSessionEvents,
+          },
+        }}
+        canvasStage={{
+          boardTheme,
+          ideas: canvasIdeas, groups, connections: canvasConnections, critiques: canvasCritiques, critiqueBusyByIdea, critiqueFocusIdeaId, hoverIdeaId, editingIdeaId,
+          selectedIdeaId: selectedCanvasIdea?.id ?? null,
+          showClarificationOverlay: false,
+          animatedConnectionIds, animatedCritiqueIds, animatedSuggestionIds, suppressAnimations: suppressRevealAnimations, docCounts, highlightIds: highlightedIdeaIds,
+          suggestions: canvasSuggestions,
+          suggestionOverflowCount, suggestionsExpanded, suggestionBusy,
+          onDismissCritique: usingDemoBoard
+            ? critiqueId => setDismissedDemoCritiqueIds(current => (current.includes(critiqueId) ? current : [...current, critiqueId]))
+            : handleDismissCritique,
+          onAcceptCritique: usingDemoBoard
+            ? critiqueId => setDismissedDemoCritiqueIds(current => (current.includes(critiqueId) ? current : [...current, critiqueId]))
+            : handleAcceptCritique,
+          onConnectionClick: handleHighlight, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
+          linkModeEnabled,
+          onOpen: id => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(false);
+            setSelectedAttentionItemId(null);
+            setSelectedId(id);
+          },
+          onOpenSuggestion: openSuggestionDrawer,
+          onOpenDocs: openDocsPanel,
+          onGroup: usingDemoBoard ? (() => {}) : handleGroup,
+          onGroupSelection: usingDemoBoard ? (async () => {}) : handleGroupSelection,
+          onUngroup: usingDemoBoard ? (() => {}) : handleUngroup,
+          onMerge: usingDemoBoard ? (() => {}) : handleMerge,
+          onDiscard: usingDemoBoard ? undefined : handleDiscard,
+          onCreateConnection: usingDemoBoard ? undefined : createManualConnection,
+          onAdmitSuggestion: usingDemoBoard
+            ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+            : handleAdmitSuggestion,
+          onElaborateSuggestion: usingDemoBoard ? (() => {}) : handleElaborateSuggestion,
+          onDismissSuggestion: usingDemoBoard
+            ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+            : handleDismissSuggestion,
+          onMoveSuggestion: usingDemoBoard ? (() => {}) : handleMoveSuggestion,
+          onExpandSuggestions: expandSuggestions, onCollapseSuggestions: collapseSuggestions,
+          onIdeaUpdate: handleIdeaUpdate,
+          onActivateAttentionItem: ({ ideaId, attentionId }) => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(false);
+            setSelectedId(ideaId);
+            setSelectedAttentionItemId(attentionId);
+          },
+        }}
+        workspaceOverlays={{
+          ideas, selectedBoardIdea: selectedCanvasIdea, docCounts,
+          isInspectorOpen: Boolean(selectedSuggestion) || (!usingDemoBoard && inspectorOpen),
+          capturePopover: {
+            open: captureOpen, creating, feedback: captureFeedback, text: newIdeaText, tags: newIdeaTags, onToggle: toggleCaptureComposer,
+            onTextChange: handleCaptureTextChange, onTagsChange: handleCaptureTagsChange, onClose: closeCaptureComposer,
+            onSubmit: handleCapture,
+          },
+          docsPanel: (
+            <IdeaDocsPanel
+              boardId={boardId}
+              idea={ideas.find(idea => idea.id === docsIdeaId) ?? null}
+              open={Boolean(docsIdeaId)}
+              onClose={() => setDocsIdeaId(null)}
+              onDocsChanged={(id, count) => setDocCounts(prev => ({ ...prev, [id]: count }))}
+              docMutations={supportingDocMutations}
+              refineDoc={refineSupportingDoc}
+            />
+          ),
+          selectedIdeaDockContent: selectedCanvasIdea ? (
+            usingDemoBoard
+              ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-900">Demo note preview</p>
+                  <p className="text-sm text-gray-600">
+                    This board is showing fallback demo notes. Selection is live, but editing and inspector actions stay disabled until real board data exists.
+                  </p>
+                </div>
+              )
+              : (
+                <>
+                  <IdeaAttentionPanel
+                    idea={selectedCanvasIdea}
+                    critiques={canvasCritiques}
+                    highlightedAttentionId={selectedAttentionItemId}
+                  />
+                  <WorkspacePhaseFlow
+                    idea={selectedCanvasIdea}
+                    onUpdate={handleIdeaUpdate}
+                    source="canvas"
+                    ambiguityPresentation="full"
+                  />
+                </>
+              )
+          ) : null,
+          inspectorContent: selectedSuggestion ? (
+            <WorkspaceScoutInspector
+              idea={selectedSuggestionIdea}
+              boardIdeas={ideas}
+              suggestion={selectedSuggestion}
+              onUpdate={selectedSuggestionIdea ? handleIdeaUpdate : undefined}
+              docCount={selectedSuggestionIdea ? (docCounts[selectedSuggestionIdea.id] ?? 0) : 0}
+              onOpenDocs={selectedSuggestionIdea ? openDocsPanel : undefined}
+              onAdmitSuggestion={usingDemoBoard
+                ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+                : handleAdmitSuggestion}
+              onElaborateSuggestion={usingDemoBoard ? undefined : handleElaborateSuggestion}
+              onDismissSuggestion={usingDemoBoard
+                ? suggestionId => setDismissedDemoSuggestionIds(current => (current.includes(suggestionId) ? current : [...current, suggestionId]))
+                : handleDismissSuggestion}
+              suggestionBusy={selectedSuggestionId ? (suggestionBusy[selectedSuggestionId] ?? null) : null}
+              onClose={closeSuggestionDrawer}
+            />
+          ) : selectedBoardIdea ? (
+            <Workspace
+              idea={selectedBoardIdea}
+              onUpdate={handleIdeaUpdate}
+              docCount={docCounts[selectedBoardIdea.id] ?? 0}
+              onOpenDocs={openDocsPanel}
+              onClose={() => setInspectorOpen(false)}
+            />
+          ) : null,
+          isTurnLogOpen: !usingDemoBoard && turnLogOpen,
+          onToggleTurnLog: usingDemoBoard ? undefined : () => {
+            setDocsIdeaId(null);
+            setTurnLogOpen(value => !value);
+          },
+          onOpenDocs: usingDemoBoard ? undefined : openDocsPanel,
+          onOpenInspector: usingDemoBoard ? undefined : () => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(true);
+          },
+          onCloseInspector: () => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(false);
+          },
+          onCloseSelectedIdea: () => {
+            setInspectorOpen(false);
+            setTurnLogOpen(false);
+            setDocsIdeaId(null);
+            setSelectedAttentionItemId(null);
+            setSelectedSuggestionId(null);
+            setSelectedId(null);
+          },
+        }}
+      />
+    );
+
+  return (
+    <>
+      {appView}
+      {webMcpModalOpen && webMcpUnavailableStatus ? (
+        <WebMcpAvailabilityModal
+          open={webMcpModalOpen}
+          status={webMcpUnavailableStatus}
+          onClose={() => setWebMcpModalOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }
 

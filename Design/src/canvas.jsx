@@ -476,7 +476,7 @@ function CanvasScreen({ tweaks, onNav, demoState, onOpenDemo, onOpenLog, log, ne
       {tweaks.showPersona && (
         <PersonaDock
           name={tweaks.personaName || "Dev"}
-          role={tweaks.personaRole || "Engineering Manager"}
+          role={tweaks.personaRole || "Bot"}
           line={personaLine}
           pulsing={pulsing}
           thinking={aiThinking}

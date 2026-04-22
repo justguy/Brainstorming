@@ -5,6 +5,7 @@ import {
   type IdeaPhaseHistoryEvent,
 } from '../../src/storage/phaseHistory';
 import { getTurnLogPage } from '../../src/storage/ideas';
+import { formatTurnEntryContent, summarizeToolUsage } from '../../src/workspace/phaseRunTrace';
 
 type TurnLogFilter = 'all' | 'ai' | 'user' | 'critique' | 'edit';
 type TurnOrigin = 'ai' | 'user' | 'critique' | 'edit';
@@ -294,8 +295,32 @@ export function IdeaTurnLogPanel({
                 <p className="bo-turn-entry__origin">
                   {origin === 'user' ? 'You' : origin === 'critique' ? 'Dev · critique' : origin === 'ai' ? 'Dev · facilitator' : 'System'} · {turnOriginLabel(origin)}
                 </p>
+                {(entry.meta?.phaseLabel || entry.meta?.roleId || entry.meta?.provider || entry.meta?.model) && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {entry.meta?.phaseLabel && (
+                      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                        {entry.meta.phaseLabel}
+                      </span>
+                    )}
+                    {entry.meta?.roleId && (
+                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700">
+                        {entry.meta.roleId}
+                      </span>
+                    )}
+                    {(entry.meta?.provider || entry.meta?.model) && (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                        {[entry.meta?.provider, entry.meta?.model].filter(Boolean).join('/')}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {entry.meta?.source === 'phase_run' && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {summarizeToolUsage(entry)}
+                  </p>
+                )}
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-                  {entry.content}
+                  {formatTurnEntryContent(entry)}
                 </p>
                 {rationale && (
                   <div className="bo-turn-entry__rationale">

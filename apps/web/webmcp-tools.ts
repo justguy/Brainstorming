@@ -15,7 +15,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
-import type { AmbiguityResolutionStatus, Idea, IdeaGroup, SupportingDoc } from '../../src/types';
+import type { AmbiguityResolutionStatus, Idea, IdeaGroup, ProviderId, SupportingDoc } from '../../src/types';
 import { BEAT_NAMES, type BeatName } from '../../src/beats/types';
 import { DEFAULT_BOARD_ID } from '../../src/board/types';
 import { listIdeas, getIdea, getTurnLogPage, listDiscardedIdeas } from '../../src/storage/ideas';
@@ -47,6 +47,7 @@ import {
 } from './webmcpFacilitatorTools';
 import { deriveIdeaBeadState, isKnownBeadPhase } from '../../src/orchestrator/beadState';
 import { SUB_PHASES, findSubPhase } from '../../src/orchestrator/subPhases';
+import { dispatchAndWait, dispatchAndWaitForResult } from '../../src/webmcp/toolDispatch';
 
 // ---------------------------------------------------------------------------
 // safeRegisterTool — StrictMode-resilient registerTool wrapper
@@ -72,69 +73,6 @@ function safeRegisterTool(
     }
     throw err;
   }
-}
-
-// ---------------------------------------------------------------------------
-// dispatchAndWait: fire a CustomEvent, wait for React to signal completion
-// ---------------------------------------------------------------------------
-
-function dispatchAndWait(
-  eventName: string,
-  detail: Record<string, unknown> = {},
-  successMessage: string = 'Action completed successfully',
-  timeoutMs = 8000,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const requestId = Math.random().toString(36).substring(2, 15);
-    const completionEvent = `tool-completion-${requestId}`;
-
-    const timeoutId = setTimeout(() => {
-      window.removeEventListener(completionEvent, handleCompletion);
-      reject(new Error(`Timed out waiting for UI to update (requestId: ${requestId})`));
-    }, timeoutMs);
-
-    const handleCompletion = () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener(completionEvent, handleCompletion);
-      resolve(successMessage);
-    };
-
-    window.addEventListener(completionEvent, handleCompletion);
-    window.dispatchEvent(new CustomEvent(eventName, { detail: { ...detail, requestId } }));
-  });
-}
-
-type ToolCompletionPayload<T extends object> = T & { ok: boolean; error?: string };
-
-function dispatchAndWaitForResult<T extends object>(
-  eventName: string,
-  detail: Record<string, unknown> = {},
-  timeoutMs = 8000,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const requestId = Math.random().toString(36).substring(2, 15);
-    const completionEvent = `tool-completion-${requestId}`;
-
-    const timeoutId = setTimeout(() => {
-      window.removeEventListener(completionEvent, handleCompletion as EventListener);
-      reject(new Error(`Timed out waiting for UI to update (requestId: ${requestId})`));
-    }, timeoutMs);
-
-    const handleCompletion = (event: Event) => {
-      const ev = event as CustomEvent<ToolCompletionPayload<T>>;
-      clearTimeout(timeoutId);
-      window.removeEventListener(completionEvent, handleCompletion as EventListener);
-      if (!ev.detail?.ok) {
-        reject(new Error(ev.detail?.error ?? 'Action failed'));
-        return;
-      }
-      const { ok: _ok, error: _error, ...data } = ev.detail;
-      resolve(data as T);
-    };
-
-    window.addEventListener(completionEvent, handleCompletion as EventListener);
-    window.dispatchEvent(new CustomEvent(eventName, { detail: { ...detail, requestId } }));
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1978,6 +1916,126 @@ function makeResolveAmbiguityTool(selectedIdea: LegacyToolIdea): ModelContextToo
   };
 }
 
+function makeApplyAmbiguityResolutionTool(selectedIdea: LegacyToolIdea): ModelContextTool {
+  return {
+    name: 'apply_ambiguity_resolution',
+    description:
+      'Applies a chosen ambiguity resolution in one lifecycle write: marks the ambiguity, optionally adds a rule or next step, and records the tool trace on the selected idea.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ambiguityId: {
+          type: 'string',
+          minLength: 1,
+          description: 'ID of the ambiguity to update.',
+        },
+        status: {
+          type: 'string',
+          enum: ['resolved', 'deferred', 'dismissed'],
+          description: 'Final ambiguity state after the resolution is applied.',
+        },
+        resolution: {
+          type: 'string',
+          description: 'Plain-language note describing how the ambiguity was resolved.',
+        },
+        action: {
+          type: 'string',
+          enum: ['resolve_only', 'add_rule', 'choose_next_step'],
+          description: 'Optional extra board write to apply alongside the ambiguity status.',
+        },
+        rule: {
+          type: 'string',
+          description: 'Rule text to add when action is add_rule.',
+        },
+        nextStep: {
+          type: 'string',
+          enum: ['planning', 'prototyping', 'research', 'stakeholder_review', 'defer'],
+          description: 'Next step to set when action is choose_next_step.',
+        },
+        summary: {
+          type: 'string',
+          description: 'Short summary of the applied change.',
+        },
+        roleId: {
+          type: 'string',
+          description: 'Optional provenance label for the planner that produced this resolution.',
+        },
+        provider: {
+          type: 'string',
+          enum: ['gemini', 'openai', 'anthropic'],
+          description: 'Optional provider used for the planner run.',
+        },
+        model: {
+          type: 'string',
+          description: 'Optional model used for the planner run.',
+        },
+        userResolution: {
+          type: 'string',
+          description: 'Optional original user-accepted or user-authored resolution text.',
+        },
+      },
+      required: ['ambiguityId', 'status', 'resolution'],
+    },
+    annotations: { readOnlyHint: false },
+    execute: async (input) => {
+      const {
+        ambiguityId,
+        status,
+        resolution,
+        action,
+        rule,
+        nextStep,
+        summary,
+        roleId,
+        provider,
+        model,
+        userResolution,
+      } = input as {
+        ambiguityId: string;
+        status: AmbiguityResolutionStatus;
+        resolution: string;
+        action?: 'resolve_only' | 'add_rule' | 'choose_next_step';
+        rule?: string;
+        nextStep?: Idea['briefState']['nextStep'];
+        summary?: string;
+        roleId?: string;
+        provider?: ProviderId;
+        model?: string;
+        userResolution?: string;
+      };
+      if (!ambiguityId) return 'ERROR: `ambiguityId` is required.';
+      if (!selectedIdea.ambiguities.some(ambiguity => ambiguity.id === ambiguityId)) {
+        return `ERROR: no ambiguity with id "${ambiguityId}" on this idea.`;
+      }
+
+      const detail = await dispatchAndWaitForResult<{
+        ambiguityId: string;
+        status: AmbiguityResolutionStatus;
+        idea: Idea;
+      }>('brainstorm:apply_ambiguity_resolution', {
+        ideaId: selectedIdea.id,
+        ambiguityId,
+        status,
+        resolution,
+        action,
+        rule,
+        nextStep,
+        summary,
+        roleId,
+        provider,
+        model,
+        userResolution,
+      });
+
+      return {
+        ideaId: selectedIdea.id,
+        ambiguityId: detail.ambiguityId,
+        status: detail.status,
+      };
+    },
+  };
+}
+
 function makeGetPhaseHistoryTool(selectedIdea: LegacyToolIdea): ModelContextTool {
   return {
     name: 'get_phase_history',
@@ -2197,6 +2255,7 @@ function buildLifecycleToolSet(selectedIdea: LegacyToolIdea): ModelContextTool[]
     tools.push(
       makeListAmbiguitiesTool(selectedIdea),
       makeResolveAmbiguityTool(selectedIdea),
+      makeApplyAmbiguityResolutionTool(selectedIdea),
     );
   }
 
@@ -2298,4 +2357,5 @@ export {
   captureIdeaTool,
   exportHandoffTool,
   dispatchAndWait,
+  dispatchAndWaitForResult,
 };

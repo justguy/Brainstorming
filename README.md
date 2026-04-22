@@ -45,13 +45,15 @@ Shipped. This is the primary surface and runs at `http://localhost:6611`.
 
 - Free-form canvas: drag, group, merge, discard, restore
 - Supporting-doc extraction with facts injected into reasoning
+- Local-doc search + attach tools for user-authorized folders
 - Connection finder plus on-canvas connection overlay
 - Candidate ideas from outside-knowledge scouting, including draggable scout cards
 - Attached critique cards for devil's-advocate challenges with inline accept/dismiss
 - Signal control for bounded suggestions, critiques, and connections
 - Local autonomous facilitator with idle-gated automation
+- Facilitator peer/host controls plus shared pause/autonomy state
 - AI-tagged history and undo/redo support
-- Polished timing, motion, and hierarchy
+- Global WebMCP board tools plus selected-idea lifecycle/bead tools when `navigator.modelContext` is available
 
 ### Chrome Extension
 
@@ -59,15 +61,24 @@ Shipped.
 
 - 8-phase structured brainstorming pipeline
 - BYOK for Gemini, OpenAI, and Anthropic
-- Active-tab tool awareness through WebMCP consumption
+- Active-tab WebMCP discovery with explicit user consent
 - Side-panel workflow plus export
+
+### Same-Browser Sync Baseline
+
+Partially shipped.
+
+- Idea-row sync uses Yjs + `BroadcastChannel` + `y-indexeddb`
+- Facilitator peer state, host election, staged insights, and shared pause/autonomy state sync across local peers
+- This is not yet full board collaboration across every entity type
 
 ## Not Shipped Yet
 
-- Collaborative sync (multi-user)
-- Yjs CRDT storage
+- Full-board collaborative sync across groups, docs, suggestions, critiques, connections, and history
 - WebRTC peer collaboration
 - Cross-device persistence
+- Cloud backup
+- Extension-origin WebMCP tool exposure on `chrome-extension://` pages
 
 These are actively planned in the roadmap.
 
@@ -96,19 +107,51 @@ The AI does not decide what to do loosely.
 It operates through explicit actions like:
 
 - `capture_idea`
+- `get_idea`
+- `get_canvas`
 - `get_board`
+- `move_panel`
 - `draw_connection`
 - `critique_idea`
 - `scout_ideas`
 - `move_suggestion`
 - `discard_idea` / `restore_idea`
 - `advance_phase`
+- `get_bead_state`
 
 This makes behavior:
 
 - predictable
 - inspectable
 - controllable
+
+## WebMCP Tools
+
+The standalone web app exposes WebMCP tools when `navigator.modelContext` is available. In the current Chrome preview flow, that means Chrome/Chromium 146+ with `chrome://flags/#enable-webmcp-testing` enabled.
+
+If WebMCP is unavailable, the app still works normally. The tool surface just does not register.
+
+### What The Tools Do
+
+- Workspace reads and setup: `list_ideas`, `get_idea`, `get_turn_log`, `capture_idea`, `get_canvas`, `get_board`, `export_handoff`
+- Canvas mutation: `move_panel`, `move_suggestion`, `group_ideas`, `ungroup_idea`, `merge_ideas`, `discard_idea`, `restore_idea`
+- Board analysis and idea generation: `find_connections`, `draw_connection`, `critique_idea`, `list_critiques`, `dismiss_critique`, `scout_ideas`, `cross_pollinate`, `run_beat`, `list_suggestions`, `admit_suggestion`, `elaborate_suggestion`, `dismiss_suggestion`
+- Supporting docs: `attach_supporting_doc`, `list_supporting_docs`, `get_supporting_doc`, `delete_supporting_doc`, `retry_doc_extraction`
+- Local-doc intake: `search_local_docs`, `attach_local_doc_candidate`
+- Facilitator controls: `list_peers`, `get_ai_autonomy_state`, `claim_ai_host`, `release_ai_host`, `set_ai_paused`, `set_ai_autonomy_mode`
+- Selected-idea lifecycle and bead tools: `advance_phase`, `submit_clarifications`, `select_approach`, `respond_to_challenge`, `mark_stress_handled`, `choose_next_step`, `add_rule`, `remove_rule`, `list_risks`, `patch_risk`, `list_ambiguities`, `resolve_ambiguity`, `get_phase_history`, `get_bead_state`, `suggest_next_bead`, `flag_bead_for_review`
+
+### How To Use Them
+
+1. Run `npm run dev:web` and open `http://localhost:6611`.
+2. Open the app in a WebMCP-capable Chromium build with the WebMCP flag enabled.
+3. Use a WebMCP inspector or browser agent to list the page's registered tools.
+4. Global board tools are available as soon as the app loads.
+5. Select an idea to expose the lifecycle/bead tool set for that idea and its current phase.
+6. For `search_local_docs`, first authorize a folder from the supporting-doc UI. The tool will otherwise return a re-authorization message instead of silently reading files.
+7. In the extension flow, allowing the WebMCP consent banner snapshots active-tab tool metadata into the idea context; invoking active-tab tools remains an explicit, user-consented action.
+
+For the deeper inventory and architecture notes, see `WEBMCP_README.md` and `WEBMCP_CAPABILITIES.md`.
 
 ## Autonomous Facilitator
 
@@ -206,12 +249,14 @@ npm run typecheck
 ## Storage Model
 
 - IndexedDB stores ideas, groups, docs, suggestions, critiques, and related local board state.
+- `y-indexeddb` persists the same-browser Yjs sync layer used for idea rows and facilitator session state.
 - Browser-local settings storage holds provider configuration and credentials for the shipped surfaces.
-- The app is still local-only.
+- The app is still local-first and browser-resident.
 
 ## Current Constraints
 
-- No sync or multiplayer yet.
+- Full board/entity sync is not complete yet. Current shipped sync is limited to idea rows plus facilitator session state across same-browser peers.
+- No WebRTC or cross-device collaboration yet.
 - No cloud backup.
 - The standalone web app is the primary engine for ongoing work.
 - The extension-origin WebMCP expose path remains paused as noted in `ROADMAP.md`.

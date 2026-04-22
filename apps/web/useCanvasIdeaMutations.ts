@@ -1,7 +1,7 @@
 import type { ChangeActor } from '../../src/board/types';
 import type { Idea, IdeaGroup } from '../../src/types';
 import type { BoardDocument } from '../../src/board/types';
-import type { BoardHistoryState } from '../../src/storage/boardControllerTypes';
+import type { BoardGroupCommitResult, BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
 import { groupThemer, buildGroupThemerTask, type GroupThemerOutput } from '../../src/orchestrator/roles/groupThemer';
@@ -26,6 +26,36 @@ export function useCanvasIdeaMutations({
   setSelectedId,
   markActivity,
 }: UseCanvasIdeaMutationsArgs) {
+  async function applyGroupTheme(
+    grouped: BoardGroupCommitResult,
+  ): Promise<void> {
+    const group = grouped.document.groups.find((entry: IdeaGroup) => entry.id === grouped.groupId);
+    if (!group) return;
+
+    const groupIdeas = group.ideaIds
+      .map(id => grouped.document.ideas.find(entry => entry.id === id))
+      .filter((entry): entry is Idea => !!entry);
+    if (groupIdeas.length < 2) return;
+
+    const task = buildGroupThemerTask(groupIdeas);
+    const { result } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
+    if (!result) return;
+
+    const themed = await boardController.setGroupTheme({
+      groupId: group.id,
+      theme: result.theme,
+      sharedQuestion: result.sharedQuestion,
+      actor: { type: 'ai', source: 'system', label: 'groupThemer' },
+    });
+    applyCommittedBoard(themed.document, themed.history);
+  }
+
+  function themeGroupInBackground(grouped: BoardGroupCommitResult): void {
+    void applyGroupTheme(grouped).catch(err => {
+      console.error('[App] group theming failed:', err);
+    });
+  }
+
   async function handleMove(
     ideaId: string,
     x: number,
@@ -59,28 +89,44 @@ export function useCanvasIdeaMutations({
         actor: actorFor(source),
       });
       applyCommittedBoard(grouped.document, grouped.history);
-
-      const group = grouped.document.groups.find((entry: IdeaGroup) => entry.id === grouped.groupId);
-      if (group) {
-        const groupIdeas = group.ideaIds
-          .map(id => grouped.document.ideas.find(entry => entry.id === id))
-          .filter((entry): entry is Idea => !!entry);
-        const task = buildGroupThemerTask(groupIdeas);
-        const { result } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
-        if (result) {
-          const themed = await boardController.setGroupTheme({
-            groupId: group.id,
-            theme: result.theme,
-            sharedQuestion: result.sharedQuestion,
-            actor: { type: 'ai', source: 'system', label: 'groupThemer' },
-          });
-          applyCommittedBoard(themed.document, themed.history);
-        }
-      }
-
       markActivity('group');
+      themeGroupInBackground(grouped);
     } catch (err) {
       console.error('[App] group failed:', err);
+    } finally {
+      setCanvasBusy(null);
+    }
+  }
+
+  async function handleGroupSelection(
+    ideaIds: string[],
+    source: MutationSource = 'canvas',
+  ): Promise<void> {
+    const uniqueIdeaIds = [...new Set(ideaIds)].filter(id => (
+      ideas.some(idea => idea.id === id && idea.status !== 'archived' && idea.status !== 'discarded')
+    ));
+    if (uniqueIdeaIds.length < 2) return;
+
+    setCanvasBusy('Grouping notes…');
+    try {
+      const [anchorIdeaId, ...restIdeaIds] = uniqueIdeaIds;
+      let latestGroupResult: BoardGroupCommitResult | null = null;
+
+      for (const ideaId of restIdeaIds) {
+        latestGroupResult = await boardController.groupIdeas({
+          ideaIdA: anchorIdeaId,
+          ideaIdB: ideaId,
+          actor: actorFor(source),
+        });
+      }
+
+      if (!latestGroupResult) return;
+
+      applyCommittedBoard(latestGroupResult.document, latestGroupResult.history);
+      markActivity('group');
+      themeGroupInBackground(latestGroupResult);
+    } catch (err) {
+      console.error('[App] group selection failed:', err);
     } finally {
       setCanvasBusy(null);
     }
@@ -145,6 +191,7 @@ export function useCanvasIdeaMutations({
   return {
     handleMove,
     handleGroup,
+    handleGroupSelection,
     handleUngroup,
     handleMerge,
   };

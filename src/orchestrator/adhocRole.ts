@@ -17,9 +17,19 @@ import type { LlmMessage, ProviderId } from '../types';
 export interface RunRoleResult<T> {
   result: T | null;
   usedFallback: boolean;
+  providerId: ProviderId;
+  model: string;
 }
 
-export async function runAdhocRole<T>(role: RoleSpec, task: string): Promise<RunRoleResult<T>> {
+interface RunAdhocRoleOptions {
+  maxTokens?: number;
+}
+
+export async function runAdhocRole<T>(
+  role: RoleSpec,
+  task: string,
+  options: RunAdhocRoleOptions = {},
+): Promise<RunRoleResult<T>> {
   let activeProvider: ProviderId = 'gemini';
   let activeModel = 'gemini-2.5-pro';
   try {
@@ -40,10 +50,15 @@ export async function runAdhocRole<T>(role: RoleSpec, task: string): Promise<Run
     model: activeModel,
     messages,
     jsonSchema: role.jsonSchema,
-    maxTokens: 2048,
+    maxTokens: options.maxTokens ?? 2048,
     schema: role.schema,
     onFallback: () => console.warn(`[adhocRole] Fallback triggered for ${role.id}`),
   });
 
-  return { result: result as T | null, usedFallback };
+  return {
+    result: result as T | null,
+    usedFallback,
+    providerId: activeProvider,
+    model: activeModel,
+  };
 }

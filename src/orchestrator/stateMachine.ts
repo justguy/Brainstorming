@@ -1,6 +1,7 @@
 import type {
   Idea,
   LlmMessage,
+  LlmMessageMeta,
   BriefState,
   ProviderId,
   ActiveTabToolContext,
@@ -172,10 +173,30 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
   const task = role.buildTask(idea, userInput);
   const payload = buildPayload(role, idea, task, liveToolContext, supportingDocs);
   const messages = payloadToMessages(payload);
+  const liveToolNames = liveToolContext?.tools.map(tool => tool.name) ?? [];
+  const turnMeta: LlmMessageMeta = {
+    phase: spec.number,
+    phaseLabel: spec.label,
+    roleId: role.id,
+    provider: activeProvider,
+    model: activeModel,
+    source: 'phase_run',
+    runSurface: 'llm_role',
+    liveToolOrigin: liveToolContext?.origin,
+    liveToolNames,
+  };
 
   const outgoingLog: LlmMessage[] = [
-    { role: 'system', content: `[Step ${spec.number}] Running role: ${role.id}` },
-    { role: 'user', content: task },
+    {
+      role: 'system',
+      content: `[Step ${spec.number}] Running role: ${role.id}`,
+      meta: { ...turnMeta, source: 'system', entryKind: 'start' },
+    },
+    {
+      role: 'user',
+      content: task,
+      meta: { ...turnMeta, source: 'user_input', entryKind: 'task' },
+    },
   ];
 
   const { result, usedFallback } = await callWithRetry({
@@ -193,6 +214,7 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
     const sentinelLog: LlmMessage = {
       role: 'assistant',
       content: `[FALLBACK] Role ${role.id} failed after retries. Manual input required.`,
+      meta: { ...turnMeta, entryKind: 'fallback' },
     };
     return {
       ...idea,
@@ -212,7 +234,11 @@ export async function advance(idea: Idea, userInput?: string, skip = false): Pro
     turnLog: [
       ...idea.turnLog,
       ...outgoingLog,
-      { role: 'assistant', content: JSON.stringify(result) },
+      {
+        role: 'assistant',
+        content: JSON.stringify(result, null, 2),
+        meta: { ...turnMeta, entryKind: 'result' },
+      },
     ],
   };
 
