@@ -7,32 +7,49 @@
         "id": "facilitator",
         "label": "Facilitator Mode",
         "description": "Phases 1-4 from PHASED_IMPL: visible connections, critique, timing, signal control.",
-        "collapsed": false
+        "collapsed": true
       },
       {
         "id": "observability",
         "label": "Observability",
-        "description": "Phase 5 payload-control and debugging surfaces."
+        "description": "Phase 5 payload-control and debugging surfaces.",
+        "collapsed": false
+      },
+      {
+        "id": "architecture",
+        "label": "Architecture",
+        "description": "Board-first domain, patch-journal state, beat runtime, and WebMCP boundary work required to align the app with the integration guide.",
+        "collapsed": false
       },
       {
         "id": "automation",
         "label": "Autonomous Facilitator",
-        "description": "Phase 6 local-only automation after Facilitator Mode is stable."
+        "description": "Phase 6 local-only automation after Facilitator Mode is stable.",
+        "collapsed": false
       },
       {
         "id": "polish",
         "label": "UX Polish Driver",
-        "description": "Current sprint: visual hierarchy, motion, timing, signal control, micro-interactions, critique tone, and final demo consistency."
+        "description": "Current sprint: visual hierarchy, motion, timing, signal control, micro-interactions, critique tone, and final demo consistency.",
+        "collapsed": false
       },
       {
         "id": "collaboration",
         "label": "Collaborative Sync",
-        "description": "BroadcastChannel, Yjs, WebRTC, and peer-aware synchronization backlog."
+        "description": "BroadcastChannel, Yjs, WebRTC, and peer-aware synchronization backlog.",
+        "collapsed": false
       },
       {
         "id": "integrations",
         "label": "Integrations",
-        "description": "Local-doc search, declarative WebMCP, and external system writeback backlog."
+        "description": "Local-doc search, declarative WebMCP, and external system writeback backlog.",
+        "collapsed": false
+      },
+      {
+        "id": "design-impl",
+        "label": "Design Implementation",
+        "description": "Inline companion, beat review UX, undo/history, layout cutover, and guide-fidelity interaction work.",
+        "collapsed": false
       }
     ],
     "priorities": [
@@ -464,7 +481,12 @@
           "yjs",
           "broadcastchannel"
         ],
-        "notes": "Roadmap section 4.1 is now the next executable slice after the shipped UI/UX polish driver."
+        "notes": "Roadmap section 4.1 is now the next executable slice after the shipped UI/UX polish driver.",
+        "files_touched": [
+          "apps/web/useBoardSync.ts",
+          "apps/web/useBrainstormWorkspaceEvents.ts",
+          "apps/web/reconcileDisplayGroups.ts"
+        ]
       }
     },
     {
@@ -603,7 +625,13 @@
           "election"
         ],
         "notes": "Peer-aware automation starts only after sync is real."
-      }
+      },
+      "notes": "Completed bo-012 against the current repo sync stack. The observer now waits on sync-derived board changes instead of local-only activity, tracks newly seen ideas for connect/scout trigger queues, prefers phase-4+ critique targets with no active critique, and uses deterministic `automationKey` values on automatic scout/critique commits so storage dedupes split-brain races per target instead of by text alone. Host election remains the repo's existing lowest-live-client facilitator heartbeat path rather than a new `y-protocols/awareness` dependency, but exactly one peer still hosts at a time. Verification: `npm run typecheck`, `npm run build:web`.",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web"
+      ],
+      "outcome": null
     },
     {
       "dependencies": [],
@@ -645,7 +673,11 @@
           "docs",
           "permissions"
         ],
-        "notes": "The roadmap leans toward deferring this until the permission story is acceptable."
+        "notes": "The roadmap leans toward deferring this until the permission story is acceptable.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts",
+          "apps/web/webmcpLocalDocTools.ts"
+        ]
       }
     },
     {
@@ -690,7 +722,21 @@
           "synthesis",
           "role"
         ],
-        "notes": "This is a dedicated synthesis verb beyond the current scout behavior."
+        "notes": "This is a dedicated synthesis verb beyond the current scout behavior.",
+        "files_touched": [
+          "src/orchestrator/roles/crossPollinate.ts",
+          "apps/web/crossPollinateSuggestion.ts",
+          "apps/web/webmcpCrossPollinateTool.ts",
+          "apps/web/useBoardSuggestionActions.ts",
+          "apps/web/useBrainstormSuggestionEvents.ts",
+          "apps/web/webmcp-tools.ts",
+          "apps/web/App.tsx",
+          "apps/web/suggestionActionHelpers.ts",
+          "src/storage/boardController.ts",
+          "src/storage/boardGeneratedMutations.ts",
+          "src/storage/suggestions.ts",
+          "src/types.ts"
+        ]
       }
     },
     {
@@ -823,7 +869,13 @@
           "consent"
         ],
         "notes": "This is the explicit W1 writeback stretch item from the roadmap."
-      }
+      },
+      "notes": "Implemented in commit c1c4ff8 via the existing W1 consume path. Phase and next-step changes now surface a second-consent writeback draft in the live-tool panel, with editable JSON payloads and an active-origin guard before invokeActiveTabTool(). Verification: npm run typecheck, npm run build:web.",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web",
+        "git commit c1c4ff8"
+      ]
     },
     {
       "dependencies": [],
@@ -1152,6 +1204,2346 @@
         "notes": "The close-out pass should make the demo feel smooth, deliberate, and premium."
       },
       "assignee": "codex"
+    },
+    {
+      "dependencies": [],
+      "id": "bo-025",
+      "title": "Design Core: board document and board-scoped repositories",
+      "goal": "Replace the web app's phase-first hot path with a canonical board document and board-scoped stores for boards, ideas, connections, critiques, turns, and tweaks, with a migration bridge from existing local data.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:580-603",
+        "src/types.ts:193-212",
+        "src/storage/db.ts:4-55"
+      ],
+      "effort": "l",
+      "comment": "Starting board-first domain and board-scoped repository cutover from the Integration Guide target state.",
+      "definition_of_done": [
+        "A canonical Board document or aggregate exists and the web app reads board-scoped state from it.",
+        "IndexedDB stores cover boards, ideas, connections, critiques, turns, and tweaks through one hydration path.",
+        "Legacy phase fields are isolated behind an adapter so the board path stops depending on Idea.phase in the hot path."
+      ],
+      "constraints": [
+        "Do not keep two durable sources of truth for the same board entities.",
+        "Migration must preserve existing local board data and current web app startup behavior."
+      ],
+      "expected_changes": [
+        "src/types.ts",
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "src/types.ts",
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "board-model",
+          "migration"
+        ],
+        "notes": "Completed the board-first repository cutover for the standalone web app: App now hydrates from a board repository snapshot, workspace phase rendering is isolated behind a legacy adapter, and WebMCP lifecycle tools consume a legacy tool projection instead of the raw selected board idea.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/boardRepository.ts",
+          "apps/web/webmcp-tools.ts",
+          "src/workspace/Workspace.tsx",
+          "src/workspace/legacyPhaseAdapter.ts"
+        ],
+        "verification": [
+          "npm run typecheck",
+          "npm run build:web",
+          "npm run build"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-025"
+      ],
+      "id": "bo-026",
+      "title": "Design Core: patch journal and reversible BoardController",
+      "goal": "Route all committed board mutations through a central BoardController that emits forward and inverse JSON patches, persists ChangeSets, and becomes the only mutation path for user and AI actions.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:580-603",
+        "apps/web/App.tsx:160-313"
+      ],
+      "effort": "l",
+      "comment": "Completed the live journal cutover: committed board mutations across the web app, WebMCP tools, workspace shell, sidepanel consent/create flows, and fallback forms now route through the boardController changeSet path, with dead compatibility writes removed from the board repository. Verification: npm run typecheck passes; vite builds remain blocked by local ENOSPC on dist outputs.",
+      "definition_of_done": [
+        "All committed board mutations route through a single applyChange or equivalent mutation API.",
+        "ChangeSets persist forward and inverse JSON patches with actor, summary, and affected entity metadata.",
+        "Undo and redo replay the journal rather than rebuilding state ad hoc from UI handlers."
+      ],
+      "constraints": [
+        "Human and AI changes must share the same journal semantics.",
+        "Ephemeral beat drafts must stay separate from committed board state until the user keeps them or automation is explicitly allowed."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/storage",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "patches",
+          "history"
+        ],
+        "notes": "This is the mechanism behind undo/redo, change history, and reversible AI structural edits."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-026"
+      ],
+      "id": "bo-027",
+      "title": "Design Core: beat runtime and proposal contract",
+      "goal": "Replace the current web-app phase loop with a board-level callBeat runtime for scout, connect, critique, cluster, and summarise, using strict JSON beat outputs and candidate proposals instead of direct structural writes.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:456-479",
+        "Design/Integration Guide.html:553-577",
+        "apps/web/App.tsx:1382-1467",
+        "src/orchestrator/subPhases.ts:45-57"
+      ],
+      "effort": "l",
+      "comment": "Completed the beat runtime/proposal contract slice. Added `src/beats/types.ts`, `src/orchestrator/beatRegistry.ts`, `src/orchestrator/runBeat.ts`, and `apps/web/beatContext.ts`; introduced the `boardSummariser` role; routed the live scout/connect/critique paths in `apps/web/App.tsx` through typed beat envelopes before commit; surfaced active beat state in the header; and tightened `ChangeActor.beat` typing. Verification: `npm run typecheck`, `npm run build:web`, and `npm run build` all pass.",
+      "definition_of_done": [
+        "The web path exposes exactly five beats: scout, connect, critique, cluster, and summarise.",
+        "Each beat returns strict JSON with candidates, sources, confidence metadata, and patch payloads or equivalent change intents.",
+        "Automatic and manual beat triggers are encoded with visible state for small versus big beats."
+      ],
+      "constraints": [
+        "Do not let freeform AI responses mutate board structure directly.",
+        "Retain narrow role prompts and machine-parseable outputs for every beat."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/orchestrator",
+        "src",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "beats",
+          "llm-contracts"
+        ],
+        "notes": "This is the contract shift from phase progression to board beats."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-027"
+      ],
+      "id": "bo-028",
+      "title": "Design Core: board-first WebMCP surface",
+      "goal": "Retarget the existing WebMCP boundary around board verbs and beat runs instead of legacy phase and workspace concepts, while keeping the direct web app WebMCP integration.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p1"
+      },
+      "references": [
+        "apps/web/App.tsx:224-224",
+        "apps/web/webmcp-tools.ts:1491-1741",
+        "Design/Integration Guide.html:456-479"
+      ],
+      "effort": "m",
+      "comment": "Completed the board-first WebMCP surface cut. Added `get_board` and `run_beat` to `apps/web/webmcp-tools.ts`, wired `brainstorm:runBeat` handling in `apps/web/App.tsx`, and demoted the legacy phase-local WebMCP lifecycle registrations so the active surface is board-first and beat-first. Verification: `npm run typecheck`, `npm run build:web`, and `npm run build` all pass.",
+      "definition_of_done": [
+        "Board tools cover the board document, beat invocation, candidate admission or dismissal, and connection or critique operations through the board controller.",
+        "dispatch-and-wait or equivalent request handling stays intact for the standalone web app.",
+        "Tool handlers operate on current board and beat-run state rather than phase-local state."
+      ],
+      "constraints": [
+        "Keep the direct WebMCP surface; do not add a second UI abstraction layer such as a2ui.",
+        "Do not duplicate orchestration logic across App state and tool handlers."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/App.tsx",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "webmcp",
+          "tooling"
+        ],
+        "notes": "This preserves WebMCP while aligning it to the guide's board and beat model."
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-026",
+        "bo-027"
+      ],
+      "id": "bo-029",
+      "title": "Design Core: extract board shell from apps/web/App.tsx",
+      "goal": "Break the monolithic App.tsx into board controller, storage sync, beat orchestration, and inspector modules so board-first behavior is testable and the workspace drawer stops owning the hot path.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p1"
+      },
+      "references": [
+        "apps/web/App.tsx:1-1703",
+        "src/workspace/Workspace.tsx:152-285",
+        "Design/Integration Guide.html:307-315"
+      ],
+      "effort": "l",
+      "comment": "Verified complete against current code: App.tsx is orchestration-only, BoardAppView owns the shell, and workspace surfaces are overlay-secondary rather than the hot path.",
+      "definition_of_done": [
+        "App.tsx no longer owns history mutation logic, storage choreography, facilitator timing, and layout concerns in one file.",
+        "Board controller and board UI hooks have explicit boundaries and callers.",
+        "Workspace surfaces remain available as secondary inspector or export views rather than primary orchestration surfaces."
+      ],
+      "constraints": [
+        "Preserve current app boot, tool registration, and board interaction behavior while extracting modules.",
+        "Do not strand dead code paths behind the old workspace-first model."
+      ],
+      "expected_changes": [
+        "apps/web/App.tsx",
+        "src/workspace",
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/workspace",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "refactor",
+          "app-shell"
+        ],
+        "notes": "Tracker references were stale to the pre-extraction App.tsx shape. The current board-first shell already satisfies the slice.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/BoardAppView.tsx",
+          "apps/web/BoardCanvasStage.tsx",
+          "apps/web/BoardWorkspaceOverlays.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-026"
+      ],
+      "id": "bo-030",
+      "title": "Design Core: durable turns, tweaks, tombstones, and reversible deletes",
+      "goal": "Complete the persistence layer for beat runs, turn history, tweak state, and tombstones so dismissed AI outputs remain reversible and history-backed instead of being hard-deleted or left in transient component state.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:580-603",
+        "src/storage/settings.ts:16-68"
+      ],
+      "effort": "m",
+      "comment": "Persistence now includes a journal-backed tweak mutation path, legacy tweak migration, and a web-safe settings path that no longer depends on shimmed chrome.storage for the web app.",
+      "definition_of_done": [
+        "Turns, beat runs, tweak state, and tombstones persist in board-scoped storage.",
+        "Dismissed or deleted AI artifacts are represented as reversible tombstones rather than silent hard deletes.",
+        "Web settings or tweak persistence no longer depend on chrome.storage.local for the web path without a compatible abstraction."
+      ],
+      "constraints": [
+        "Do not lose existing local settings or board data during the storage move.",
+        "History data must stay compatible with undo and redo semantics from the patch journal."
+      ],
+      "expected_changes": [
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "src/storage",
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "architecture",
+          "persistence",
+          "tombstones"
+        ],
+        "notes": "Landed durable tweak storage on the same board history path as other board mutations, exposed it to the web app, and aligned the web options/settings copy with the IndexedDB-backed store.",
+        "files_touched": [
+          "src/board/types.ts",
+          "src/storage/boardController.ts",
+          "src/storage/boardControllerTypes.ts",
+          "src/storage/boardTweakMutations.ts",
+          "src/storage/settings.ts",
+          "src/storage/tweaks.ts",
+          "apps/web/useBoardSync.ts",
+          "apps/web/Options.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-027"
+      ],
+      "id": "bo-031",
+      "title": "Design UI: always-on Dev companion and idle-triggered beats",
+      "goal": "Make the Dev companion visibly present while the user edits the board, with automatic idle-triggered runs, explicit watching or drafting states, and visible beat activity when something big is happening or the user asks for it.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:553-577",
+        "apps/web/App.tsx:1474-1528"
+      ],
+      "effort": "m",
+      "comment": "The inline Dev companion now shows watching, primed, paused, drafting, and big-beat states tied to meaningful board changes while preserving typing/drag interruptibility.",
+      "definition_of_done": [
+        "The board shows companion presence and state while the user is editing or when beats are running.",
+        "Automatic beat triggering is idle-gated and tied to meaningful board changes.",
+        "Big beats can reveal active beat progress and interim idea or source discovery state without forcing it on every small edit."
+      ],
+      "constraints": [
+        "Do not interrupt active editing or hijack focus while the user is typing or dragging.",
+        "Preserve human interruptibility and global pause behavior."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "companion",
+          "automation"
+        ],
+        "notes": "Automatic beats now idle-gate on the latest meaningful board change rather than coarse wall-clock idleness alone, and the companion surfaces pending-change countdowns plus persisted pause state.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/DevCompanionCard.tsx",
+          "apps/web/useCompanionAutomation.ts",
+          "apps/web/useBoardSync.ts",
+          "src/storage/boardTweakMutations.ts",
+          "src/storage/tweaks.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-026",
+        "bo-027",
+        "bo-031"
+      ],
+      "id": "bo-032",
+      "title": "Design UI: beat review flow with keep or scratch candidates",
+      "goal": "Surface big-beat outputs as reviewable candidate ideas, sources, connections, critiques, and structural edits that the user can keep or scratch individually or as a group before they become committed board changes.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:553-577",
+        "Design/Integration Guide.html:621-639"
+      ],
+      "effort": "l",
+      "comment": "Completed the beat review flow: cluster/summarise runs now create durable review sessions/items in board state; keep/scratch decisions are journaled and undoable; the app renders a centered review panel with provenance, affected ideas/structures, and per-item or batch keep/scratch controls; kept cluster hints also apply existing group/theme mutations. Verification: `npm run typecheck` and `npm run build:web` pass.",
+      "definition_of_done": [
+        "Beat review UI shows candidate items with provenance, summaries, and the affected ideas or structures.",
+        "Keep commits the candidate into the board journal; scratch creates a tombstone and preserves the decision in history.",
+        "Users can accept a subset of a beat without discarding the rest of the run."
+      ],
+      "constraints": [
+        "Do not auto-commit structural AI edits without an explicit keep path or a narrowly defined low-risk automation rule.",
+        "Dismissed items must remain recoverable through history rather than disappearing silently."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "review-flow",
+          "human-loop"
+        ],
+        "notes": "Matches the requested keep or scratch flow for beats and candidate ideas."
+      },
+      "assignee": null,
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-030",
+        "bo-032"
+      ],
+      "id": "bo-033",
+      "title": "Design UI: undo or redo controls and change history timeline",
+      "goal": "Add visible undo and redo controls plus a readable change history that groups user and AI changes by actor, beat, and patch set so the board can move backward and forward safely.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "references": [
+        "Design/Integration Guide.html:580-603"
+      ],
+      "effort": "m",
+      "comment": "Completed the visible history slice: undo/redo remain in the header, the board now loads live ChangeSets alongside cursor state, and a floating history panel shows actor, beat, summary, timestamp, status, patch count, and affected entities for each durable ChangeSet. Verification: `npm run typecheck` and `npm run build:web` pass.",
+      "definition_of_done": [
+        "Undo and redo controls are visible and operate across user and AI-authored changes.",
+        "A history surface shows actor, beat, summary, timestamp, and affected board entities for each ChangeSet.",
+        "Moving backward and forward preserves board consistency and does not drop persisted state."
+      ],
+      "constraints": [
+        "Do not fall back to snapshot-only history that loses semantic change information.",
+        "Guard against replaying inverse patches against the wrong board revision."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/storage"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "history",
+          "undo-redo"
+        ],
+        "notes": "Implements the user-visible history and navigation controls requested for patch-backed state."
+      },
+      "assignee": null,
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-029",
+        "bo-032"
+      ],
+      "id": "bo-034",
+      "title": "Design UI: board-first layout cutover and inline AI surfaces",
+      "goal": "Make the canvas the primary product surface, move workspace detail into a secondary inspector role, and replace the remaining workspace-first interaction path with inline board-native AI affordances.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/Integration Guide.html:307-315",
+        "Design/Integration Guide.html:621-639",
+        "apps/web/App.tsx:1-263",
+        "apps/web/BoardWorkspaceOverlays.tsx:1-193",
+        "src/workspace/WorkspaceInspector.tsx:1-218",
+        "src/workspace/WorkspaceActiveFlow.tsx:1-253"
+      ],
+      "effort": "l",
+      "comment": "Completed the board-first layout cutover: selecting an idea now opens a centered board-focus dock that hosts the live phase loop and inline tool context; the old workspace is now an explicit secondary inspector; the shell keeps review, history, capture, and docs compatible with the board-first flow. Verification: `npm run typecheck` and `npm run build:web` pass.",
+      "definition_of_done": [
+        "Primary brainstorm flow happens on the board with inline AI artifacts and review surfaces.",
+        "Workspace or drawer surfaces are secondary inspectors, not the place where the main loop lives.",
+        "No sidebar-chat style surface becomes the primary AI interaction model."
+      ],
+      "constraints": [
+        "Preserve desktop and mobile usability while moving controls onto the board.",
+        "Do not regress current board interactions such as drag, grouping, or selection."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/workspace",
+        "src"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/workspace",
+        "src"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "layout",
+          "inline-ai"
+        ],
+        "notes": "Board selection now drives a board-native focus dock, while the inspector is explicit and secondary.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/BoardWorkspaceOverlays.tsx",
+          "src/workspace/Workspace.tsx",
+          "src/workspace/WorkspaceInspector.tsx",
+          "src/workspace/WorkspaceActiveFlow.tsx",
+          "src/workspace/WorkspaceToolContextPanel.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-034"
+      ],
+      "id": "bo-035",
+      "title": "Design UI: cluster and summarise beats",
+      "goal": "Implement the missing cluster and summarise beats with inline group proposals, board-level thematic labeling, and summaries that stay connected to board entities and beat history.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/Integration Guide.html:456-479",
+        "apps/web/App.tsx:1382-1467"
+      ],
+      "effort": "m",
+      "comment": "Completed the cluster and summarise beat slice: cluster now uses a dedicated boardClusterer role that can return multiple inline grouping proposals from shared-theme components; summarise now receives live group themes/questions and emits explicit related group ids; review items and history entries carry the actual takeaway text plus labeled idea/group provenance. Verification: `npm run typecheck` and `npm run build:web` pass.",
+      "definition_of_done": [
+        "Cluster beat can propose grouping or regrouping operations with user review.",
+        "Summarise beat produces board-level digests tied back to ideas, sources, or groups.",
+        "Both beats show up in beat history and use the same proposal and keep or scratch contract as the rest of the system."
+      ],
+      "constraints": [
+        "Do not ship cluster or summary behavior as ad hoc side effects outside the beat runtime.",
+        "Summaries must reference real board entities rather than floating free text alone."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/orchestrator"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/orchestrator"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "cluster",
+          "summarise"
+        ],
+        "notes": "Closes the missing beat gap between the current app and the target interaction model."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-030",
+        "bo-034"
+      ],
+      "id": "bo-036",
+      "title": "Design UI: source-linked metadata edits and structural idea operations",
+      "goal": "Let kept beat candidates append metadata to existing ideas, attach sources, create entirely new ideas, rewrite idea structure, or modify existing relationships while preserving provenance and reversibility.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/Integration Guide.html:423-450",
+        "Design/Integration Guide.html:553-603"
+      ],
+      "effort": "m",
+      "comment": "Completed source-linked metadata and structural review operations: summary review now yields structured `idea_insight` and `idea_spawn` candidates, keep actions dispatch through board-controller mutations instead of no-op bookkeeping, and ideas now carry durable `insights` metadata with linked source refs surfaced in the canvas/inspector. Cluster hints continue to handle reversible structural edits through the same review path. Verification: `npm run typecheck` and `npm run build:web` pass.",
+      "definition_of_done": [
+        "Accepted candidates can create new ideas, enrich existing idea metadata, attach sources, or modify structure through the board controller.",
+        "Every structural edit retains provenance and remains reversible through the patch journal.",
+        "The board can represent changed idea structure without losing the prior state or source linkage."
+      ],
+      "constraints": [
+        "Do not treat source attachment or structure edits as opaque text blobs.",
+        "All structural AI edits must be attributable and reversible."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "sources",
+          "structural-edits"
+        ],
+        "notes": "Implements the user's requirement that kept beats can enrich, create, or restructure board ideas."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-033",
+        "bo-035",
+        "bo-036"
+      ],
+      "id": "bo-037",
+      "title": "Design UI: final integration-guide fidelity and accessibility pass",
+      "goal": "Align the shipped experience with the guide's intended visual language, reveal choreography, accessibility, theme behavior, and empty or loading states once the board-first interaction model is in place.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p2"
+      },
+      "references": [
+        "Design/Integration Guide.html:305-315",
+        "Design/Integration Guide.html:616-639"
+      ],
+      "effort": "m",
+      "comment": "Completed the final guide-fidelity pass with persisted theme switching, reduced-motion support, dialog-style history/review overlays, and more intentional board-first empty plus review states.",
+      "definition_of_done": [
+        "Theme and motion behavior align with the guide across sketch and whiteboard modes.",
+        "Keyboard, focus, and screen-reader behaviors cover the new inline AI and history surfaces.",
+        "Empty, loading, thinking, kept, and scratched states feel intentional rather than bolted on."
+      ],
+      "constraints": [
+        "Do not trade away board responsiveness for decorative polish.",
+        "Avoid generic assistant UI patterns that conflict with the design guide's visual direction."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src",
+        "public"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src",
+        "public"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "design-impl",
+          "accessibility",
+          "polish"
+        ],
+        "notes": "This pass added persisted whiteboard/sketch theme state, board-surface theming via body data attributes, reduced-motion handling for visible beat animations, and keyboard/screen-reader treatment for review/history overlays.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/AppHeaderBar.tsx",
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/BoardAppView.tsx",
+          "apps/web/BoardBeatsCard.tsx",
+          "apps/web/BeatReviewPanel.tsx",
+          "apps/web/BeatReviewPanelCard.tsx",
+          "apps/web/BoardHistoryPanel.tsx",
+          "apps/web/BoardWorkspaceOverlays.tsx",
+          "apps/web/useBoardTheme.ts",
+          "apps/web/useOverlaySurface.ts",
+          "src/canvas/Canvas.tsx",
+          "src/storage/settings.ts",
+          "src/styles.css",
+          "src/types.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [],
+      "id": "bo-038",
+      "title": "Design UI: replace the rail shell with canvas-first chrome",
+      "goal": "Restructure the shell around the freeform canvas, compact topbar tools, a reserved peer-presence slot, a bead-strip home, and a bottom-left persona/discard zone so the app no longer depends on a persistent facilitator rail.",
+      "status": "in_progress",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/DESIGN_SYSTEM_PROMPT.md:12-32",
+        "Design/DESIGN_SYSTEM_PROMPT.md:204-212",
+        "Design/Integration Guide.html:307-314",
+        "Design/Integration Guide.html:633-633",
+        "Design/src/canvas.jsx:220-320",
+        "Design/brainstorm.css:367-470",
+        "Design/DESGN_GAPS_PROMPT.md:171-173",
+        "Design/DESGN_GAPS_PROMPT.md:340-345",
+        "ROADMAP.md:371-389",
+        "apps/web/BoardAppView.tsx:30-42",
+        "apps/web/AppCompanionRail.tsx:96-184"
+      ],
+      "effort": "m",
+      "comment": "The shell must leave durable spatial homes for the bead strip, persona dock, discard pile, turn log, and future peer chips. If those surfaces require a later relayout, the shell is still wrong.",
+      "definition_of_done": [
+        "The canvas is the primary screen surface with no persistent facilitator/chat rail dominating the layout.",
+        "The chrome matches the reference structure: compact topbar tools, board-title chip, and a bottom-left persona dock.",
+        "The shell reserves spatial homes for the bead strip, discard pile, turn log, and a hidden top-right peer chip row without needing another layout rewrite later.",
+        "Primary AI controls remain accessible without requiring users to discover a secondary side panel."
+      ],
+      "constraints": [
+        "Do not preserve the current right-rail architecture as the main interaction model.",
+        "Do not solve this by shrinking or polishing the rail further; the structure itself must move toward the reference design.",
+        "Do not hide future collaboration/autonomy surfaces in settings or modals because the shell failed to make room for them."
+      ],
+      "expected_changes": [
+        "apps/web/BoardAppView.tsx",
+        "apps/web/App.tsx",
+        "apps/web/AppHeaderBar.tsx",
+        "apps/web/AppCompanionRail.tsx or its replacement",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/styles.css"
+      ],
+      "context": {
+        "tags": [
+          "design-guide",
+          "canvas-first",
+          "persona-dock",
+          "shell"
+        ],
+        "notes": "Partial shell cutover landed, but the current board still does not match the screenshot layout: wrong chrome composition, wrong spacing/density, and missing the strong centered-title / top-right tool-cluster composition visible in the references.",
+        "files_touched": [
+          "apps/web/BoardAppView.tsx",
+          "apps/web/AppHeaderBar.tsx",
+          "src/styles.css"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null,
+      "outcome": "partial_slice_landed",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web"
+      ],
+      "notes": "Partial slice landed: the rail now prioritizes the facilitator, Scout, and Board Beats before the heavier connection/session surfaces, and the facilitator deck is visually compressed instead of being dominated by diagnostics. Real viewport proof is still required before closing this task."
+    },
+    {
+      "dependencies": [],
+      "id": "bo-039",
+      "title": "Design UI: make note capture viewport-aware and visibly successful",
+      "goal": "Ensure creating a note is an above-fold primary action and that a successful create always reveals the new idea where the user is actually looking.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/DESIGN_SYSTEM_PROMPT.md:28-32",
+        "Design/DESIGN_SYSTEM_PROMPT.md:115-138",
+        "Design/src/canvas.jsx:231-272",
+        "Design/screenshots/01-canvas.png:1-1",
+        "apps/web/CaptureIdeaPopover.tsx:5-203",
+        "apps/web/useBoardSessionActions.ts:29-55",
+        "src/board/ideaFactory.ts:19-58",
+        "apps/web/AppHeaderBar.tsx:11-129"
+      ],
+      "effort": "m",
+      "comment": "The reference design wants add-note and AI output to create real stickies on the canvas, not succeed silently behind chrome or off-screen.",
+      "definition_of_done": [
+        "There is a clear add-note entrypoint in primary chrome, not just a floating affordance that competes with other overlays.",
+        "New notes are placed relative to the current viewport or the canvas automatically pans or centers to the created note.",
+        "Successful creation produces immediate visual confirmation and failures surface inline instead of only logging to the console."
+      ],
+      "constraints": [
+        "Do not keep time-seeded placement for user-created notes.",
+        "Do not close the create flow on silent failure."
+      ],
+      "expected_changes": [
+        "apps/web/CaptureIdeaPopover.tsx",
+        "apps/web/useBoardSessionActions.ts",
+        "apps/web/App.tsx",
+        "apps/web/AppHeaderBar.tsx",
+        "src/board/ideaFactory.ts",
+        "src/storage/boardController.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/board/ideaFactory.ts",
+        "src/storage/boardController.ts"
+      ],
+      "context": {
+        "tags": [
+          "capture",
+          "sticky",
+          "canvas-first",
+          "feedback"
+        ],
+        "notes": "Note capture is in primary chrome and reveals real stickies on the canvas with visible success feedback instead of silent off-screen placement.",
+        "files_touched": [
+          "apps/web/CaptureIdeaPopover.tsx",
+          "apps/web/App.tsx",
+          "src/board/ideaFactory.ts",
+          "src/storage/boardController.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null,
+      "outcome": "partial_slice_landed",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web"
+      ],
+      "notes": "Partial slice landed: `New note` is in primary chrome, created notes use viewport-aware placement, the app retries reveal after save, and the user gets explicit success/error recovery messaging instead of a silent no-op. Still needs live viewport proof."
+    },
+    {
+      "dependencies": [
+        "bo-038",
+        "bo-047"
+      ],
+      "id": "bo-041",
+      "title": "Design UI: make the facilitator a persona dock with autonomy cues",
+      "goal": "Represent the facilitator as a compact bottom-left persona dock with one live line, a visible autonomy dial, explicit pause/cool-down/nudge/log controls, a hairline idle bar, and role/backoff cues while keeping AI output on the canvas.",
+      "status": "in_progress",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/DESIGN_SYSTEM_PROMPT.md:29-32",
+        "Design/DESIGN_SYSTEM_PROMPT.md:147-156",
+        "Design/src/persona.jsx:63-95",
+        "Design/brainstorm.css:420-470",
+        "Design/DESGN_GAPS_PROMPT.md:45-58",
+        "Design/DESGN_GAPS_PROMPT.md:86-102",
+        "Design/DESGN_GAPS_PROMPT.md:180-182",
+        "Design/DESGN_GAPS_PROMPT.md:268-285",
+        "README.md:111",
+        "ROADMAP.md:371-389",
+        "ROADMAP.md:422-422",
+        "WEBMCP_README.md:275-283",
+        "apps/web/DevCompanionCard.tsx:29-119",
+        "apps/web/AppCompanionRail.tsx:96-184",
+        "apps/web/useCompanionAutomation.ts:169-199"
+      ],
+      "effort": "m",
+      "comment": "The dock is the robot's face, not the robot's workspace. It must expose the autonomy dial and role state directly on canvas, and it must show when the facilitator is waiting, thinking, capped, or stepping back.",
+      "definition_of_done": [
+        "The facilitator is visible as a compact persona dock anchored to the canvas, not as a large telemetry card stack.",
+        "The dock communicates one active thought and exposes a minimal action set such as pause, cool down, nudge, turn log, and Undo robot.",
+        "The autonomy dial is reachable from anywhere on the canvas in two clicks or less and shows configured ceiling versus effective mode distinctly when they differ.",
+        "The dock shows the active role inline and pairs the idle-gate progress bar with text so timing is teachable even under reduced motion.",
+        "When caps or throttles apply, the dock surfaces a calm inline state such as holding thoughts in notes instead of using a popup or tray."
+      ],
+      "constraints": [
+        "Do not reintroduce a chat-like dock with scrolling transcript.",
+        "Do not move AI voice into large chrome surfaces when it should be attached to the board.",
+        "Do not bury the autonomy dial in Settings or any secondary preference screen."
+      ],
+      "expected_changes": [
+        "apps/web/DevCompanionCard.tsx",
+        "apps/web/AppCompanionRail.tsx",
+        "apps/web/CollaborativeSessionCard.tsx",
+        "apps/web/companionSessionSummary.ts"
+      ],
+      "allowed_paths": [
+        "apps/web"
+      ],
+      "context": {
+        "tags": [
+          "facilitator",
+          "persona-dock",
+          "canvas",
+          "voice"
+        ],
+        "notes": "A persona dock exists, but it is not yet visually or structurally aligned with the screenshot target. The reference dock is a compact hand-drawn control surface with very specific composition and weight.",
+        "files_touched": [
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/DevCompanionCard.tsx",
+          "apps/web/CollaborativeSessionCard.tsx",
+          "apps/web/companionSessionSummary.ts",
+          "apps/web/useCompanionAutomation.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null,
+      "outcome": "partial_slice_landed",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web"
+      ],
+      "notes": "Partial slice landed: the facilitator card now leads with identity, current action, next action, and a compact readout while session-peer detail stays lower in the rail. Still needs viewport-proof closeout with bo-042."
+    },
+    {
+      "dependencies": [
+        "bo-038",
+        "bo-039",
+        "bo-041"
+      ],
+      "id": "bo-040",
+      "title": "Design UI: replace connection forms with canvas-first link mode",
+      "goal": "Make connection authoring happen through the board itself with toolbar link mode, line hover rationale, and direct idea highlighting instead of a form-heavy rail workflow.",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/DESIGN_SYSTEM_PROMPT.md:124-133",
+        "Design/src/canvas.jsx:240-307",
+        "Design/brainstorm.css:397-419",
+        "Design/brainstorm.css:1084-1097",
+        "src/canvas/ConnectionsPanel.tsx:12-177",
+        "apps/web/AppCompanionRail.tsx:127-172"
+      ],
+      "effort": "m",
+      "comment": "The design reference creates connections from the toolbar and the canvas, not from a persistent side-panel composer.",
+      "definition_of_done": [
+        "Users can enter a clear link mode from the primary chrome and connect two ideas directly on the canvas.",
+        "Connections expose kind and rationale from the board surface itself rather than depending on a persistent form panel.",
+        "The product no longer answers 'how do I add connections?' with a rail-only workflow."
+      ],
+      "constraints": [
+        "Do not keep the manual connection form as the primary authoring model.",
+        "Do not hide connection meaning in a secondary panel only."
+      ],
+      "expected_changes": [
+        "src/canvas/ConnectionsPanel.tsx",
+        "src/canvas/Canvas.tsx",
+        "apps/web/AppCompanionRail.tsx",
+        "apps/web/App.tsx",
+        "src/storage/boardConnectionMutations.ts"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/storage/boardConnectionMutations.ts"
+      ],
+      "context": {
+        "tags": [
+          "connections",
+          "link-mode",
+          "canvas",
+          "toolbar"
+        ],
+        "notes": "Connection authoring moved onto the board via link mode and board-surface connection cues rather than depending on a rail-only form.",
+        "files_touched": [
+          "src/canvas/Canvas.tsx",
+          "src/canvas/ConnectionComposer.tsx",
+          "apps/web/App.tsx",
+          "src/storage/boardConnectionMutations.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null,
+      "outcome": "partial_slice_landed",
+      "verification": [
+        "npm run typecheck",
+        "npm run build:web"
+      ],
+      "notes": "Partial slice landed: the Connections surface now exposes explicit manual authoring, facilitator-assisted discovery, and saved-link inspection/highlighting. The composer also stays collapsed until at least two notes exist so it does not crowd the primary rail. UI-path proof is still open."
+    },
+    {
+      "dependencies": [
+        "bo-038",
+        "bo-039",
+        "bo-040",
+        "bo-041"
+      ],
+      "id": "bo-042",
+      "title": "Design UI: prove the critical workflows on real viewport sizes",
+      "goal": "Add explicit verification for the critical board workflows using the design-gap quality checklist so the UI is not marked ready until the must-haves are proven on real viewports and both themes.",
+      "status": "deferred",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p1"
+      },
+      "references": [
+        "apps/web/App.tsx:176-264",
+        "apps/web/BoardAppView.tsx:30-42",
+        "src/canvas/Canvas.tsx:327-340",
+        "docs/BOARD_UI_VERIFICATION_CHECKLIST.md:1-100",
+        "Design/screenshots/01-canvas.png:1-1",
+        "Design/screenshots/05-log-states.png:1-1",
+        "Design/DESGN_GAPS_PROMPT.md:321-336"
+      ],
+      "effort": "s",
+      "comment": "The design batch cannot close on screenshots or builds. The quality checklist from the gap prompt is now the sign-off contract.",
+      "definition_of_done": [
+        "There is a runnable or at least deterministic verification checklist covering 1280x800, 1440x900, and a representative mobile viewport in both themes.",
+        "The checklist proves the design-gap must-haves: autonomy dial, Insight Feed, bead strip, AI Undo, turn-log pagination/filtering, discard pile, docs paperclip, rules ribbon, and reduced-motion path.",
+        "The checklist verifies visible AI-origin markers, no emoji/gradients/Shadcn-card regressions, and role-language compliance on user-visible surfaces.",
+        "The tracker is not returned to complete until this proof is attached to the close-out."
+      ],
+      "constraints": [
+        "Do not count typecheck and build alone as UI proof.",
+        "Do not close the design batch without validating the real interaction path and the design-gap checklist."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/canvas",
+        "src/styles.css",
+        "tracker notes or docs for verification"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/canvas",
+        "src/styles.css",
+        ".llm-tracker/trackers/brainstorming-orchestrator.json"
+      ],
+      "context": {
+        "tags": [
+          "verification",
+          "responsive",
+          "qa",
+          "closeout"
+        ],
+        "notes": "Typecheck and build:web pass. Whiteboard screenshots exist for desktop and mobile, but final multi-viewport and both-theme sign-off is intentionally deferred until the broader web surface is ready."
+      },
+      "assignee": null,
+      "outcome": "partial_slice_landed",
+      "notes": "Partial slice landed: added a deterministic viewport checklist covering facilitator reachability, note creation, connections, and facilitator legibility on 1280x800, 1440x900, and 390x844. The checklist exists, but it has not yet been executed on the live app, so proof is still open.",
+      "blocker_reason": "Rabbit-hole deferred. Real viewport proof started, but the 390px mobile shell still overflows horizontally and sketch-theme automation is not worth blocking broader web readiness. Current artifacts: /tmp/board-1280x800-after.png, /tmp/board-1440x900-after.png, /tmp/board-390x844-after6.png, /tmp/board-390x844-after7.png."
+    },
+    {
+      "dependencies": [
+        "bo-038",
+        "bo-047"
+      ],
+      "id": "bo-043",
+      "status": "in_progress",
+      "title": "Design UI: move AI output onto the canvas as spatial artifacts and candidate ideas",
+      "goal": "Render AI work as candidate ideas, anchored critiques, origin-marked connections, and other spatial artifacts on the canvas with visible provenance, confidence, and strength instead of summarizing it in chrome.",
+      "placement": {
+        "swimlaneId": "facilitator",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/DESIGN_SYSTEM_PROMPT.md:22-32",
+        "Design/DESIGN_SYSTEM_PROMPT.md:135-190",
+        "Design/src/cards.jsx:13-83",
+        "Design/src/canvas.jsx:420-475",
+        "Design/Integration Guide.html:388-392",
+        "Design/DESGN_GAPS_PROMPT.md:70-88",
+        "Design/DESGN_GAPS_PROMPT.md:130-169",
+        "Design/DESGN_GAPS_PROMPT.md:242-246",
+        "Design/DESGN_GAPS_PROMPT.md:314-317",
+        "README.md:15",
+        "ROADMAP.md:321-335",
+        "WEBMCP_README.md:279-291"
+      ],
+      "effort": "l",
+      "comment": "This row now owns provenance and visual trust, not just spatial placement. AI and user output cannot look interchangeable once committed.",
+      "definition_of_done": [
+        "Scout output appears as on-canvas candidate ideas or AI-authored stickies that users can admit or dismiss in place.",
+        "Every AI-authored surface has a visible origin marker: persona chip on committed AI stickies, dashed/peach styling on candidates, origin badge in turn-log rows, and a tiny persona marker plus rationale on AI connections.",
+        "Candidate ideas expose confidence visually, and the thinking-beat scratch-out or survival behavior corresponds to that confidence signal.",
+        "Critique surfaces show `Dev · Challenger`, strength dots, subtype switching for risk/assumption/counterexample when present, and explicit Dismiss and Handled actions.",
+        "Connections and cluster cues animate onto the board as first-class spatial objects rather than chrome summaries."
+      ],
+      "constraints": [
+        "Do not collapse AI output into status text or feed-like lists.",
+        "Do not ship critique or scout output as rail cards when the board can own it.",
+        "Do not let committed AI ideas become visually indistinguishable from user-authored ideas."
+      ],
+      "expected_changes": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/styles.css"
+      ],
+      "context": {
+        "tags": [
+          "ghost-sticky",
+          "critique-bubble",
+          "margin-note",
+          "cluster-halo"
+        ],
+        "notes": "AI artifacts exist on the board, but they do not yet resemble the screenshot target. The references use irregular paper surfaces, speech-bubble critiques, dashed scouts, and much stronger spatial/visual distinction than the current branch.",
+        "files_touched": [
+          "src/canvas/IdeaPanel.tsx",
+          "src/canvas/CritiqueCardsLayer.tsx",
+          "src/canvas/ConnectionOverlay.tsx",
+          "apps/web/BeatReviewPanel.tsx",
+          "apps/web/webmcp-tools.ts"
+        ]
+      },
+      "assignee": "codex",
+      "outcome": "partial_slice_landed"
+    },
+    {
+      "dependencies": [
+        "bo-059"
+      ],
+      "id": "bo-044",
+      "status": "in_progress",
+      "title": "Design UI: add per-idea turn log as an on-demand right panel",
+      "goal": "Replace generic history affordances with the reference turn log: a per-idea right-side inspector opened on demand, paginated and filterable, with origin badges plus pin, dismiss, and transfer actions.",
+      "placement": {
+        "swimlaneId": "polish",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/DESIGN_SYSTEM_PROMPT.md:152-156",
+        "Design/src/turnlog.jsx:1-181",
+        "Design/Integration Guide.html:593-633",
+        "Design/DESGN_GAPS_PROMPT.md:70-76",
+        "Design/DESGN_GAPS_PROMPT.md:135-143",
+        "Design/DESGN_GAPS_PROMPT.md:321-335"
+      ],
+      "effort": "m",
+      "comment": "The turn log is history for one idea. It is not the robot's inbox, and it cannot stay a flat unbounded list if AI roles are writing into it regularly.",
+      "definition_of_done": [
+        "A selected idea can open an idea-scoped turn log on the right.",
+        "Turn log entries expose origin, rationale, and transfer/pin/dismiss actions with mono origin badges.",
+        "The log pages in 20 at a time with a `Load earlier` affordance and filter chips for All, AI, User, Critique, and Edit.",
+        "Transfer-to-board creates a new sticky near the current idea rather than replacing the idea or writing into a transcript.",
+        "The turn log stays distinct from any Shadow-mode Robot's Notes or Insight Feed staging surface."
+      ],
+      "constraints": [
+        "Do not turn the turn log into a global chat transcript.",
+        "Do not keep a permanent right rail for the same information.",
+        "Do not treat an unpaginated flat list as sufficient once multiple roles are writing turns."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/canvas",
+        "src/styles.css"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/canvas",
+        "src/styles.css"
+      ],
+      "context": {
+        "tags": [
+          "turn-log",
+          "idea-history",
+          "right-panel",
+          "transfer"
+        ],
+        "notes": "A right-side turn log exists, but the current panel does not yet match the screenshot target in layout, row design, density, or overall visual treatment. Treat the provided screenshots as the design contract here.",
+        "files_touched": [
+          "apps/web/BoardAppView.tsx",
+          "apps/web/IdeaTurnLogPanel.tsx",
+          "apps/web/App.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "outcome": "partial_slice_landed"
+    },
+    {
+      "dependencies": [
+        "bo-038"
+      ],
+      "id": "bo-045",
+      "status": "in_progress",
+      "title": "Design UI: apply the notebook design system to board primitives",
+      "goal": "Bring the live app onto the reference visual language with strict theme parity, forbidden-trope enforcement, reduced-motion support, and typography that keeps board content hand-drawn while longer UI copy stays readable.",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p1"
+      },
+      "references": [
+        "Design/DESIGN_SYSTEM_PROMPT.md:35-113",
+        "Design/Integration Guide.html:340-392",
+        "Design/brainstorm.css:1-230",
+        "Design/screenshots/01-canvas.png:1-1",
+        "Design/DESGN_GAPS_PROMPT.md:186-231",
+        "Design/DESGN_GAPS_PROMPT.md:235-260",
+        "Design/DESGN_GAPS_PROMPT.md:321-336"
+      ],
+      "effort": "l",
+      "comment": "This row is no longer just about making the board prettier. It owns theme parity, reduced motion, and the ban on stock dashboard tropes.",
+      "definition_of_done": [
+        "Board primitives visually resemble the reference stickies and paper surfaces rather than generic cards.",
+        "Both `theme-sketch` and `theme-whiteboard` render correctly from one token system with no component drift between themes.",
+        "The active typography and color tokens come from the design system rather than default app chrome conventions, and longer UI paragraphs use Inter rather than hand-drawn fonts.",
+        "Reduced-motion behavior is implemented globally for the thinking beat, scratch-outs, and connection reveals.",
+        "No gradients, emoji affordances, Shadcn-style accent cards, or other forbidden tropes remain in the live board surface."
+      ],
+      "constraints": [
+        "Do not keep system-ui/Inter as the primary live board language.",
+        "Do not introduce new colors or stock dashboard treatments outside the reference system.",
+        "Do not rely on motion alone to communicate state."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/canvas",
+        "src/styles.css",
+        "assets if needed"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/canvas",
+        "src/styles.css",
+        "public"
+      ],
+      "context": {
+        "tags": [
+          "design-system",
+          "sticky",
+          "paper",
+          "typography"
+        ],
+        "notes": "Theme infrastructure exists, but the current sketch/whiteboard rendering is still far from the provided references. The screenshots show the real target language: irregular sticky shapes, notebook/grid background, typography, borders, shadows, and panel treatment.",
+        "files_touched": [
+          "src/styles.css",
+          "apps/web/AppHeaderBar.tsx",
+          "src/canvas/IdeaPanel.tsx",
+          "src/canvas/GhostPanel.tsx"
+        ]
+      },
+      "assignee": "codex",
+      "outcome": "partial_slice_landed",
+      "blocker_reason": "Notebook visual system and reduced-motion work landed, but strict cross-theme parity/sign-off is deferred with bo-042 instead of continuing the proof rabbit hole."
+    },
+    {
+      "dependencies": [],
+      "id": "bo-046",
+      "title": "WebMCP: remount lifecycle tools per selected idea and bead phase",
+      "goal": "Split W3 tool registration into global board tools, lifecycle-scoped bead tools, and facilitator/control-plane coordination verbs keyed to the selected idea and phase so the active subset mounts and unmounts deterministically.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:321",
+        "ROADMAP.md:327",
+        "ROADMAP.md:329",
+        "WEBMCP_README.md:124",
+        "WEBMCP_README.md:252",
+        "apps/web/webmcp-tools.ts:71",
+        "apps/web/webmcp-tools.ts:638",
+        "apps/web/webmcp-tools.ts:1645",
+        "apps/web/useBrainstormLifecycleEvents.ts:22",
+        "apps/web/useBrainstormWorkspaceEvents.ts:127"
+      ],
+      "comment": "Global board tools, facilitator control-plane tools, and selected-idea lifecycle tools now mount under separate WebMCP controllers, with lifecycle remount keyed to the selected idea and current phase.",
+      "definition_of_done": [
+        "W3 registers global board tools under one controller, lifecycle-scoped bead tools under a controller keyed to selected idea and phase, and facilitator/control-plane coordination verbs under an explicit scoped path rather than ad hoc globals.",
+        "The scope of each bead-contract verb is explicit in code and registration docs: global, lifecycle, or facilitator/control-plane.",
+        "Bead-local tools mount and unmount as selection or phase changes without stale registrations.",
+        "Lifecycle and facilitator writes continue to use the dispatch-and-wait handshake rather than the coarse ideasChanged refresh event."
+      ],
+      "constraints": [
+        "Do not introduce a second phase source of truth; derive from the existing idea phase and SUB_PHASES model.",
+        "Do not bypass the event handshake for lifecycle writes."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "apps/web/App.tsx",
+        "src/orchestrator"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator"
+      ],
+      "related": [
+        "bo-050",
+        "bo-055",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-059",
+        "bo-060"
+      ],
+      "context": {
+        "tags": [
+          "webmcp",
+          "beads",
+          "lifecycle"
+        ],
+        "notes": "Restored explicit lifecycle-scoped registration without introducing a second phase source of truth. Lifecycle writes still use the existing dispatch-and-wait handshake via the app event layer.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-046",
+        "bo-055",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-059",
+        "bo-060"
+      ],
+      "id": "bo-047",
+      "title": "Facilitator policy: autonomy, rolling trust, and auto-backoff",
+      "goal": "Implement the policy outputs that derive configured ceiling versus effective mode, track recent AI outcomes, choose commit-versus-stage behavior, and throttle the robot from Active to Guided or Shadow when the team repeatedly rejects it.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "automation"
+      },
+      "effort": "l",
+      "references": [
+        "README.md:134",
+        "ROADMAP.md:391-422",
+        "ROADMAP.md:427-478",
+        "WEBMCP_README.md:329-369",
+        "Design/DESGN_GAPS_PROMPT.md:45-58",
+        "Design/DESGN_GAPS_PROMPT.md:98-102",
+        "Design/DESGN_GAPS_PROMPT.md:180-182",
+        "Design/DESGN_GAPS_PROMPT.md:314-317",
+        "apps/web/useCompanionAutomation.ts:169-293",
+        "apps/web/webmcpFacilitatorTools.ts:135-167",
+        "src/storage/facilitatorSync.ts:26-48"
+      ],
+      "comment": "Completed. The facilitator now tracks a configured ceiling versus effective mode, records rolling AI action outcomes, throttles itself down to cooldown/shadow behavior after rejection pressure, and exposes that backoff state through the dock and WebMCP autonomy tools instead of silently changing behavior.",
+      "definition_of_done": [
+        "The product exposes explicit facilitation levels and tracks both configured ceiling and effective autonomy state.",
+        "A rolling window records recent autonomous actions and their accept or reject outcomes.",
+        "Policy outputs decide whether a proposal executes, stages, or drops based on effective mode, confidence/strength, and recent reception.",
+        "Passive Observer always stages; Guided Co-Pilot stages unless confidence is high and the board is idle; Active Challenger can commit lower-confidence outputs within the design contract.",
+        "Background beats visibly announce read-the-room backoff and cap states to the UI rather than silently changing behavior."
+      ],
+      "constraints": [
+        "Cooldown must not stop listening or generation; it only throttles execution.",
+        "Backoff must be reversible via explicit pull, phase advance, or renewed acceptance."
+      ],
+      "expected_changes": [
+        "apps/web/useCompanionAutomation.ts",
+        "apps/web/webmcpFacilitatorTools.ts",
+        "src/storage/facilitatorSync.ts",
+        "apps/web/DevCompanionCard.tsx"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src/board"
+      ],
+      "related": [
+        "bo-048",
+        "bo-049"
+      ],
+      "context": {
+        "tags": [
+          "autonomy",
+          "shadow-mode",
+          "backoff"
+        ],
+        "notes": "Depends on the control-plane row because autonomy/backoff is policy behavior, not a separate architectural layer."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-047"
+      ],
+      "id": "bo-048",
+      "title": "Facilitator UI: build Shadow Mode Insight Feed / Robot's Notes",
+      "goal": "Stage AI-generated proposals into a passive Insight Feed / Robot's Notes surface when the facilitator cools down, with labeled intent, explicit actions, passive signaling, and no forced canvas mutation.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "facilitator"
+      },
+      "effort": "m",
+      "references": [
+        "README.md:132",
+        "ROADMAP.md:393-417",
+        "WEBMCP_README.md:356-378",
+        "Design/DESGN_GAPS_PROMPT.md:53-58",
+        "Design/DESGN_GAPS_PROMPT.md:115-119",
+        "apps/web/BeatReviewPanel.tsx:18-95",
+        "apps/web/useBeatReviewActions.ts:32-242",
+        "apps/web/boardBeatReviewSurface.ts:21-53",
+        "src/board/types.ts:208-209"
+      ],
+      "comment": "Completed. Shadow-mode staging now has a dock-accessible Robot's Notes surface backed by shared staged-insight state; automated scout/critique/connection passes can stage into notes instead of mutating the canvas, and staged notes can be applied or dismissed from the dock.",
+      "definition_of_done": [
+        "Staged pending insights persist per board or phase with labels such as Tool Suggestion, Web Context, Grouping Proposal, Critique Draft, Scout Draft, and Connection Draft.",
+        "The UI exposes a collapsible Robot's Notes / Insight Feed surface from the persona dock, and it never auto-opens itself.",
+        "Passive signaling uses a bead badge and/or dock glow, not a popup or notification tray.",
+        "Acting on an item reuses the mapped verbs: Admit, Elaborate, Attach, Group, Shelve, or Dismiss.",
+        "Accepting an insight counts as positive signal for autonomy recovery."
+      ],
+      "constraints": [
+        "Do not hide staged insights in a generic history panel.",
+        "Do not discard suppressed AI proposals when Shadow mode is active.",
+        "Do not implement Shadow mode as a notification tray or modal inbox."
+      ],
+      "expected_changes": [
+        "apps/web/BeatReviewPanel.tsx",
+        "apps/web/useBeatReviewActions.ts",
+        "apps/web/App.tsx",
+        "src/board/types.ts",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/board",
+        "src/storage"
+      ],
+      "related": [
+        "bo-044",
+        "bo-047"
+      ],
+      "context": {
+        "tags": [
+          "shadow-mode",
+          "insight-feed"
+        ],
+        "notes": "Tightened to match the gap prompt's required labels, actions, and passive signaling rules."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-047",
+        "bo-059"
+      ],
+      "id": "bo-049",
+      "title": "History: add AI Undo over AI-authored change sets",
+      "goal": "Expose a targeted AI Undo path for recent AI-authored mutations with a dedicated dock affordance, change-specific tooltip, and skip-over logic for later user-authored changes.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:434-441",
+        "WEBMCP_README.md:383-389",
+        "Design/DESGN_GAPS_PROMPT.md:80-85",
+        "Design/DESGN_GAPS_PROMPT.md:144-147",
+        "src/board/types.ts:270-285",
+        "src/storage/boardController.ts:161-179",
+        "src/storage/boardController.ts:279-307",
+        "apps/web/useBoardSessionActions.ts:243-259",
+        "apps/web/historyTimeline.ts:124-148"
+      ],
+      "comment": "Completed. AI Undo now finds the latest safe AI-authored change set, previews it in the dock, and applies a scoped inverse as a new change set without rewinding later unrelated user changes.",
+      "definition_of_done": [
+        "Recent AI-authored changes are identifiable in history and reversible without manual archaeology.",
+        "The persona dock exposes an `Undo robot` or equivalent affordance that is enabled only when an AI-origin change can be reverted safely.",
+        "The affordance previews the specific change that will be reverted.",
+        "The reversal path skips over later user-authored changes rather than rewinding them as collateral.",
+        "The reversal path does not interfere with generic undo/redo semantics."
+      ],
+      "constraints": [
+        "Do not build a second history store.",
+        "Do not rely on generic full-history undo as the only recovery path."
+      ],
+      "expected_changes": [
+        "apps/web/historyTimeline.ts",
+        "apps/web/useBoardSessionActions.ts",
+        "src/storage/boardController.ts",
+        "src/board/types.ts",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src/board"
+      ],
+      "related": [
+        "bo-047",
+        "bo-059"
+      ],
+      "context": {
+        "tags": [
+          "history",
+          "undo",
+          "ai"
+        ],
+        "notes": "Must-have per the design-gap contract, so promoted to p0."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-038",
+        "bo-046",
+        "bo-047",
+        "bo-060"
+      ],
+      "id": "bo-050",
+      "title": "Facilitation UI: add derived 12-bead bead string",
+      "goal": "Render the 12 micro-phases as a compact derived bead string over SUB_PHASES, with locked, active, completed, needs-attention, and soft-nudge states plus detail-on-click behavior.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p1",
+        "swimlaneId": "facilitator"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:321-329",
+        "ROADMAP.md:337-369",
+        "WEBMCP_README.md:124-126",
+        "WEBMCP_README.md:275-283",
+        "Design/DESGN_GAPS_PROMPT.md:60-68",
+        "Design/DESGN_GAPS_PROMPT.md:125-128",
+        "src/orchestrator/subPhases.ts:45-56"
+      ],
+      "comment": "The bead string is the visual language that makes the 12-step machine legible to humans. The prompt now makes the five bead states explicit, so the row must enforce them.",
+      "definition_of_done": [
+        "The bead string is derived from the existing phase state, not stored as a second workflow model.",
+        "The strip renders all five required states: locked, active, completed, needs_attention, and soft_nudge.",
+        "The strip is compact and persistent at the canvas edge rather than becoming a workflow wizard.",
+        "Clicking a completed bead opens recorded state such as lenses, challenges, rules, or stress tests without creating a parallel transition path.",
+        "Soft cues from suggest_next_bead and flag_bead_for_review surface visually without changing phase; advance_phase remains the only hard transition."
+      ],
+      "constraints": [
+        "Do not create a second phase state store or a separate slide_bead mutation path.",
+        "Do not let the bead string turn back into a sidebar workflow wizard."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/orchestrator",
+        "apps/web/webmcp-tools.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator"
+      ],
+      "related": [
+        "bo-046",
+        "bo-047",
+        "bo-060"
+      ],
+      "context": {
+        "tags": [
+          "beads",
+          "phase-ui"
+        ],
+        "notes": "The derived bead strip is rendered on the board surface and driven from the canonical bead-state helper.",
+        "files_touched": [
+          "apps/web/BoardBeadStrip.tsx",
+          "src/orchestrator/beadState.ts",
+          "src/workspace/BeadStateReadSurface.tsx"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-038",
+        "bo-047"
+      ],
+      "id": "bo-051",
+      "title": "Design UI: replace prototype beat language with role language on live surfaces",
+      "goal": "Remove user-visible prototype beat terminology from the W3 UI and replace it with the role system vocabulary so the live product speaks in roles, not demo beats.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p1",
+        "swimlaneId": "facilitator"
+      },
+      "effort": "m",
+      "references": [
+        "Design/DESGN_GAPS_PROMPT.md:86-88",
+        "Design/DESGN_GAPS_PROMPT.md:110-114",
+        "Design/DESGN_GAPS_PROMPT.md:268-285",
+        "ROADMAP.md:337-369",
+        "apps/web/BoardBeatsCard.tsx:14-174",
+        "apps/web/AppCompanionRail.tsx:171-198",
+        "apps/web/devCompanionCardModel.ts:41-233",
+        "apps/web/useBoardBeatRunner.ts:15-40"
+      ],
+      "comment": "The current live UI still leaks `Scout beat`, `Board Beats`, and related prototype terminology. The design contract says role language is the source of truth.",
+      "definition_of_done": [
+        "User-visible surfaces use `Scout`, `Synthesizer`, `Challenger`, `Historian`, and `Facilitator` instead of prototype beat names.",
+        "The persona dock shows the active role inline.",
+        "Any remaining internal `beat` naming is hidden from the user or intentionally limited to implementation-only code paths.",
+        "Cluster and summarise stop reading like separate public beats; they are presented as role outputs or facilitator actions."
+      ],
+      "constraints": [
+        "Do not rename durable/internal implementation identifiers if doing so would create risky churn with no user-visible benefit.",
+        "Do not leave visible prototype beat copy in cards, labels, or status pills once the role system is in place."
+      ],
+      "expected_changes": [
+        "apps/web/AppCompanionRail.tsx",
+        "apps/web/BoardBeatsCard.tsx",
+        "apps/web/devCompanionCardModel.ts",
+        "apps/web/App.tsx"
+      ],
+      "allowed_paths": [
+        "apps/web"
+      ],
+      "related": [
+        "bo-041",
+        "bo-050"
+      ],
+      "context": {
+        "tags": [
+          "copy",
+          "roles",
+          "design-gap"
+        ],
+        "notes": "Visible prototype beat language was replaced with role/facilitator language on live surfaces, and stray tool-surface copy was cleaned up as well.",
+        "files_touched": [
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/DevCompanionCard.tsx",
+          "apps/web/webmcp-tools.ts"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-043"
+      ],
+      "id": "bo-052",
+      "title": "Design UI: make supporting docs first-class on idea cards",
+      "goal": "Show supporting-doc state directly on every idea card with a paperclip pill and idea-anchored docs popover, and allow docs to be attached from the card or from staged Insight Feed items.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p1",
+        "swimlaneId": "facilitator"
+      },
+      "effort": "m",
+      "references": [
+        "Design/DESGN_GAPS_PROMPT.md:89-94",
+        "Design/DESGN_GAPS_PROMPT.md:157-160",
+        "src/canvas/IdeaPanel.tsx:31-211",
+        "src/canvas/Canvas.tsx:307-307",
+        "apps/web/BoardWorkspaceOverlays.tsx:61-81",
+        "apps/web/useBrainstormSupportingDocEvents.ts:160-169",
+        "apps/web/webmcp-tools.ts:1105-1267"
+      ],
+      "comment": "Docs already affect reasoning, but the surface is still too detached from the idea itself. The design contract requires docs to be visible at the point of thought.",
+      "definition_of_done": [
+        "Every idea card shows a supporting-doc count pill using a real paperclip glyph, not emoji.",
+        "Clicking the pill opens a compact docs popover anchored to the idea rather than a global modal.",
+        "Docs can be attached from the idea surface and from Insight Feed suggestions such as `Attach to Idea X?`.",
+        "The docs surface stays lightweight enough to remain part of the canvas workflow rather than pulling the user into a settings-style flow."
+      ],
+      "constraints": [
+        "Do not hide supporting docs behind a global modal as the primary path.",
+        "Do not use emoji as the paperclip affordance."
+      ],
+      "expected_changes": [
+        "src/canvas/IdeaPanel.tsx",
+        "src/canvas/Canvas.tsx",
+        "apps/web/BoardWorkspaceOverlays.tsx",
+        "apps/web/App.tsx",
+        "apps/web/useBrainstormSupportingDocEvents.ts"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web"
+      ],
+      "related": [
+        "bo-048"
+      ],
+      "context": {
+        "tags": [
+          "docs",
+          "idea-surface",
+          "design-gap"
+        ],
+        "notes": "Supporting docs are first-class on idea cards and in the idea-scoped docs panel rather than hidden behind generic history chrome.",
+        "files_touched": [
+          "apps/web/IdeaDocsPanel.tsx",
+          "src/canvas/IdeaPanel.tsx",
+          "apps/web/useBoardAnalysisActions.ts"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-038"
+      ],
+      "id": "bo-053",
+      "title": "Design UI: align the discard pile to the bottom-left drawer contract",
+      "goal": "Turn the discard pile into the required bottom-left drawer with count, compact recall list, restore-to-position behavior, and explicit compatibility with Historian-driven revive suggestions.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p1",
+        "swimlaneId": "facilitator"
+      },
+      "effort": "m",
+      "references": [
+        "Design/DESGN_GAPS_PROMPT.md:95-97",
+        "Design/DESGN_GAPS_PROMPT.md:162-164",
+        "src/canvas/DiscardPile.tsx:4-102",
+        "apps/web/BoardWorkspaceOverlays.tsx:42-66",
+        "src/storage/boardController.ts:56-67",
+        "apps/web/webmcp-tools.ts:569-608"
+      ],
+      "comment": "The repo already has discard primitives, but the design contract makes this a specific spatial drawer pattern tied to recall and revive behavior.",
+      "definition_of_done": [
+        "Discarded ideas live in a bottom-left drawer with a visible count and collapsible list.",
+        "Restoring an idea returns it to its last known position with a brief re-entry animation rather than dropping it arbitrarily.",
+        "The drawer coexists cleanly with the persona dock and does not force a relayout.",
+        "Historian or Insight Feed revive prompts can target the same drawer/restore flow without hard-deleting discarded context."
+      ],
+      "constraints": [
+        "Do not hard-delete discarded ideas.",
+        "Do not hide the discard pile in an unrelated side panel or settings screen."
+      ],
+      "expected_changes": [
+        "src/canvas/DiscardPile.tsx",
+        "apps/web/BoardWorkspaceOverlays.tsx",
+        "apps/web/App.tsx",
+        "src/storage/boardController.ts"
+      ],
+      "allowed_paths": [
+        "src/canvas",
+        "apps/web",
+        "src/storage/boardController.ts"
+      ],
+      "related": [
+        "bo-041",
+        "bo-048"
+      ],
+      "context": {
+        "tags": [
+          "discard",
+          "historian",
+          "design-gap"
+        ],
+        "notes": "Discard pile is aligned to the bottom-left drawer contract with restore affordances on the board surface.",
+        "files_touched": [
+          "src/canvas/DiscardPile.tsx",
+          "apps/web/BoardAppView.tsx",
+          "src/styles.css"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-038",
+        "bo-046",
+        "bo-057"
+      ],
+      "id": "bo-054",
+      "title": "Facilitation UI: add the must-stay-true rules ribbon",
+      "goal": "Surface must-stay-true rules as a pinned top-of-canvas ribbon with overflow, provenance, and remove affordances so the Facilitator's constraints remain visible after bead 3.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p1",
+        "swimlaneId": "facilitator"
+      },
+      "effort": "m",
+      "references": [
+        "Design/DESGN_GAPS_PROMPT.md:175-178",
+        "Design/DESGN_GAPS_PROMPT.md:332-332",
+        "ROADMAP.md:365-369",
+        "src/orchestrator/subPhases.ts:51-53",
+        "src/orchestrator/stateMachine.ts:236-241",
+        "src/workspace/WorkspaceActiveFlow.tsx:166-166",
+        "apps/web/webmcp-tools.ts:1368-1400"
+      ],
+      "comment": "Rules are not side notes. They feed every later phase prompt, so the board needs a persistent visual home for them.",
+      "definition_of_done": [
+        "A pinned ribbon at the top of the canvas shows must-stay-true rules with max 5 visible and an overflow affordance.",
+        "Each rule is a compact chip with short text, origin badge, and a remove affordance.",
+        "Adding or removing rules is wired to the lifecycle tool path rather than being trapped in the workspace fallback UI only.",
+        "The ribbon remains visible during later beads so stress tests and readiness decisions have an explicit shared constraint surface."
+      ],
+      "constraints": [
+        "Do not hide must-stay-true rules only inside the form-driven workspace flow.",
+        "Do not turn the rules ribbon into a modal or a sidebar list."
+      ],
+      "expected_changes": [
+        "apps/web",
+        "src/orchestrator",
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator"
+      ],
+      "related": [
+        "bo-046",
+        "bo-050",
+        "bo-057"
+      ],
+      "context": {
+        "tags": [
+          "rules",
+          "facilitator",
+          "design-gap"
+        ],
+        "notes": "Must-stay-true rules are visible as a board-top ribbon with overflow handling and edit/remove affordances.",
+        "files_touched": [
+          "apps/web/BoardRulesRibbon.tsx",
+          "apps/web/webmcp-tools.ts",
+          "apps/web/useBrainstormLifecycleEvents.ts"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [],
+      "id": "bo-055",
+      "title": "Facilitator control plane: add Policy Engine and Trigger Matrix",
+      "goal": "Introduce an explicit Facilitator Policy Engine that watches board/workflow context, selects the managerial role, and decides whether each candidate action should execute, stage, or be blocked.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "l",
+      "references": [
+        "README.md:134",
+        "ROADMAP.md:391-422",
+        "WEBMCP_README.md:329-369",
+        "apps/web/useCompanionAutomation.ts:169-293",
+        "apps/web/beatContext.ts:93-155",
+        "apps/web/useBoardSuggestionActions.ts:90-208",
+        "apps/web/useBoardAnalysisActions.ts:99-224",
+        "src/orchestrator/subPhases.ts:45-56",
+        "src/storage/facilitatorSync.ts:26-48"
+      ],
+      "comment": "The facilitator now runs through an explicit policy engine that builds control-plane context, classifies facilitation verbs, selects a managerial role, and decides whether the next action should execute, stage, or stay blocked.",
+      "definition_of_done": [
+        "There is an explicit facilitator context shape spanning board state, bead state, discarded memory, supporting docs, recent AI outcomes, idle/user activity, and relevant W1 context when available.",
+        "A policy engine answers four questions for every candidate action: should the robot act, which role should act, should the result execute or stage, and how strong the intervention should be.",
+        "A trigger matrix exists for Scout, Synthesizer, Challenger, Historian, and Facilitator with priorities, cooldowns, and execute-versus-stage defaults.",
+        "Every facilitation verb is classified as one of: hard transition, durable mutation, soft facilitation signal, or read-only derived state, and policy consumes that classification instead of treating all tools the same.",
+        "The default execution stance is proposal-first rather than mutation-first, with directional or interruptive interventions usually staged before mutation unless the current policy explicitly allows execution.",
+        "The control plane does not create a second workflow engine and does not bypass WebMCP verbs or human override paths."
+      ],
+      "constraints": [
+        "Do not model the robot as a generic assistant detached from the board.",
+        "Do not introduce hidden phase transitions or a second workflow state machine.",
+        "Do not let the control plane mutate the board outside explicit tool/event execution or staged insight surfaces."
+      ],
+      "expected_changes": [
+        "apps/web/useCompanionAutomation.ts",
+        "apps/web/beatContext.ts",
+        "apps/web/useBoardSuggestionActions.ts",
+        "apps/web/useBoardAnalysisActions.ts",
+        "src/storage/facilitatorSync.ts",
+        "src/orchestrator"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src/orchestrator"
+      ],
+      "related": [
+        "bo-046",
+        "bo-047",
+        "bo-048",
+        "bo-049",
+        "bo-050",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-059",
+        "bo-060"
+      ],
+      "context": {
+        "tags": [
+          "policy-engine",
+          "trigger-matrix",
+          "architecture"
+        ],
+        "notes": "Policy metadata now rides with AI-authored facilitator events, and the observer loop consumes policy decisions before dispatching board mutations.",
+        "files_touched": [
+          "apps/web/App.tsx",
+          "apps/web/facilitatorPolicy.ts",
+          "apps/web/useBoardAnalysisActions.ts",
+          "apps/web/useBoardSuggestionActions.ts",
+          "apps/web/useCompanionAutomation.ts",
+          "src/storage/facilitatorSyncEvents.ts"
+        ]
+      },
+      "assignee": "codex"
+    },
+    {
+      "dependencies": [
+        "bo-046",
+        "bo-055"
+      ],
+      "id": "bo-056",
+      "title": "Bead/tool contract: ambiguity management verbs",
+      "goal": "Implement `list_ambiguities` and `resolve_ambiguity` as explicit lifecycle verbs for beads 0 and 1 so ambiguity state is readable, actionable, and no longer trapped inside prompts or passive brief fields.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:341-345",
+        "WEBMCP_README.md:263-273",
+        "WEBMCP_README.md:299-301",
+        "src/types.ts:28-33",
+        "src/orchestrator/stateMachine.ts:163-171",
+        "src/orchestrator/ctmcp.ts:32-40",
+        "src/webmcp/registerPhaseTools.ts:285-323"
+      ],
+      "comment": "Execution started in parallel with bo-059. Ambiguity state is being pulled out of prompt-only flow into explicit read/write lifecycle verbs and handshake-backed mutations.",
+      "definition_of_done": [
+        "`list_ambiguities` is a lifecycle-scoped read-only tool for the selected idea and returns the current ambiguity set for beads 0 and 1 with severity, resolution mode, and resolution state.",
+        "`resolve_ambiguity` is a lifecycle-scoped durable mutation that records how a specific ambiguity was resolved, deferred, or left open, using the handshake path rather than a bare refresh event.",
+        "The source of truth is explicit board/idea state rather than inferred prompt text alone, and clarification questions remain linked back to ambiguity ids.",
+        "Ambiguity state appears in the bead detail / phase inspector and contributes to turn-log or phase-history visibility.",
+        "AI-authored ambiguity resolutions are attributable and reversible through normal history / AI Undo paths."
+      ],
+      "constraints": [
+        "Do not treat answered clarification text alone as a proxy for resolved ambiguity state.",
+        "Do not add a second ambiguity store outside the idea/board source of truth."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "src/types.ts",
+        "src/orchestrator",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-046",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "ambiguity",
+          "lifecycle"
+        ],
+        "notes": "Explicit ambiguity read/write verbs now operate on board-backed idea state, expose linked clarification context, surface ambiguity state in the active workspace flow, and emit attributable change sets that feed derived phase history.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts",
+          "apps/web/useBrainstormLifecycleEvents.ts",
+          "src/orchestrator/stateMachine.ts",
+          "src/storage/phaseHistory.ts",
+          "src/types.ts",
+          "src/workspace/WorkspaceActiveFlow.tsx",
+          "src/workspace/legacyPhaseAdapter.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-046",
+        "bo-055",
+        "bo-059"
+      ],
+      "id": "bo-057",
+      "title": "Bead/tool contract: rule management verbs",
+      "goal": "Implement `add_rule` and `remove_rule` as explicit lifecycle verbs for bead 3 and later beads so must-stay-true constraints are durable, operable, and shared outside the fallback flow.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:365-369",
+        "WEBMCP_README.md:252-252",
+        "WEBMCP_README.md:325-327",
+        "Design/DESGN_GAPS_PROMPT.md:175-178",
+        "src/types.ts:89-105",
+        "src/orchestrator/stateMachine.ts:236-245",
+        "src/webmcp/registerPhaseTools.ts:169-217",
+        "apps/web/webmcp-tools.ts:1368-1400"
+      ],
+      "comment": "Completed. add_rule and remove_rule are lifecycle-scoped durable mutation verbs with handshake-backed completion, shared briefState.mustStayTrueRules state, and canvas-first rule editing/review via the active rules bead.",
+      "definition_of_done": [
+        "`add_rule` and `remove_rule` are lifecycle-scoped durable mutation verbs with explicit schemas and bead ownership centered on bead 3.",
+        "The source of truth is `briefState.mustStayTrueRules`, and both the ribbon UI and bead detail read the same state.",
+        "Rule writes use the dispatch-and-wait handshake, record actor provenance, and do not rely on the workspace fallback form as the only edit path.",
+        "The rules ribbon and later bead inspectors can add, remove, and review rules without leaving the canvas-first flow.",
+        "AI-authored rule mutations are attributable and reversible through normal history / AI Undo paths."
+      ],
+      "constraints": [
+        "Do not leave `confirm_rules` as the only structured path for editing rules.",
+        "Do not hide rule management inside a modal, rail card, or fallback inspector-only flow."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "apps/web",
+        "src/types.ts",
+        "src/orchestrator"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-046",
+        "bo-054",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "rules",
+          "lifecycle"
+        ],
+        "notes": "Makes must-stay-true rules a first-class lifecycle grammar instead of a one-shot phase artifact."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-046",
+        "bo-055",
+        "bo-059"
+      ],
+      "id": "bo-058",
+      "title": "Bead/tool contract: risk management verbs",
+      "goal": "Implement `list_risks` and `patch_risk` as explicit lifecycle verbs for beads 4 and 4.5 so premortem output becomes tracked risk state rather than static critique text.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:353-357",
+        "WEBMCP_README.md:252-252",
+        "WEBMCP_README.md:302-303",
+        "src/types.ts:54-55",
+        "src/types.ts:97-105",
+        "src/orchestrator/stateMachine.ts:248-277",
+        "src/workspace/fallbacks/PremortemQuestions.tsx:102-107",
+        "apps/web/webmcp-tools.ts:1555-1593"
+      ],
+      "comment": "Completed. list_risks and patch_risk are lifecycle-scoped read/write verbs over briefState.risks, the active premortem/stress surface now exposes an editable risk register, and phase history records follow-up-note risk edits as durable lifecycle changes.",
+      "definition_of_done": [
+        "`list_risks` is a lifecycle-scoped read-only tool that returns the current risk set for the selected idea with the metadata needed for beads 4 and 4.5.",
+        "`patch_risk` is a lifecycle-scoped durable mutation for editing risk fields and follow-up annotations, and it uses the handshake path rather than a bare refresh.",
+        "The source of truth is explicit board/idea risk state plus stress linkage, not freeform critique text or fallback-only notes.",
+        "Risk changes appear in premortem/stress detail and phase-history visibility so the facilitator can explain why a review or challenge is still open.",
+        "AI-authored risk mutations are attributable and reversible through normal history / AI Undo paths."
+      ],
+      "constraints": [
+        "Do not collapse risk state into critique cards or board comments only.",
+        "Do not create a separate risk store disconnected from `briefState.risks` and `stressResults`."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "src/types.ts",
+        "src/orchestrator",
+        "src/workspace"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/workspace",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-046",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "risks",
+          "premortem"
+        ],
+        "notes": "Turns premortem and stress beads into explicit risk-management surfaces instead of ad hoc text blobs."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-046",
+        "bo-055"
+      ],
+      "id": "bo-059",
+      "title": "Bead/tool contract: phase history verb",
+      "goal": "Implement `get_phase_history` as a read-only workflow-memory verb so the facilitator and humans can audit why an idea is being nudged now without conflating bead history with generic board change history.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "s",
+      "references": [
+        "WEBMCP_README.md:333-345",
+        "src/types.ts:214-216",
+        "src/orchestrator/stateMachine.ts:150-156",
+        "apps/web/webmcp-tools.ts:185-218",
+        "apps/web/historyTimeline.ts:34-45",
+        "Design/src/turnlog.jsx:1-181",
+        "src/workspace/WorkspaceActiveFlow.tsx:202-202"
+      ],
+      "comment": "Execution started. This is the current critical path because later AI Undo and turn-log work need a derived per-idea phase-history surface before they can be made precise.",
+      "definition_of_done": [
+        "`get_phase_history` is a read-only derived-state verb only; it does not mutate board or workflow state.",
+        "The returned history captures per-idea phase transitions plus the lifecycle mutations that matter for reasoning now: ambiguity resolution, rule changes, risk edits, stress handling, and next-step capture.",
+        "Phase history is explicitly distinguished from generic board change history and from Shadow / Robot's Notes staging.",
+        "The verb can drive the per-idea turn-log inspector and control-plane reasoning without creating a second durable history store.",
+        "Any indexing or caching remains derived from existing turn-log and change-set data rather than becoming a new source of truth."
+      ],
+      "constraints": [
+        "Do not duplicate the full board history model under a second durable phase-history store unless derivation proves impossible.",
+        "Do not collapse phase history into an unfiltered flat log."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/historyTimeline.ts",
+        "src/storage",
+        "src/types.ts",
+        "apps/web"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/storage",
+        "src/types.ts"
+      ],
+      "related": [
+        "bo-044",
+        "bo-049",
+        "bo-055"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "history",
+          "read-only"
+        ],
+        "notes": "get_phase_history is now a read-only derived per-idea workflow-memory surface over existing change sets and turn logs, including phase/readiness moves plus ambiguity, rule, risk, stress, and next-step mutations without a second durable store.",
+        "files_touched": [
+          "apps/web/webmcp-tools.ts",
+          "src/storage/phaseHistory.ts"
+        ]
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [
+        "bo-046",
+        "bo-055"
+      ],
+      "id": "bo-060",
+      "title": "Bead/tool contract: bead coordination verbs",
+      "goal": "Implement `get_bead_state`, `suggest_next_bead`, and `flag_bead_for_review` with explicit verb classes so the bead strip becomes a real facilitation surface instead of a visual metaphor.",
+      "status": "complete",
+      "placement": {
+        "priorityId": "p0",
+        "swimlaneId": "architecture"
+      },
+      "effort": "m",
+      "references": [
+        "ROADMAP.md:325-329",
+        "WEBMCP_README.md:120-134",
+        "WEBMCP_README.md:275-284",
+        "Design/DESGN_GAPS_PROMPT.md:60-68",
+        "src/orchestrator/subPhases.ts:45-56",
+        "apps/web/webmcp-tools.ts:1284-1600",
+        "apps/web/useBrainstormLifecycleEvents.ts:32-211"
+      ],
+      "comment": "Completed. get_bead_state is derived from SUB_PHASES + idea phase + bead coordination metadata; suggest_next_bead and flag_bead_for_review use the lifecycle handshake without creating a parallel transition path; inspector and phase history consume the same source of truth.",
+      "definition_of_done": [
+        "`get_bead_state` is a read-only derived lifecycle/facilitator verb over `SUB_PHASES`, selected idea state, and review/nudge metadata; it does not create a second bead store.",
+        "`suggest_next_bead` is explicitly classified as a soft facilitation signal and never mutates phase.",
+        "`flag_bead_for_review` is explicitly classified as a durable review marker for revisiting a completed bead and records reason, source, and provenance.",
+        "All three verbs declare scope, input/output schema, UI surfaces, and history expectations, and the bead strip consumes the same source of truth.",
+        "`advance_phase` remains the only hard transition path, while bead nudge/review writes use the handshake and remain reversible."
+      ],
+      "constraints": [
+        "Do not create `slide_bead` or any parallel phase-transition mutation.",
+        "Do not let bead metadata drift from selected idea and `SUB_PHASES` state."
+      ],
+      "expected_changes": [
+        "apps/web/webmcp-tools.ts",
+        "apps/web/useBrainstormLifecycleEvents.ts",
+        "apps/web",
+        "src/orchestrator",
+        "src/storage"
+      ],
+      "allowed_paths": [
+        "apps/web",
+        "src/orchestrator",
+        "src/storage"
+      ],
+      "related": [
+        "bo-046",
+        "bo-050",
+        "bo-055",
+        "bo-056",
+        "bo-057",
+        "bo-058",
+        "bo-059"
+      ],
+      "context": {
+        "tags": [
+          "bead-tool-contract",
+          "beads",
+          "coordination"
+        ],
+        "notes": "Defines the bead strip's real runtime grammar: read derived state, nudge softly, and flag review durably."
+      },
+      "assignee": "codex",
+      "blocker_reason": null
+    },
+    {
+      "dependencies": [],
+      "id": "bo-061",
+      "title": "Web readiness: tranche-2 audit and follow-up slicing",
+      "goal": "Audit the live canvas-first board against real interaction paths and open the next tranche of concrete readiness tasks before more polish or proof rabbit holes. Focus on what blocks confident daily use, not narrow viewport/theme perfection.",
+      "status": "deferred",
+      "placement": {
+        "swimlaneId": "design-impl",
+        "priorityId": "p0"
+      },
+      "assignee": null,
+      "effort": "m",
+      "references": [
+        "apps/web/App.tsx:1-900",
+        "apps/web/BoardAppView.tsx:1-200",
+        "docs/BOARD_UI_VERIFICATION_CHECKLIST.md:1-100"
+      ],
+      "comment": "The tracker should not imply the web is ready just because the first shell tranche landed. This row exists to turn the current discomfort into concrete next tasks.",
+      "definition_of_done": [
+        "The current branch has a fresh readiness audit over note capture, canvas manipulation, docs/rules/discard, turn log, and facilitator surfaces.",
+        "Every blocker found is converted into a concrete tracker row or folded into an existing open row.",
+        "Deferred proof rabbit holes remain deferred unless they are shown to block core daily-use flows."
+      ],
+      "constraints": [
+        "Do not burn time on narrow viewport/theme rabbit holes unless they block the core path.",
+        "Do not close this row with a generic summary; it must produce concrete follow-up tasks or an explicit no-blockers finding."
+      ],
+      "expected_changes": [
+        ".llm-tracker/trackers/brainstorming-orchestrator.json",
+        "docs/BOARD_UI_VERIFICATION_CHECKLIST.md"
+      ],
+      "allowed_paths": [
+        ".llm-tracker/trackers/brainstorming-orchestrator.json",
+        "docs/BOARD_UI_VERIFICATION_CHECKLIST.md",
+        "apps/web",
+        "src/canvas",
+        "src/styles.css"
+      ],
+      "context": {
+        "notes": "Keep as a later cleanup row if needed, but the immediate work is no longer to audit broadly. It is to converge the UI directly to the four reference screenshots."
+      },
+      "blocker_reason": "Superseded by user-provided screenshot target. Generic readiness audit is lower value than direct screenshot-parity implementation right now."
+    },
+    {
+      "dependencies": [
+        "bo-044"
+      ],
+      "id": "bo-062",
+      "title": "Turn log data model: persist authoritative origin and rationale",
+      "goal": "Stop inferring AI/User/Critique/Edit and rationale from free text by storing authoritative provenance fields on turn records so the per-idea turn log can render exact filters and badges.",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "architecture",
+        "priorityId": "p1"
+      },
+      "assignee": null,
+      "effort": "m",
+      "references": [
+        "apps/web/IdeaTurnLogPanel.tsx:1-380",
+        "src/storage/ideas.ts:1-260",
+        "src/types.ts:1-340"
+      ],
+      "comment": "bo-044's UI is landed, but the current provenance rendering is heuristic because stored turns only persist role/content today.",
+      "definition_of_done": [
+        "Turn records persist explicit origin/category metadata instead of forcing the UI to infer Critique or Edit from raw text.",
+        "Turn-log rationale is stored as data when available rather than extracted heuristically from message content.",
+        "The turn-log UI can render exact filter counts and origin badges from stored fields."
+      ],
+      "constraints": [
+        "Do not introduce a second parallel turn-log store.",
+        "Do not break existing turn consumers while adding provenance fields."
+      ],
+      "expected_changes": [
+        "src/types.ts",
+        "src/storage/ideas.ts",
+        "apps/web/IdeaTurnLogPanel.tsx"
+      ],
+      "allowed_paths": [
+        "src/types.ts",
+        "src/storage",
+        "apps/web"
+      ],
+      "context": {
+        "notes": "Documents the residual gap surfaced while landing bo-044: provenance works today, but not from authoritative stored fields."
+      }
     }
   ]
 }
