@@ -427,7 +427,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             e.stopPropagation();
             onOpenDocs?.(idea.id);
           }}
-          className={`bo-note-doc-chip nodrag nopan absolute right-2 top-2 z-10 flex items-center gap-1 border px-1.5 py-0.5 text-[10px] font-medium transition-opacity focus:outline-none focus:ring-2 focus:ring-sky-400 ${docCount > 0 || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+          className={`bo-note-doc-chip nodrag nopan absolute right-[68px] top-2 z-10 flex items-center gap-1 border px-1.5 py-0.5 text-[10px] font-medium transition-opacity focus:outline-none focus:ring-2 focus:ring-sky-400 ${docCount > 0 || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
           style={{
             background: notePalette.docChipBackground,
             borderColor: notePalette.docChipBorder,
@@ -446,7 +446,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
 
       <div className="flex h-full flex-col overflow-hidden px-4 pb-4 pt-3.5">
         <p
-          className="bo-note-title line-clamp-3 pr-10"
+          className="bo-note-title line-clamp-3 pr-20"
           style={{
             color: notePalette.inkColor,
             fontFamily: titleFont,
@@ -558,6 +558,26 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
           </div>
         )}
       </div>
+
+      {onOpenIdea && (
+        <button
+          type="button"
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => {
+            e.stopPropagation();
+            onOpenIdea(idea.id);
+          }}
+          className="nodrag nopan absolute right-2 top-2 z-10 rounded-full border px-2 py-1 text-[10px] font-semibold text-gray-800 shadow-sm transition-opacity hover:bg-[#edf5fb] focus:outline-none focus:ring-2 focus:ring-sky-400"
+          style={{
+            borderColor: subtleStroke,
+            background: isSketch ? 'rgba(255, 255, 255, 0.6)' : '#fbfdffeb',
+          }}
+          aria-label="Open selected note"
+          title="Open selected note"
+        >
+          Open
+        </button>
+      )}
 
       {onDiscardIdea && (
         <button
