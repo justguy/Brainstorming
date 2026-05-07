@@ -1,0 +1,61 @@
+name: Claude Issue Triage
+
+# Auto-triages every newly opened issue, regardless of @claude mention.
+# Posts one short comment summarizing the issue and screening for spam,
+# abuse, or harmful content. Uses the subscription OAuth token (no $/run).
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  triage:
+    # Skip if the issue already mentions @claude — claude.yml handles those.
+    if: |
+      !contains(github.event.issue.body, '@claude') &&
+      !contains(github.event.issue.title, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are triaging a newly opened GitHub issue on a public-facing
+            open-source project. Read REVIEW.md at the repo root for the
+            content-policy rules.
+
+            Issue #${{ github.event.issue.number }} — "${{ github.event.issue.title }}"
+
+            Do exactly the following, then stop:
+
+            1. Screen the title and body against REVIEW.md. If the issue
+               contains profanity, slurs, harassment, doxxing, sexual or
+               graphic content, or is obvious spam, post a single comment
+               that says: "This issue was flagged by automated triage as
+               potentially violating our community guidelines. A maintainer
+               will review." Do not engage further.
+
+            2. Otherwise, classify as one of: bug, feature-request, question,
+               discussion, or unclear. Post one short comment (≤ 6 lines)
+               with:
+                 - the classification
+                 - a one-sentence summary in your own words
+                 - if it's a bug and reproduction steps are missing, list the
+                   2–3 specific things the reporter should add
+                 - if it's a feature-request, ask one clarifying question
+                   about scope or use-case if not already obvious
+
+            Keep the tone friendly and concise. Do not write code. Do not
+            apply labels (you don't have permission). Do not open PRs.
+          claude_args: "--max-turns 3"
