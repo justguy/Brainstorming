@@ -2,6 +2,49 @@ import { z } from 'zod';
 import type { ProviderId, LlmMessage } from '../types';
 import { callLlmViaSW } from './llmBridge';
 
+export interface LlmErrorEventDetail {
+  providerId: ProviderId;
+  model: string;
+  message: string;
+  status?: number;
+}
+
+const LLM_ERROR_EVENT = 'brainstorm:llm-error';
+
+function describeError(err: unknown): { message: string; status?: number } {
+  if (err instanceof Error) {
+    const match = /(\b[1-5]\d\d\b)/.exec(err.message);
+    const status = match ? Number(match[1]) : undefined;
+    return { message: err.message, status };
+  }
+  if (typeof err === 'string') return { message: err };
+  try {
+    return { message: JSON.stringify(err) };
+  } catch {
+    return { message: 'Unknown LLM error.' };
+  }
+}
+
+function dispatchLlmError(detail: LlmErrorEventDetail): void {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
+  try {
+    console.info('[retryAndFallback] dispatching brainstorm:llm-error', detail);
+    window.dispatchEvent(new CustomEvent<LlmErrorEventDetail>(LLM_ERROR_EVENT, { detail }));
+  } catch (err) {
+    console.warn('[retryAndFallback] failed to dispatch error event', err);
+  }
+}
+
+/**
+ * Public helper for callers that did not get a usable LLM result and want to
+ * surface a user-visible message via the same banner. Use this when a role
+ * returned null without throwing — e.g. retry succeeded but produced unusable
+ * content, or a downstream parser/validator rejected the output.
+ */
+export function reportLlmFallback(detail: LlmErrorEventDetail): void {
+  dispatchLlmError(detail);
+}
+
 export interface CallWithRetryOptions {
   providerId: ProviderId;
   model: string;
@@ -23,6 +66,7 @@ export async function callWithRetry(
   options: CallWithRetryOptions
 ): Promise<CallWithRetryResult> {
   const { providerId, model, messages, jsonSchema, maxTokens, schema, onFallback } = options;
+  let lastError: unknown = null;
 
   // Attempt 1: call via SW with schema, validate
   try {
@@ -31,6 +75,7 @@ export async function callWithRetry(
     const validated = schema.parse(parsed);
     return { result: validated, usedFallback: false };
   } catch (err1) {
+    lastError = err1;
     console.warn(`[retryAndFallback] Attempt 1 failed for ${providerId}/${model}:`, err1);
   }
 
@@ -47,10 +92,16 @@ export async function callWithRetry(
     const validated = schema.parse(parsed);
     return { result: validated, usedFallback: false };
   } catch (err2) {
+    lastError = err2;
     console.warn(`[retryAndFallback] Attempt 2 failed for ${providerId}/${model}:`, err2);
   }
 
-  // Attempt 3 (terminal): signal fallback
+  // Attempt 3 (terminal): signal fallback and surface the failure to the UI.
+  // Without this dispatch, the user sees a silent fallback (or nothing) when
+  // the provider rejects the request — e.g. 429 quota exhaustion, expired
+  // keys, or 5xx outages — and has no way to know they need to act.
+  const { message, status } = describeError(lastError);
+  dispatchLlmError({ providerId, model, message, status });
   if (onFallback) onFallback();
   return { result: null, usedFallback: true };
 }

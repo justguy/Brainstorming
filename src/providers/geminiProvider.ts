@@ -49,11 +49,28 @@ export const geminiProvider: BaseProvider = {
       ? { parts: [{ text: systemMsg.content }] }
       : undefined;
 
+    // Gemini 2.5 reserves a chunk of the token budget for internal "thinking"
+    // before producing visible output. With our role-call budgets (often
+    // 800–2048), the thinking phase can swallow the entire budget and the
+    // visible response gets zero tokens — finishReason comes back as
+    // MAX_TOKENS with empty content. Pad the requested budget so the visible
+    // response always has room. On 2.5-flash thinking can be disabled
+    // entirely; on 2.5-pro the API still requires a non-zero thinking
+    // budget but we can keep it small.
+    const isGemini25 = /gemini-2\.5/.test(model);
+    const isGemini25Pro = /gemini-2\.5-pro/.test(model);
+    const thinkingBudget = isGemini25Pro ? 256 : 0;
+    const visibleBudget = maxTokens ?? 1024;
+    const totalOutputBudget = isGemini25 ? visibleBudget + thinkingBudget : visibleBudget;
+
     const generationConfig: Record<string, unknown> = {};
-    if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
+    generationConfig.maxOutputTokens = totalOutputBudget;
     if (jsonSchema) {
       generationConfig.responseMimeType = 'application/json';
       generationConfig.responseSchema = sanitizeForGemini(jsonSchema);
+    }
+    if (isGemini25) {
+      generationConfig.thinkingConfig = { thinkingBudget };
     }
 
     const body: Record<string, unknown> = {
@@ -77,12 +94,33 @@ export const geminiProvider: BaseProvider = {
     const data = await res.json();
     const candidate = data?.candidates?.[0];
     const raw = normaliseGeminiParts(candidate?.content?.parts);
+    const finishReason = typeof candidate?.finishReason === 'string' ? candidate.finishReason : 'unknown';
+    const blockReason = typeof data?.promptFeedback?.blockReason === 'string'
+      ? data.promptFeedback.blockReason
+      : undefined;
+    const thoughtsTokenCount = typeof data?.usageMetadata?.thoughtsTokenCount === 'number'
+      ? data.usageMetadata.thoughtsTokenCount
+      : undefined;
     const usage = data?.usageMetadata
       ? {
           input: data.usageMetadata.promptTokenCount ?? 0,
           output: data.usageMetadata.candidatesTokenCount ?? 0,
         }
       : undefined;
+
+    // MAX_TOKENS with no parts (or with truncated content) is the most common
+    // failure mode on 2.5-pro: the thinking phase eats the visible budget and
+    // we get back a stub. Surface a precise error that the retry helper and
+    // banner can show to the user, instead of a meaningless "couldn't parse
+    // JSON" downstream.
+    if (finishReason === 'MAX_TOKENS') {
+      const thoughtsHint = thoughtsTokenCount !== undefined
+        ? ` Thinking consumed ${thoughtsTokenCount} tokens before output.`
+        : '';
+      throw new Error(
+        `Gemini hit the token budget (HTTP 200, finishReason=MAX_TOKENS) before producing a complete response.${thoughtsHint} Try a smaller request, switch to gemini-2.5-flash, or raise the maxTokens budget for this role.`,
+      );
+    }
 
     let parsedJson: unknown;
     if (jsonSchema) {
@@ -94,10 +132,6 @@ export const geminiProvider: BaseProvider = {
     }
 
     if (!raw.trim() && parsedJson === undefined) {
-      const finishReason = typeof candidate?.finishReason === 'string' ? candidate.finishReason : 'unknown';
-      const blockReason = typeof data?.promptFeedback?.blockReason === 'string'
-        ? data.promptFeedback.blockReason
-        : undefined;
       throw new Error(
         `Gemini API returned no usable content (finishReason=${finishReason}${blockReason ? `, blockReason=${blockReason}` : ''}).`,
       );

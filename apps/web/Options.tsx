@@ -8,11 +8,12 @@
  * and operates in the single-page hash router context.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Density, ProviderId, Settings } from '../../src/types';
 import { getSettings, setSettings, setCredential } from '../../src/storage/settings';
 import { selectProvider, ALL_PROVIDERS } from '../../src/providers/index';
 import Button from '../../src/ui/Button';
+import { resetAllLocalData } from './storageReset';
 
 type ValidationState = 'idle' | 'validating' | 'valid' | 'invalid';
 
@@ -42,13 +43,46 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
   const [activeProvider, setActiveProvider] = useState<ProviderId>('gemini');
   const [activeModel, setActiveModel] = useState<string>('gemini-2.5-pro');
   const [density, setDensity] = useState<Density>('standard');
+  // The inputs are uncontrolled (defaultValue + ref). Earlier we used
+  // `value=` controlled inputs and on this user's setup keystrokes never
+  // triggered onChange — likely a global capture-phase listener interacting
+  // poorly with React's controlled-input synchronization. Refs sidestep the
+  // issue: the browser owns the field, we read the value at save time. We
+  // still track validation state so the marker (✓/✗) renders.
   const [providerKeys, setProviderKeys] = useState<Record<ProviderId, ProviderKeyState>>({
     gemini: { key: '', validation: 'idle' },
     openai: { key: '', validation: 'idle' },
     anthropic: { key: '', validation: 'idle' },
   });
+  const keyInputRefs = useRef<Record<ProviderId, HTMLInputElement | null>>({
+    gemini: null,
+    openai: null,
+    anthropic: null,
+  });
+
+  function readKey(providerId: ProviderId): string {
+    return keyInputRefs.current[providerId]?.value ?? providerKeys[providerId].key;
+  }
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [resetStatus, setResetStatus] = useState<'idle' | 'resetting'>('idle');
+
+  async function handleResetLocalData() {
+    if (resetStatus === 'resetting') return;
+    const confirmed = window.confirm(
+      'Reset all local data?\n\n' +
+        'This permanently deletes every idea, supporting doc, critique, suggestion, ' +
+        'connection, and saved API key from this browser. There is no server-side ' +
+        'backup. The page will reload.'
+    );
+    if (!confirmed) return;
+    setResetStatus('resetting');
+    try {
+      await resetAllLocalData();
+    } catch {
+      setResetStatus('idle');
+    }
+  }
 
   useEffect(() => {
     getSettings().then(s => {
@@ -62,6 +96,11 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
           const stored = s.credentials[id];
           if (stored) {
             next[id] = { key: stored, validation: 'idle' };
+            // Inputs are uncontrolled — defaultValue only takes effect on
+            // first mount, so push loaded credentials into the live DOM
+            // value once the refs are wired.
+            const el = keyInputRefs.current[id];
+            if (el && el.value === '') el.value = stored;
           }
         }
         return next;
@@ -69,29 +108,13 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
     });
   }, []);
 
-  function updateKey(providerId: ProviderId, key: string) {
-    setProviderKeys(prev => ({
-      ...prev,
-      [providerId]: { key, validation: 'idle' },
-    }));
-  }
-
-  function handleKeyInput(providerId: ProviderId, event: React.FormEvent<HTMLInputElement>) {
-    updateKey(providerId, event.currentTarget.value);
-  }
-
-  function handleKeyPaste(providerId: ProviderId, event: React.ClipboardEvent<HTMLInputElement>) {
-    const pasted = event.clipboardData.getData('text');
-    if (!pasted) return;
-    event.preventDefault();
-    updateKey(providerId, pasted);
-  }
 
   async function handleValidateAndSave() {
     setSaveStatus('saving');
     setSaveError(null);
 
-    const activeKey = providerKeys[activeProvider].key.trim();
+    // Read straight from the DOM since the inputs are uncontrolled.
+    const activeKey = readKey(activeProvider).trim();
     if (!activeKey) {
       setSaveError(`API key for ${PROVIDER_LABELS[activeProvider]} is required.`);
       setSaveStatus('error');
@@ -115,6 +138,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
       ...prev,
       [activeProvider]: {
         ...prev[activeProvider],
+        key: activeKey,
         validation: valid ? 'valid' : 'invalid',
       },
     }));
@@ -127,7 +151,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
 
     try {
       for (const id of ['gemini', 'openai', 'anthropic'] as ProviderId[]) {
-        const k = providerKeys[id].key.trim();
+        const k = readKey(id).trim();
         if (k) await setCredential(id, k);
       }
       await setSettings({ activeProvider, activeModel, density });
@@ -225,12 +249,22 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
                       </label>
                       <div className="flex items-center gap-2">
                         <input
+                          ref={el => { keyInputRefs.current[provider.id] = el; }}
                           id={`key-${provider.id}`}
                           type="text"
-                          value={providerKeys[provider.id].key}
-                          onChange={e => updateKey(provider.id, e.target.value)}
-                          onInput={event => handleKeyInput(provider.id, event)}
-                          onPaste={event => handleKeyPaste(provider.id, event)}
+                          defaultValue={providerKeys[provider.id].key}
+                          onInput={() => {
+                            // Reset the validation marker when the user edits
+                            // the field. We do not mirror the value into React
+                            // state — the input is uncontrolled.
+                            const current = providerKeys[provider.id].validation;
+                            if (current !== 'idle') {
+                              setProviderKeys(prev => ({
+                                ...prev,
+                                [provider.id]: { ...prev[provider.id], validation: 'idle' },
+                              }));
+                            }
+                          }}
                           placeholder={isActive ? 'Required' : 'Optional'}
                           autoComplete="off"
                           autoCorrect="off"
@@ -332,6 +366,38 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
           Keys are stored in the browser's IndexedDB-backed settings store on this device.
           Legacy localStorage values are migrated on first load.
         </p>
+
+        <section className="mt-8 border-t border-gray-100 pt-6" aria-labelledby="local-data-heading">
+          <h2 id="local-data-heading" className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Local data
+          </h2>
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Everything you do in this app — ideas, supporting docs, critiques, suggestions,
+            connections, and your API keys — lives in this browser only. Nothing is sent to a
+            server we operate. That means:
+          </p>
+          <ul className="mt-2 list-disc pl-5 text-xs text-gray-600 leading-relaxed space-y-1">
+            <li>Clearing browser data or using incognito will wipe your boards.</li>
+            <li>Switching browsers or devices does not carry your work over.</li>
+            <li>There is no automatic backup. Use the export tools if you need one.</li>
+          </ul>
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-3">
+            <p className="text-xs font-medium text-red-800">Reset all local data</p>
+            <p className="mt-1 text-[11px] text-red-700 leading-relaxed">
+              Permanently deletes every board, idea, doc, critique, suggestion, and saved
+              API key from this browser. Useful when sharing the app with someone else or
+              starting from a clean slate.
+            </p>
+            <button
+              type="button"
+              onClick={handleResetLocalData}
+              disabled={resetStatus === 'resetting'}
+              className="mt-3 rounded-md border border-red-400 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-60"
+            >
+              {resetStatus === 'resetting' ? 'Resetting…' : 'Reset all data'}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

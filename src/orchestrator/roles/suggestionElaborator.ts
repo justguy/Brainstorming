@@ -4,9 +4,9 @@ import type { RoleSpec } from '../ctmcp';
 import type { Idea, ScoutSuggestion } from '../../types';
 
 const schema = z.object({
-  elaboration: z.string().min(40).max(1200),
-  subSuggestions: z.array(z.string().min(10).max(240)).max(5),
-  implicationsIfAdmitted: z.array(z.string().min(10).max(240)).max(5),
+  elaboration: z.string().min(12).max(1200),
+  subSuggestions: z.array(z.string().min(4).max(240)).max(5),
+  implicationsIfAdmitted: z.array(z.string().min(4).max(240)).max(5),
 });
 
 type Output = z.infer<typeof schema>;

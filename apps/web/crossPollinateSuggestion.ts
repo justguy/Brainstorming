@@ -1,5 +1,6 @@
 import type { BoardDocument } from '../../src/board/types';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
+import { reportLlmFallback } from '../../src/orchestrator/retryAndFallback';
 import {
   buildCrossPollinateTask,
   crossPollinate,
@@ -37,12 +38,34 @@ export async function runCrossPollinateSuggestion(args: {
   const liveIdeas = args.ideas.filter(idea => idea.status !== 'archived' && idea.status !== 'discarded');
   if (liveIdeas.length < 2) return null;
 
-  const { result } = await runAdhocRole<CrossPollinateOutput>(
+  const { result, providerId, model } = await runAdhocRole<CrossPollinateOutput>(
     crossPollinate,
     buildCrossPollinateTask({ liveIdeas, existingSuggestions: args.existingSuggestions }),
   );
-  const proposal = result?.proposal;
-  if (!proposal) return null;
+  // Distinguish three outcomes: model gave us a usable proposal, model declined
+  // explicitly with a reason (skipReason), or the call failed / returned null
+  // entirely. Only the first is silent — the user invoked the action and
+  // deserves to know if nothing came back.
+  if (!result) {
+    reportLlmFallback({
+      providerId,
+      model,
+      message: 'Cross-pollinate could not produce a proposal. The model returned no usable result.',
+    });
+    return null;
+  }
+  const proposal = result.proposal;
+  if (!proposal) {
+    const reason = result.skipReason?.trim();
+    reportLlmFallback({
+      providerId,
+      model,
+      message: reason
+        ? `Cross-pollinate skipped this round: ${reason}`
+        : 'Cross-pollinate did not find a strong enough pair on the board to merge right now.',
+    });
+    return null;
+  }
 
   const [ideaIdA, ideaIdB] = proposal.sourceIdeaIds;
   if (!ideaIdA || !ideaIdB || ideaIdA === ideaIdB) return null;

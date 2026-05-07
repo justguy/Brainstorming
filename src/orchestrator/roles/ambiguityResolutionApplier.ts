@@ -2,22 +2,23 @@ import { z } from 'zod';
 import { zodToJsonSchema } from '../ctmcp';
 import type { RoleSpec } from '../ctmcp';
 import type { Ambiguity, ClarificationQuestion, Idea } from '../../types';
+import { nullableEnum, nullableString } from './schemaHelpers';
 
-const nextStepSchema = z.enum([
+const NEXT_STEP_VALUES = [
   'planning',
   'prototyping',
   'research',
   'stakeholder_review',
   'defer',
-]);
+] as const;
 
 const schema = z.object({
   status: z.enum(['resolved', 'deferred']),
-  resolutionNote: z.string().min(12).max(260),
+  resolutionNote: z.string().min(4).max(260),
   action: z.enum(['resolve_only', 'add_rule', 'choose_next_step']),
-  rule: z.union([z.string().min(8).max(180), z.null()]),
-  nextStep: z.union([nextStepSchema, z.null()]),
-  userSummary: z.string().min(12).max(220),
+  rule: nullableString({ min: 8, max: 180 }),
+  nextStep: nullableEnum(NEXT_STEP_VALUES),
+  userSummary: z.string().min(4).max(220),
 });
 
 type Output = z.infer<typeof schema>;
@@ -41,8 +42,8 @@ Rules:
 - Otherwise choose resolve_only.
 - Never repeat an existing rule verbatim.
 - Never choose choose_next_step if the current next step is already correct.
-- rule must be null unless action is add_rule.
-- nextStep must be null unless action is choose_next_step.
+- rule must be JSON null (not the string "null") unless action is add_rule.
+- nextStep must be JSON null (not the string "null") unless action is choose_next_step. When non-null, it must be one of: planning, prototyping, research, stakeholder_review, defer.
 - userSummary must describe the durable change in one sentence.
 - Return only JSON matching the schema.`,
 

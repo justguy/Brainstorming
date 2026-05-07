@@ -19,9 +19,10 @@ export interface IdeaFlowNodeData extends IdeaFlowNodeCallbacks, Record<string, 
   selected?: boolean;
   tone?: IdeaTone;
   docCount?: number;
+  displayHeight?: number;
   groupColor?: string;
   highlight?: boolean;
-  mergeProgress?: number;
+  merging?: boolean;
   beingMergedInto?: boolean;
   linkModeEnabled?: boolean;
   linkModeAnchor?: boolean;

@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection, Idea, LlmMessage, Panel } from '../../src/types';
 import Options from './Options';
+import AppLlmErrorBanner from './AppLlmErrorBanner';
 import { useBrainstormingTools, dispatchAndWait } from './webmcp-tools';
 import Workspace, { WorkspacePhaseFlow } from '../../src/workspace/Workspace';
 import { IdeaAttentionPanel } from '../../src/workspace/IdeaAttentionPanel';
@@ -142,11 +143,26 @@ export default function App(): React.ReactElement {
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
   const persistedFacilitatorPaused = Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]);
 
-  const visibleIdeas = ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded');
-  const discardedIdeas = ideas.filter(i => i.status === 'discarded');
+  // These derive from `ideas` and a few collections; without memoization a
+  // 1-second clock tick from useCompanionAutomation re-creates every array
+  // on each render and forces React Flow to re-project + restyle every node.
+  const visibleIdeas = useMemo(
+    () => ideas.filter(i => i.status !== 'archived' && i.status !== 'discarded'),
+    [ideas],
+  );
+  const discardedIdeas = useMemo(
+    () => ideas.filter(i => i.status === 'discarded'),
+    [ideas],
+  );
   const usingDemoBoard = boardReady && visibleIdeas.length === 0 && connections.length === 0 && critiques.length === 0 && suggestions.length === 0;
-  const demoSuggestions = DEMO_FALLBACK_SUGGESTIONS.filter(suggestion => !dismissedDemoSuggestionIds.includes(suggestion.id));
-  const demoCritiques = DEMO_FALLBACK_CRITIQUES.filter(critique => !dismissedDemoCritiqueIds.includes(critique.id));
+  const demoSuggestions = useMemo(
+    () => DEMO_FALLBACK_SUGGESTIONS.filter(suggestion => !dismissedDemoSuggestionIds.includes(suggestion.id)),
+    [dismissedDemoSuggestionIds],
+  );
+  const demoCritiques = useMemo(
+    () => DEMO_FALLBACK_CRITIQUES.filter(critique => !dismissedDemoCritiqueIds.includes(critique.id)),
+    [dismissedDemoCritiqueIds],
+  );
   const canvasIdeas = usingDemoBoard ? DEMO_FALLBACK_IDEAS : visibleIdeas;
   const canvasConnections = usingDemoBoard ? DEMO_FALLBACK_CONNECTIONS : connections;
   const selectedBoardIdea = usingDemoBoard ? null : ideas.find(i => i.id === selectedId) ?? null;
@@ -913,6 +929,7 @@ export default function App(): React.ReactElement {
   return (
     <>
       {appView}
+      <AppLlmErrorBanner />
       {webMcpModalOpen && webMcpUnavailableStatus ? (
         <WebMcpAvailabilityModal
           open={webMcpModalOpen}
