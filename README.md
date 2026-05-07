@@ -248,6 +248,24 @@ npm run typecheck
 - `KILLER_DEMO.md`: demo framing.
 - `EXECUTION.md`: earlier execution and acceptance notes.
 
+## Design References
+
+The repo ships with two parallel design directories that capture the visual
+exploration the live app is built against. They are *not* the running app —
+they are static HTML/CSS prototypes plus the prompts that produced them. Open
+the HTML files directly in a browser to see the target look and feel.
+
+- `Design/` — the canonical design system. Contains `Brainstorm.html` and
+  `Integration Guide.html` mockups, the shared `brainstorm.css`, screenshots,
+  and the `DESIGN_SYSTEM_PROMPT.md` / `DESGN_GAPS_PROMPT.md` that authored them.
+- `Brainstorm/` — earlier exploration, including the Inspector and
+  Clarifications redesigns (`Inspector Redesign.html`,
+  `Clarifications Redesign.html`) and `DESIGN_PROMPT.md` /
+  `DESIGN_GAPS_PROMPT.md`.
+
+Contributors working on visual changes should reference the prototypes in
+`Design/` first before changing component styles in `apps/web/` or `src/`.
+
 ## Storage Model
 
 - IndexedDB stores ideas, groups, docs, suggestions, critiques, and related local board state.
