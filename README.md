@@ -1,5 +1,7 @@
 # Brainstorming Orchestrator
 
+**Live app:** https://brainstormapp.studio/ — bring your own LLM API key, no signup, your data stays in your browser.
+
 A local-first brainstorming workspace where an AI facilitator works directly on your canvas, not in a chat sidebar.
 
 Instead of asking an AI for ideas, the AI participates like a teammate:
@@ -276,6 +278,12 @@ Humans remain the final authority: they can accept, reject, override, advance ma
 - Chromium-based browser for the extension
 - At least one LLM API key for Gemini, OpenAI, or Anthropic
 
+## Try It Without Cloning
+
+The current build is hosted at **https://brainstormapp.studio/**. Bring your own API key (Gemini, OpenAI, or Anthropic), enter it in Options, and you can use the full app — boards, ideas, suggestions, and critiques live entirely in your browser's IndexedDB. No signup, no server-side storage of your work.
+
+If you only want to try the app or report bugs against the live build, you can stop here. The local development setup below is only needed if you want to contribute code.
+
 ## Development
 
 ```bash
@@ -318,11 +326,18 @@ npm run typecheck
 
 ## BYOK Setup
 
-1. Open the extension options page or the standalone web app settings.
+Whether you're on the live app at https://brainstormapp.studio/, a local
+build, or the extension:
+
+1. Open the extension options page or the web app settings (`#/options`).
 2. Choose Gemini, OpenAI, or Anthropic.
 3. Paste the API key.
 4. Select a model.
 5. Save.
+
+Keys are stored only in your browser (IndexedDB-backed settings store) on
+the device you entered them on. They are never sent to any server we
+operate — they go directly from your browser to the chosen LLM provider.
 
 ## Key Docs
 
