@@ -1,5 +1,7 @@
 # Brainstorming Orchestrator
 
+> **Looking for maintainers and contributors.** This project is being opened to community ownership. If you'd like to help take it forward, see [`MAINTAINERS.md`](./MAINTAINERS.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
 A local-first brainstorming workspace where an AI facilitator works directly on your canvas, not in a chat sidebar.
 
 Instead of asking an AI for ideas, the AI participates like a teammate:
@@ -270,3 +272,19 @@ npm run typecheck
 npm run build
 npm run build:web
 ```
+
+## Contributing
+
+Contributions are very welcome. Start here:
+
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — setup, dev loop, PR conventions.
+- [`MAINTAINERS.md`](./MAINTAINERS.md) — current ownership and how to step up.
+- [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) — community standards.
+- [`SECURITY.md`](./SECURITY.md) — how to report vulnerabilities privately.
+- [`ROADMAP.md`](./ROADMAP.md) — larger initiatives open for ownership.
+
+Good first areas to pick up are listed in `MAINTAINERS.md`. Look for issues labeled `good first issue` or `help wanted`.
+
+## License
+
+[MIT](./LICENSE) © 2026 Adi Levinshtein and contributors.
