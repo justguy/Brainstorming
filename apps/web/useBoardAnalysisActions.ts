@@ -321,14 +321,16 @@ export function useBoardAnalysisActions({
   ): Promise<void> {
     const critique = await getCritique(id);
     if (!critique) {
-      console.error('[App] accept critique failed: missing critique', id);
-      return;
+      const err = new Error(`Missing critique "${id}".`);
+      console.error('[App] accept critique failed:', err);
+      throw err;
     }
 
     const idea = ideas.find(entry => entry.id === critique.ideaId);
     if (!idea) {
-      console.error('[App] accept critique failed: missing idea', critique.ideaId);
-      return;
+      const err = new Error(`Missing idea "${critique.ideaId}".`);
+      console.error('[App] accept critique failed:', err);
+      throw err;
     }
 
     setCritiqueBusyByIdea(prev => ({ ...prev, [idea.id]: true }));
@@ -338,6 +340,7 @@ export function useBoardAnalysisActions({
       handleHighlight([idea.id]);
     } catch (err) {
       console.error('[App] accept critique failed:', err);
+      throw err;
     } finally {
       setCritiqueBusyByIdea(prev => ({ ...prev, [idea.id]: false }));
     }

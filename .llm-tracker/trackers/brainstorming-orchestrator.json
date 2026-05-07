@@ -71,8 +71,8 @@
       }
     ],
     "scratchpad": "The four 2026-04-19 reference screenshots are now the canonical UI target for both sketch and whiteboard. Prior close-out on the shell/design tranche overstated progress: the current branch has partial infrastructure, but it does not yet match the screenshot composition, surface language, or turn-log presentation. Reopening the screenshot-parity rows and deferring the generic readiness audit because the immediate job is direct convergence to the provided images.",
-    "rev": 116,
-    "updatedAt": "2026-04-20T13:17:33.194Z"
+    "rev": 118,
+    "updatedAt": "2026-04-22T02:46:34.076Z"
   },
   "tasks": [
     {

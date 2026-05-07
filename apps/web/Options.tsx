@@ -13,6 +13,7 @@ import type { Density, ProviderId, Settings } from '../../src/types';
 import { getSettings, setSettings, setCredential } from '../../src/storage/settings';
 import { selectProvider, ALL_PROVIDERS } from '../../src/providers/index';
 import Button from '../../src/ui/Button';
+import { resetAllLocalData } from './storageReset';
 
 type ValidationState = 'idle' | 'validating' | 'valid' | 'invalid';
 
@@ -49,6 +50,24 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
   });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [resetStatus, setResetStatus] = useState<'idle' | 'resetting'>('idle');
+
+  async function handleResetLocalData() {
+    if (resetStatus === 'resetting') return;
+    const confirmed = window.confirm(
+      'Reset all local data?\n\n' +
+        'This permanently deletes every idea, supporting doc, critique, suggestion, ' +
+        'connection, and saved API key from this browser. There is no server-side ' +
+        'backup. The page will reload.'
+    );
+    if (!confirmed) return;
+    setResetStatus('resetting');
+    try {
+      await resetAllLocalData();
+    } catch {
+      setResetStatus('idle');
+    }
+  }
 
   useEffect(() => {
     getSettings().then(s => {
@@ -332,6 +351,38 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
           Keys are stored in the browser's IndexedDB-backed settings store on this device.
           Legacy localStorage values are migrated on first load.
         </p>
+
+        <section className="mt-8 border-t border-gray-100 pt-6" aria-labelledby="local-data-heading">
+          <h2 id="local-data-heading" className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Local data
+          </h2>
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Everything you do in this app — ideas, supporting docs, critiques, suggestions,
+            connections, and your API keys — lives in this browser only. Nothing is sent to a
+            server we operate. That means:
+          </p>
+          <ul className="mt-2 list-disc pl-5 text-xs text-gray-600 leading-relaxed space-y-1">
+            <li>Clearing browser data or using incognito will wipe your boards.</li>
+            <li>Switching browsers or devices does not carry your work over.</li>
+            <li>There is no automatic backup. Use the export tools if you need one.</li>
+          </ul>
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-3">
+            <p className="text-xs font-medium text-red-800">Reset all local data</p>
+            <p className="mt-1 text-[11px] text-red-700 leading-relaxed">
+              Permanently deletes every board, idea, doc, critique, suggestion, and saved
+              API key from this browser. Useful when sharing the app with someone else or
+              starting from a clean slate.
+            </p>
+            <button
+              type="button"
+              onClick={handleResetLocalData}
+              disabled={resetStatus === 'resetting'}
+              className="mt-3 rounded-md border border-red-400 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-60"
+            >
+              {resetStatus === 'resetting' ? 'Resetting…' : 'Reset all data'}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

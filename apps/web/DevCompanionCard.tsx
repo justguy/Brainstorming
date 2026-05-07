@@ -31,7 +31,8 @@ interface RobotBadgeIconProps {
 export function DevCompanionCard(props: DevCompanionCardProps): React.ReactElement {
   const mode = companionMode(props);
   const roleModel = companionRoleModel(props);
-  const roleLabel = 'Bot';
+  const rawRoleTag = roleModel.roleTag?.trim() || 'Bot';
+  const roleLabel = rawRoleTag.toLowerCase();
   const nudgeLabel = props.actionInProgress ? 'drafting…' : 'nudge me';
   const statusInline = props.facilitatorPaused
     ? 'paused'
@@ -109,7 +110,7 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
               className="bo-persona-btn bo-persona-btn--undo"
               title={props.undoRobotLabel}
             >
-              Undo
+              undo robot
             </button>
           </div>
         )}
@@ -124,24 +125,24 @@ function buildDockPrompt(
   roleLabel: string,
 ): string {
   if (props.hasApiKey === false) {
-    return 'No provider yet. Add a key in Options and I can start making suggestions and challenges.';
+    return 'no provider key. add one in options and i will start scouting.';
   }
   if (props.facilitatorPaused) {
-    return 'Automation is paused. I can stay quiet until you resume me.';
+    return 'paused. ping me when you want another pass.';
   }
   if (props.activeBeatRun) {
-    return `${roleLabel} is running now. I’ll stage the result on the board.`;
+    return `${roleLabel.toLowerCase()} is running. staging the result on the board.`;
   }
   if (props.focusIdeaText) {
-    return `Looking at "${props.focusIdeaText}". Want me to press on it?`;
+    return `pressing on '${props.focusIdeaText}'. listening for weak spots.`;
   }
   if (props.pendingBoardChange || props.interactionSuppressed) {
-    return 'I’m watching the current thread. Want me to press on it?';
+    return 'watching this thread. ready when you are.';
   }
   if (modeHeadline.toLowerCase().includes('ready')) {
-    return 'The board is settled. Want me to push on the next step?';
+    return 'board is settled. next move?';
   }
-  return 'Looking at the board. Want me to press on it?';
+  return 'reading the board. standing by.';
 }
 
 function RobotBadgeIcon({ className = 'h-8 w-8' }: RobotBadgeIconProps): React.ReactElement {
