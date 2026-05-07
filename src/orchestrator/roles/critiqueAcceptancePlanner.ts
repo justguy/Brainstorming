@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from '../ctmcp';
 import type { RoleSpec } from '../ctmcp';
 import type { Idea, IdeaCritique } from '../../types';
+import { nullableString } from './schemaHelpers';
 
 const schema = z.object({
   action: z.enum(['choose_next_step', 'add_rule', 'suggest_next_bead']),
@@ -12,8 +13,10 @@ const schema = z.object({
     'stakeholder_review',
     'defer',
   ]),
-  rule: z.union([z.string().min(8).max(180), z.null()]),
-  forwardReason: z.string().min(12).max(220),
+  // Tolerant of "null"/""/"none" so a single phrasing slip doesn't burn the
+  // retry budget — see schemaHelpers.ts.
+  rule: nullableString({ min: 8, max: 180 }),
+  forwardReason: z.string().min(8).max(220),
 });
 
 type Output = z.infer<typeof schema>;
@@ -32,7 +35,8 @@ Available durable writes:
 Rules:
 - action must name the single best write to apply now.
 - nextStep must always recommend the best next step, even if action is not choose_next_step.
-- rule must be one short, specific invariant only when the critique reveals a missing hard constraint. Otherwise return null.
+- rule must be one short, specific invariant only when the critique reveals a missing hard constraint. Otherwise return JSON null (not the string "null").
+- nextStep must be one of: planning, prototyping, research, stakeholder_review, defer.
 - forwardReason must explain the concrete forward move in one sentence.
 - Never repeat an existing rule verbatim.
 - Never choose choose_next_step if the current next step is already correct.

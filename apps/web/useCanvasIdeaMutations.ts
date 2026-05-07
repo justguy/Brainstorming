@@ -4,6 +4,7 @@ import type { BoardDocument } from '../../src/board/types';
 import type { BoardGroupCommitResult, BoardHistoryState } from '../../src/storage/boardControllerTypes';
 import { createBoardController } from '../../src/storage/boardController';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
+import { reportLlmFallback } from '../../src/orchestrator/retryAndFallback';
 import { groupThemer, buildGroupThemerTask, type GroupThemerOutput } from '../../src/orchestrator/roles/groupThemer';
 import { ideaMerger, buildIdeaMergerTask, type IdeaMergerOutput } from '../../src/orchestrator/roles/ideaMerger';
 
@@ -38,8 +39,17 @@ export function useCanvasIdeaMutations({
     if (groupIdeas.length < 2) return;
 
     const task = buildGroupThemerTask(groupIdeas);
-    const { result } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
-    if (!result) return;
+    const { result, providerId, model } = await runAdhocRole<GroupThemerOutput>(groupThemer, task);
+    if (!result) {
+      // Surface the silent failure so the user sees that auto-naming gave up.
+      // The group is still on the board with a placeholder name they can edit.
+      reportLlmFallback({
+        providerId,
+        model,
+        message: "The group was created but auto-naming returned no usable result. You can rename the group inline.",
+      });
+      return;
+    }
 
     const themed = await boardController.setGroupTheme({
       groupId: group.id,
@@ -163,19 +173,35 @@ export function useCanvasIdeaMutations({
     setCanvasBusy('Merging ideas…');
     try {
       const task = buildIdeaMergerTask(a, b);
-      const { result } = await runAdhocRole<IdeaMergerOutput>(ideaMerger, task);
-      if (!result) {
-        console.warn('[App] merge LLM call returned no result — skipping merge.');
-        return;
+      const { result, providerId, model } = await runAdhocRole<IdeaMergerOutput>(ideaMerger, task);
+      // Manual fallback: if the LLM cannot synthesize a merge, do NOT drop the
+      // user's drag gesture. Concatenate both texts so the merge still happens
+      // and they can edit the result. Surface a banner so the user knows the
+      // AI did not contribute and that they may want to clean up the text.
+      const fallback = !result;
+      const mergedRawText = result?.mergedRawText
+        ?? `${a.rawText.trim()}\n\n— merged with —\n\n${b.rawText.trim()}`;
+      const mergedTags = result?.mergedTags
+        ?? Array.from(new Set([...(a.tags ?? []), ...(b.tags ?? [])])).slice(0, 10);
+      const synthesisNotes = result?.synthesisNotes
+        ?? 'Manual fallback merge: AI did not return synthesis notes. Edit the merged note to reflect what changed.';
+      const tensions = result?.tensions ?? [];
+
+      if (fallback) {
+        reportLlmFallback({
+          providerId,
+          model,
+          message: 'Merged the two notes by concatenating their text — the AI did not return a synthesized merge. Open the merged note to clean it up.',
+        });
       }
 
       const committed = await boardController.mergeIdeas({
         draggedId,
         targetId,
-        mergedRawText: result.mergedRawText,
-        mergedTags: result.mergedTags,
-        synthesisNotes: result.synthesisNotes,
-        tensions: result.tensions,
+        mergedRawText,
+        mergedTags,
+        synthesisNotes,
+        tensions,
         actor: actorFor(source),
       });
       applyCommittedBoard(committed.document, committed.history);
@@ -183,6 +209,11 @@ export function useCanvasIdeaMutations({
       markActivity('edit');
     } catch (err) {
       console.error('[App] merge failed:', err);
+      reportLlmFallback({
+        providerId: 'gemini',
+        model: 'unknown',
+        message: err instanceof Error ? `Merge failed: ${err.message}` : 'Merge failed for an unknown reason.',
+      });
     } finally {
       setCanvasBusy(null);
     }

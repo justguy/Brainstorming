@@ -20,6 +20,7 @@ import {
   upsertConnection,
 } from './connectionState';
 import { acceptCritiqueWithToolPlan } from './acceptCritiqueWithToolPlan';
+import { reportLlmFallback } from '../../src/orchestrator/retryAndFallback';
 
 const HIGHLIGHT_FLASH_MS = 320;
 const REVEAL_WINDOW_MS = 1_800;
@@ -340,6 +341,17 @@ export function useBoardAnalysisActions({
       handleHighlight([idea.id]);
     } catch (err) {
       console.error('[App] accept critique failed:', err);
+      // Critique acceptance is downstream of the LLM. The retry helper banner
+      // catches the API error itself; this dispatch surfaces the user-visible
+      // outcome ("we could not apply your accepted critique"), so the user
+      // knows to either retry or apply the change manually.
+      reportLlmFallback({
+        providerId: 'gemini',
+        model: 'unknown',
+        message: err instanceof Error
+          ? `Could not apply the accepted critique: ${err.message}. The critique stays open — you can retry, or use the inspector to add a rule / next step manually.`
+          : 'Could not apply the accepted critique. The critique stays open so you can retry or apply the change manually.',
+      });
       throw err;
     } finally {
       setCritiqueBusyByIdea(prev => ({ ...prev, [idea.id]: false }));

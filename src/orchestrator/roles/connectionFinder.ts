@@ -10,7 +10,7 @@ const connectionSchema = z.object({
   kind: connectionKind,
   ideaIds: z.array(z.string()).min(2).max(6),
   supportingDocIds: z.array(z.string()).max(5).optional(),
-  rationale: z.string().min(20).max(500),
+  rationale: z.string().min(8).max(500),
   strength: connectionStrength,
 });
 

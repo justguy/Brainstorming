@@ -71,7 +71,7 @@
 }
 
 body {
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   background: var(--bo-body-background);
   color: var(--bo-paper-ink);
 }
@@ -1626,7 +1626,7 @@ body {
   background: var(--bo-overlay-paper);
   box-shadow: 0 2px 0 rgba(26, 24, 20, 0.18);
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.8rem;
   font-weight: 600;
   padding: 0.42rem 0.72rem;
@@ -1652,7 +1652,7 @@ body {
   background: var(--bo-overlay-paper);
   box-shadow: 0 2px 0 rgba(26, 24, 20, 0.18);
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.8rem;
   font-weight: 600;
   padding: 0.42rem 0.62rem;
@@ -1765,7 +1765,7 @@ body {
   border: none;
   background: transparent;
   color: var(--bo-paper-ink-soft);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.72rem;
   padding: 0;
   text-decoration: underline;
@@ -1915,7 +1915,7 @@ body {
 .bo-process-card__title {
   margin: 0.55rem 0 0;
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 1.12rem;
   font-weight: 700;
   line-height: 1.18;
@@ -2004,7 +2004,7 @@ body {
 .bo-process-run__ambiguity-copy {
   margin: 0.55rem 0 0;
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.92rem;
   line-height: 1.4;
 }
@@ -2408,7 +2408,7 @@ body {
 .bo-attention-panel__item-body {
   margin: 0.38rem 0 0;
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.9rem;
   line-height: 1.42;
 }
@@ -2435,7 +2435,7 @@ body {
 
 .bo-idea-attention__body {
   display: block;
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.88rem;
   font-weight: 700;
   line-height: 1.08;
@@ -2525,7 +2525,7 @@ body {
   background: #2a2520;
   box-shadow: 0 3px 0 rgba(26, 24, 20, 0.25), 0 4px 10px rgba(26, 24, 20, 0.18);
   color: #ffe68a;
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 1rem;
   font-weight: 700;
 }
@@ -2594,7 +2594,7 @@ body {
 .bo-clarify-bubble__question {
   margin: 0.65rem 0 0;
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.4;
@@ -2633,7 +2633,7 @@ body {
 .bo-clarify-bubble__draft-copy {
   margin: 0.38rem 0 0;
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.9rem;
   line-height: 1.4;
 }
@@ -2667,7 +2667,7 @@ body {
   background: rgba(255, 253, 245, 0.98);
   box-shadow: 0 2px 0 rgba(26, 24, 20, 0.18);
   color: var(--bo-paper-ink);
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
   font-size: 0.82rem;
   font-weight: 700;
   padding: 0.45rem 0.68rem;
@@ -2726,7 +2726,7 @@ body {
 
 [data-artifact-surface='idea-note'],
 [data-artifact-surface='critique-note'] {
-  font-family: var(--bo-ui-font);
+  font-family: "Caveat", var(--bo-ui-font);
 }
 
 .bo-note-artifact::after,
@@ -2975,6 +2975,31 @@ body[data-board-theme='sketch'] {
   --bo-note-merge-background: rgba(255, 249, 232, 0.92);
   --bo-empty-state-border: rgba(124, 96, 61, 0.24);
   --bo-empty-state-background: rgba(248, 252, 255, 0.92);
+}
+
+/* Sketch theme uses heavy handwritten faces (Kalam, Marker Felt, Bradley Hand)
+   that render visually bold even at weight 400. Force a regular weight across
+   the entire sketch surface — titles, tag pills, paragraphs, headings, dock
+   chrome, ambiguity-panel cards. Primary CTAs (buttons with --primary class)
+   keep their semantic weight via the more specific rule at the bottom. */
+body[data-board-theme='sketch'],
+body[data-board-theme='sketch'] *:not(input):not(textarea):not(select) {
+  font-weight: 400;
+}
+/* Idea-note titles want a touch more weight to read as the primary text on
+   a card, but not full 700. */
+body[data-board-theme='sketch'] .bo-note-title,
+body[data-board-theme='sketch'] .bo-selected-bubble__title,
+body[data-board-theme='sketch'] .bo-ambiguity-panel__title,
+body[data-board-theme='sketch'] .bo-ambiguity-card__question,
+body[data-board-theme='sketch'] .bo-ambiguity-card__suggestion-title {
+  font-weight: 500;
+}
+/* Primary action buttons (Suggest resolution, Validate & Save, etc.) keep
+   weight 600 for legibility — they're rare enough to not cause shoutiness. */
+body[data-board-theme='sketch'] button[class*='--primary'],
+body[data-board-theme='sketch'] .bo-ambiguity-card__button--primary {
+  font-weight: 600;
 }
 
 @media (max-width: 980px) {

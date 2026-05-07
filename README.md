@@ -153,6 +153,95 @@ If WebMCP is unavailable, the app still works normally. The tool surface just do
 
 For the deeper inventory and architecture notes, see `WEBMCP_README.md` and `WEBMCP_CAPABILITIES.md`.
 
+## Architecture: WebMCP and the Internal UI Share One Write Path
+
+A common question when you start contributing: "If WebMCP exposes the board to
+external agents, why doesn't the internal UI also call WebMCP — wouldn't that
+unify the code paths?"
+
+It already *is* unified, but at a different layer than you might expect.
+WebMCP and the internal UI are two **entry points** that converge on a single
+**downstream write path** (a window event → one handler → IndexedDB).
+Understanding this matters before you add new mutations, because the wrong
+layer to put logic in will silently break audit logs, the turn log, undo, or
+external-agent parity.
+
+### The two entry points
+
+```
+                       brainstorm:apply_ambiguity_resolution
+                                          ▲
+                ┌─────────────────────────┼─────────────────────────┐
+                │                                                   │
+   Internal UI button                              WebMCP tool: apply_ambiguity_resolution
+                │                                                   │
+   Runs LLM (free-text → structured args)           Receives structured args FROM the agent
+                │                                                   │
+   Dispatches event with structured args             Dispatches event with structured args
+                │                                                   │
+                └─────────────────┬─────────────────────────────────┘
+                                  ▼
+                Single handler patches idea via boardController → IDB → UI refresh
+```
+
+The two entry points sit at **different orchestration layers**, which is why
+they aren't merged:
+
+| Aspect | Internal UI button | WebMCP tool |
+|---|---|---|
+| Caller | A user clicking in the React app | An external agent (Claude, the extension, a browser AI) |
+| Input | Free-text the user typed (or a model suggestion) | Structured arguments the agent has already produced |
+| LLM step | Yes — runs `runAdhocRole(...)` to convert text to structured args | No — the agent already ran its own LLM round |
+| Availability | Always works in any browser | Requires `navigator.modelContext` (Chrome 146+) |
+
+The WebMCP tool is intentionally a thin shim: it validates arguments and
+dispatches the same event. It does not run an LLM internally — that would mean
+"agent calls our tool, our tool calls another LLM," which mixes layers.
+
+### Why we don't route the internal UI through WebMCP
+
+You could try to "unify" by having the internal button call the WebMCP tool.
+That doesn't help, because:
+
+1. The internal button **must run the LLM step** to produce structured
+   arguments. WebMCP tools take args as input, so the button would still need
+   to do the LLM call up front. Routing through WebMCP just adds an extra hop
+   to the same destination.
+2. WebMCP requires `navigator.modelContext`, which isn't available in every
+   browser. The internal UI cannot depend on a surface that may not exist.
+3. The internal button needs React state (loading flags, inline error
+   surfaces, suggestion drafts). WebMCP tools only see their arguments.
+
+### Where new mutations go
+
+When you add a new board operation, follow this pattern:
+
+1. **Define a window event** as the canonical mutation (`brainstorm:<verb>`).
+2. **Write the handler** in `apps/web/useBrainstormLifecycleEvents.ts` (or a
+   sibling). The handler calls the appropriate `boardController` method, adds
+   turn-log entries, and persists to IDB.
+3. **Internal callers** (React components, hooks) build the event payload and
+   dispatch it. If they need an LLM to produce parts of the payload, they call
+   `runAdhocRole(<role>, ...)` first.
+4. **Register a WebMCP tool** in `apps/web/webmcp-tools.ts` that takes the
+   structured args, validates them, and dispatches the same event.
+
+This keeps both surfaces fully aligned: tests, audit logs, undo, history,
+turn-log entries, and UI updates all flow through the single handler. No
+silent divergence between what the user can do and what an agent can do.
+
+### Where this is actively used
+
+The pattern is most visible in the ambiguity-resolution flow
+(`useAmbiguityResolutionFlow.ts` ↔ `webmcp-tools.ts:2015`), but it is the
+underlying contract for every mutation:
+`apply_ambiguity_resolution`, `add_rule`, `remove_rule`, `choose_next_step`,
+`patch_risk`, `discard_idea`, `restore_idea`, `merge_ideas`, etc.
+
+If you find yourself wanting to write directly to IDB from a UI handler,
+or to skip the WebMCP registration for a new mutation: don't. The unified
+event path is what keeps the agent surface honest.
+
 ## Autonomous Facilitator
 
 The goal is not an assistant.

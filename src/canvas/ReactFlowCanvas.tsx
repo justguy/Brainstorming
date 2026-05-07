@@ -126,16 +126,40 @@ function reconcileNodes(
   draggingNodeId: string | null,
 ): BoardNode[] {
   const currentById = new Map(current.map(node => [node.id, node] as const));
+  let changed = current.length !== projected.length;
 
-  return projected.map(node => {
+  const result = projected.map(node => {
     const existing = currentById.get(node.id);
-    if (!existing) return node;
+    if (!existing) {
+      changed = true;
+      return node;
+    }
+    const desiredPosition = draggingNodeId === node.id ? existing.position : node.position;
+    const desiredSelected = existing.selected ?? node.selected;
+    // Reuse the existing node object when every observable field matches.
+    // Without this, every projection cycle creates fresh node references,
+    // which feeds back through effectiveSuggestions/projectedSuggestionNodes
+    // and re-fires the projection useEffect — a self-sustaining render loop
+    // that re-applies inline styles to every DOM node every render.
+    if (
+      existing.data === node.data &&
+      existing.position.x === desiredPosition.x &&
+      existing.position.y === desiredPosition.y &&
+      existing.selected === desiredSelected &&
+      existing.type === node.type &&
+      existing.zIndex === node.zIndex
+    ) {
+      return existing;
+    }
+    changed = true;
     return {
       ...node,
-      position: draggingNodeId === node.id ? existing.position : node.position,
-      selected: existing.selected ?? node.selected,
+      position: desiredPosition,
+      selected: desiredSelected,
     };
   });
+
+  return changed ? result : current;
 }
 
 export default function ReactFlowCanvas({
@@ -214,7 +238,7 @@ export default function ReactFlowCanvas({
     () => applyFlowPositionsToSuggestions(suggestions ?? [], flowNodes),
     [flowNodes, suggestions],
   );
-  const connectionList = connections ?? [];
+  const connectionList = useMemo(() => connections ?? [], [connections]);
   const activeIdeaId = liveDrag?.id ?? hoveredIdeaId ?? flashState.activeIdeaId;
   const ideaIds = useMemo(() => ideas.map(idea => idea.id), [ideas]);
   const focus = useMemo(
@@ -269,13 +293,35 @@ export default function ReactFlowCanvas({
     setLinkDraft(nextDraft);
   }, []);
 
-  const ideaCallbacks = useMemo<IdeaFlowNodeCallbacks & { onDiscardIdea?: (ideaId: string) => void }>(() => ({
-    onOpenIdea: onOpen,
+  // Parent components routinely pass inline arrow functions for onOpen,
+  // onOpenDocs, etc. Memoizing on those identities means a 1-second clock tick
+  // upstream re-creates `ideaCallbacks`, which invalidates `projectedIdeaNodes`
+  // and forces React Flow to restyle every node. Instead, latch the latest
+  // callbacks in a ref and expose stable wrapper functions whose identity
+  // never changes.
+  const ideaCallbacksRef = useRef({
+    onOpen,
     onOpenDocs,
-    onDiscardIdea: onDiscard,
-    onStartLink: handleStartLink,
-    onCompleteLink: handleCompleteLink,
-  }), [onOpen, onOpenDocs, onDiscard, handleStartLink, handleCompleteLink]);
+    onDiscard,
+    handleStartLink,
+    handleCompleteLink,
+  });
+  useEffect(() => {
+    ideaCallbacksRef.current = {
+      onOpen,
+      onOpenDocs,
+      onDiscard,
+      handleStartLink,
+      handleCompleteLink,
+    };
+  }, [onOpen, onOpenDocs, onDiscard, handleStartLink, handleCompleteLink]);
+  const ideaCallbacks = useMemo<IdeaFlowNodeCallbacks & { onDiscardIdea?: (ideaId: string) => void }>(() => ({
+    onOpenIdea: (ideaId: string) => ideaCallbacksRef.current.onOpen?.(ideaId),
+    onOpenDocs: (ideaId: string) => ideaCallbacksRef.current.onOpenDocs?.(ideaId),
+    onDiscardIdea: (ideaId: string) => ideaCallbacksRef.current.onDiscard?.(ideaId),
+    onStartLink: (ideaId: string) => ideaCallbacksRef.current.handleStartLink(ideaId),
+    onCompleteLink: (ideaId: string) => ideaCallbacksRef.current.handleCompleteLink(ideaId),
+  }), []);
 
   const linkDraftActive = linkDraft !== null;
   const projectedLinkModeEnabled =
@@ -311,6 +357,35 @@ export default function ReactFlowCanvas({
       selectedIdeaId,
     ],
   );
+  // Same inline-callback hazard as the idea callbacks above. Latch the
+  // latest references in a ref so projectedSuggestionNodes only re-runs when
+  // its data changes, not when the parent re-renders.
+  const suggestionCallbacksRef = useRef({
+    onAdmitSuggestion,
+    onElaborateSuggestion,
+    onDismissSuggestion,
+    onExpandSuggestions,
+    onCollapseSuggestions,
+  });
+  useEffect(() => {
+    suggestionCallbacksRef.current = {
+      onAdmitSuggestion,
+      onElaborateSuggestion,
+      onDismissSuggestion,
+      onExpandSuggestions,
+      onCollapseSuggestions,
+    };
+  }, [onAdmitSuggestion, onElaborateSuggestion, onDismissSuggestion, onExpandSuggestions, onCollapseSuggestions]);
+  const stableSuggestionCallbacks = useMemo(
+    () => ({
+      onAdmitSuggestion: (id: string) => suggestionCallbacksRef.current.onAdmitSuggestion?.(id),
+      onElaborateSuggestion: (id: string) => suggestionCallbacksRef.current.onElaborateSuggestion?.(id),
+      onDismissSuggestion: (id: string) => suggestionCallbacksRef.current.onDismissSuggestion?.(id),
+      onExpandSuggestions: () => suggestionCallbacksRef.current.onExpandSuggestions?.(),
+      onCollapseSuggestions: () => suggestionCallbacksRef.current.onCollapseSuggestions?.(),
+    }),
+    [],
+  );
   const projectedSuggestionNodes = useMemo(
     () => projectSuggestionNodes({
       suggestions: effectiveSuggestions,
@@ -319,26 +394,28 @@ export default function ReactFlowCanvas({
       suggestionBusy,
       suggestionOverflowCount,
       suggestionsExpanded,
-      onAdmitSuggestion,
-      onElaborateSuggestion,
-      onDismissSuggestion,
-      onExpandSuggestions,
-      onCollapseSuggestions,
+      onAdmitSuggestion: stableSuggestionCallbacks.onAdmitSuggestion,
+      onElaborateSuggestion: stableSuggestionCallbacks.onElaborateSuggestion,
+      onDismissSuggestion: stableSuggestionCallbacks.onDismissSuggestion,
+      onExpandSuggestions: stableSuggestionCallbacks.onExpandSuggestions,
+      onCollapseSuggestions: stableSuggestionCallbacks.onCollapseSuggestions,
     }),
     [
       animatedSuggestionIds,
       effectiveSuggestions,
-      onAdmitSuggestion,
-      onCollapseSuggestions,
-      onDismissSuggestion,
-      onElaborateSuggestion,
-      onExpandSuggestions,
       selectedFlowNodeIds,
+      stableSuggestionCallbacks,
       suggestionBusy,
       suggestionOverflowCount,
       suggestionsExpanded,
     ],
   );
+  const onConnectionClickRef = useRef(onConnectionClick);
+  useEffect(() => { onConnectionClickRef.current = onConnectionClick; }, [onConnectionClick]);
+  const stableOnEdgeSelect = useCallback((_: unknown, ideaIds: string[]) => {
+    triggerFlash(ideaIds);
+    onConnectionClickRef.current?.(ideaIds);
+  }, []);
   const projectedEdges = useMemo(
     () => projectConnectionEdges({
       ideas: effectiveIdeas,
@@ -348,12 +425,9 @@ export default function ReactFlowCanvas({
       activePathIdeaIds: [...focus.activePathIdeaIds],
       animatedConnectionIds,
       suppressAnimations,
-      onSelect: (_, ideaIds) => {
-        triggerFlash(ideaIds);
-        onConnectionClick?.(ideaIds);
-      },
+      onSelect: stableOnEdgeSelect,
     }),
-    [animatedConnectionIds, connectionList, effectiveIdeas, focus.activeIdeaId, focus.activePathIdeaIds, liveDrag, onConnectionClick, suppressAnimations],
+    [animatedConnectionIds, connectionList, effectiveIdeas, focus.activeIdeaId, focus.activePathIdeaIds, liveDrag, stableOnEdgeSelect, suppressAnimations],
   );
 
   useEffect(() => {

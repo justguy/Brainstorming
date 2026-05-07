@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import { DEFAULT_BOARD_TITLE, type BoardDocument } from '../../src/board/types';
 import type { BeatResult, ScoutBeatContext } from '../../src/beats/types';
 import { runAdhocRole } from '../../src/orchestrator/adhocRole';
+import { reportLlmFallback } from '../../src/orchestrator/retryAndFallback';
 import {
   suggestionElaborator,
   buildElaboratorTask,
@@ -240,8 +241,15 @@ export function useBoardSuggestionActions({
       if (!suggestion) return;
       const boardIdeas = ideas.filter(idea => idea.status !== 'archived' && idea.status !== 'discarded');
       const task = buildElaboratorTask({ suggestion, boardIdeas });
-      const { result } = await runAdhocRole<SuggestionElaboratorOutput>(suggestionElaborator, task);
-      if (!result) return;
+      const { result, providerId, model } = await runAdhocRole<SuggestionElaboratorOutput>(suggestionElaborator, task);
+      if (!result) {
+        reportLlmFallback({
+          providerId,
+          model,
+          message: `Could not elaborate "${suggestion.rawText.slice(0, 60)}…" — the model returned no usable result. You can edit the suggestion manually or try again.`,
+        });
+        return;
+      }
 
       const parts = [result.elaboration];
       if (result.subSuggestions.length > 0) {

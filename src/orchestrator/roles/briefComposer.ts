@@ -45,7 +45,9 @@ The artifactMd must include these sections (use ## headings):
 - Recommended Next Step
 
 Keep it tight. Plain language primary. Include an expert annex section (### Expert Annex)
-for technical details if relevant. Respect all must-stay-true rules throughout.`,
+for technical details if relevant. Respect all must-stay-true rules throughout.
+
+briefUpdate.nextStep, when present, must be exactly one of: planning, prototyping, research, stakeholder_review, defer. Omit the field entirely if no next step is recommended (do not return JSON null or the string "null").`,
 
   schema,
   jsonSchema: zodToJsonSchema(schema),

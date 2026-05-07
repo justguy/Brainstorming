@@ -27,7 +27,9 @@ Ready means:
 - No critical blockers remain from the self-review.
 
 If not ready, list the specific blockers.
-Always recommend the best next step after handoff.`,
+Always recommend the best next step after handoff.
+
+recommendedNext must be exactly one of: planning, prototyping, research, stakeholder_review, defer.`,
 
   schema,
   jsonSchema: zodToJsonSchema(schema),

@@ -311,12 +311,12 @@ function FlowHandle({
         e.stopPropagation();
         onActivate?.();
       }}
-      className={`nodrag nopan absolute inset-y-0 my-auto z-10 flex h-7 w-4 items-center justify-center rounded-full border text-[8px] font-semibold uppercase tracking-[0.18em] transition-all duration-150 ${
+      className={`nodrag nopan absolute inset-y-0 my-auto z-10 flex h-7 w-4 items-center justify-center rounded-full border text-[8px] font-semibold uppercase tracking-[0.18em] ${
         side === 'left' ? '-left-2' : '-right-2'
       } ${
         visible
           ? 'pointer-events-auto opacity-100'
-          : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
+          : 'pointer-events-none opacity-0'
       } ${enabled ? 'cursor-pointer' : 'opacity-55'}`}
       style={{
         borderColor: active ? '#ce7657' : 'rgba(93, 82, 69, 0.16)',
@@ -418,7 +418,11 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
   const noteRotation = dragging ? paperRotation + 0.35 : paperRotation;
   const noteZIndex = zIndex ?? (dragging ? 50 : beingMergedInto ? 40 : isSelected ? 28 : 8);
   const showLinkAffordance = typeof onStartLink === 'function' || typeof onCompleteLink === 'function';
-  const persistHandles = linkModeEnabled || isSelected || dragging || linkModeAnchor || linkModePending;
+  // Handles only appear once a card is in focus (selected, being dragged, or
+  // actively part of a link gesture). Hovering must not trigger them — the
+  // card's resting state should be visually static.
+  void linkModeEnabled;
+  const persistHandles = isSelected || dragging || linkModeAnchor || linkModePending;
   const showDocChip = Boolean(onOpenDocs) && (docCount > 0 || isSelected);
   const docPillLabel = docCount > 0 ? `${docCount}` : '0';
   const docPillAria = docCount > 0 ? `${docCount} supporting docs` : 'Open supporting docs';
@@ -463,7 +467,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
       data-artifact-tone={tone}
       data-selected={isSelected ? 'true' : 'false'}
       data-node-id={id}
-      className={`bo-note-artifact group relative h-full ${isSelected ? 'overflow-visible' : 'overflow-hidden'} select-none border transition-[transform,box-shadow,filter] duration-200 ${dragging ? 'cursor-grabbing' : 'cursor-grab'} ${highlight ? 'bo-highlight-flash ring-2 ring-sky-300' : ''} ${beingMergedInto ? 'ring-4 ring-sky-400' : ''}`}
+      className={`bo-note-artifact group relative h-full ${isSelected ? 'overflow-visible' : 'overflow-hidden'} select-none border cursor-grab ${highlight ? 'bo-highlight-flash ring-2 ring-sky-300' : ''} ${beingMergedInto ? 'ring-4 ring-sky-400' : ''}`}
       style={rootStyle}
       onClick={() => onOpenIdea?.(idea.id)}
       onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
@@ -508,7 +512,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             e.stopPropagation();
             onOpenDocs?.(idea.id);
           }}
-          className={`bo-note-doc-chip nodrag nopan absolute right-[68px] top-2 z-10 flex items-center gap-1 border px-1.5 py-0.5 text-[10px] font-medium transition-opacity focus:outline-none focus:ring-2 focus:ring-sky-400 ${docCount > 0 || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+          className={`bo-note-doc-chip nodrag nopan absolute right-2 top-2 z-10 flex items-center gap-1 border px-1.5 py-0.5 text-[10px] font-medium focus:outline-none focus:ring-2 focus:ring-sky-400 ${docCount > 0 || isSelected ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
           style={{
             background: notePalette.docChipBackground,
             borderColor: notePalette.docChipBorder,
@@ -538,7 +542,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
         </span>
       )}
 
-      <div className={`flex h-full flex-col px-4 pb-4 pt-3.5 ${isSelected ? 'overflow-visible' : 'overflow-hidden'}`}>
+      <div className={`flex h-full flex-col px-4 pb-9 pt-3.5 ${isSelected ? 'overflow-visible' : 'overflow-hidden'}`}>
         <p
           className={`bo-note-title ${isSelected ? '' : 'line-clamp-3'} ${aiAuthored ? 'pr-10' : 'pr-6'}`}
           style={{
@@ -546,8 +550,13 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             fontFamily: titleFont,
             fontSize: boardTheme === 'whiteboard' ? '1.18rem' : '1.32rem',
             lineHeight: 1.1,
-            fontWeight: 700,
+            // Sketch fonts (Kalam, Marker Felt, Bradley Hand) already render
+            // visually bold at weight 400. Forcing 700 makes the whole board
+            // look shouty.
+            fontWeight: isSketch ? 400 : 700,
             letterSpacing: '-0.005em',
+            wordBreak: 'break-word',
+            overflowWrap: 'anywhere',
           }}
         >
           {title}
@@ -559,6 +568,8 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             style={{
               color: notePalette.bodyColor,
               fontFamily: useLongBodyFont ? longBodyFont : bodyFont,
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
             }}
           >
             {body}
@@ -666,15 +677,20 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
         )}
       </div>
 
-      {onDiscardIdea && (
-        <button
-          type="button"
+      <div
+        className={`pointer-events-none absolute inset-x-3 bottom-2 z-10 flex items-center justify-between gap-2 ${
+          isSelected ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <a
+          href={buildIssueUrl(idea)}
+          target="_blank"
+          rel="noopener noreferrer"
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => {
-            e.stopPropagation();
-            onDiscardIdea(idea.id);
-          }}
-          className={`bo-note-discard nodrag nopan absolute bottom-2 right-2 z-10 px-2 py-[2px] text-[9.5px] uppercase tracking-[0.12em] transition-opacity focus:outline-none focus:ring-2 focus:ring-sky-400 ${isSelected ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'}`}
+          onClick={e => e.stopPropagation()}
+          className={`bo-note-issue nodrag nopan inline-flex items-center gap-1 px-2 py-[2px] text-[9.5px] uppercase tracking-[0.12em] focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+            isSelected ? 'pointer-events-auto' : 'pointer-events-none'
+          }`}
           style={{
             fontFamily: metaFont,
             color: isSketch ? 'rgba(26, 24, 20, 0.78)' : notePalette.metaColor,
@@ -682,40 +698,45 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             borderStyle: 'solid',
             borderWidth: 1,
             borderRadius: 2,
-            background: 'transparent',
+            background: 'rgba(255, 255, 255, 0.78)',
+            textDecoration: 'none',
           }}
-          aria-label="Discard idea"
-          title="Discard idea"
+          aria-label="Open this idea as a GitHub issue in a new tab"
+          title="Open this idea as a GitHub issue (new tab)"
         >
-          discard
-        </button>
-      )}
+          <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
+            <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 11.7a5.2 5.2 0 1 1 0-10.4 5.2 5.2 0 0 1 0 10.4Zm0-9.1a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8Zm0 6.5a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z" />
+          </svg>
+          <span>issue</span>
+        </a>
 
-      <a
-        href={buildIssueUrl(idea)}
-        target="_blank"
-        rel="noopener noreferrer"
-        onPointerDown={e => e.stopPropagation()}
-        onClick={e => e.stopPropagation()}
-        className={`bo-note-issue nodrag nopan absolute bottom-2 left-2 z-10 inline-flex items-center gap-1 px-2 py-[2px] text-[9.5px] uppercase tracking-[0.12em] transition-opacity focus:outline-none focus:ring-2 focus:ring-sky-400 ${isSelected ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'}`}
-        style={{
-          fontFamily: metaFont,
-          color: isSketch ? 'rgba(26, 24, 20, 0.78)' : notePalette.metaColor,
-          borderColor: inkHairline,
-          borderStyle: 'solid',
-          borderWidth: 1,
-          borderRadius: 2,
-          background: 'transparent',
-          textDecoration: 'none',
-        }}
-        aria-label="Open this idea as a GitHub issue in a new tab"
-        title="Open this idea as a GitHub issue (new tab)"
-      >
-        <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
-          <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 11.7a5.2 5.2 0 1 1 0-10.4 5.2 5.2 0 0 1 0 10.4Zm0-9.1a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8Zm0 6.5a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z" />
-        </svg>
-        <span>open issue</span>
-      </a>
+        {onDiscardIdea && (
+          <button
+            type="button"
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => {
+              e.stopPropagation();
+              onDiscardIdea(idea.id);
+            }}
+            className={`bo-note-discard nodrag nopan px-2 py-[2px] text-[9.5px] uppercase tracking-[0.12em] focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+              isSelected ? 'pointer-events-auto' : 'pointer-events-none'
+            }`}
+            style={{
+              fontFamily: metaFont,
+              color: isSketch ? 'rgba(26, 24, 20, 0.78)' : notePalette.metaColor,
+              borderColor: inkHairline,
+              borderStyle: 'solid',
+              borderWidth: 1,
+              borderRadius: 2,
+              background: 'rgba(255, 255, 255, 0.78)',
+            }}
+            aria-label="Discard idea"
+            title="Discard idea"
+          >
+            discard
+          </button>
+        )}
+      </div>
     </div>
   );
 }, ideaNodePropsEqual);

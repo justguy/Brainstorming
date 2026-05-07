@@ -8,7 +8,7 @@
  * and operates in the single-page hash router context.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Density, ProviderId, Settings } from '../../src/types';
 import { getSettings, setSettings, setCredential } from '../../src/storage/settings';
 import { selectProvider, ALL_PROVIDERS } from '../../src/providers/index';
@@ -43,11 +43,26 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
   const [activeProvider, setActiveProvider] = useState<ProviderId>('gemini');
   const [activeModel, setActiveModel] = useState<string>('gemini-2.5-pro');
   const [density, setDensity] = useState<Density>('standard');
+  // The inputs are uncontrolled (defaultValue + ref). Earlier we used
+  // `value=` controlled inputs and on this user's setup keystrokes never
+  // triggered onChange — likely a global capture-phase listener interacting
+  // poorly with React's controlled-input synchronization. Refs sidestep the
+  // issue: the browser owns the field, we read the value at save time. We
+  // still track validation state so the marker (✓/✗) renders.
   const [providerKeys, setProviderKeys] = useState<Record<ProviderId, ProviderKeyState>>({
     gemini: { key: '', validation: 'idle' },
     openai: { key: '', validation: 'idle' },
     anthropic: { key: '', validation: 'idle' },
   });
+  const keyInputRefs = useRef<Record<ProviderId, HTMLInputElement | null>>({
+    gemini: null,
+    openai: null,
+    anthropic: null,
+  });
+
+  function readKey(providerId: ProviderId): string {
+    return keyInputRefs.current[providerId]?.value ?? providerKeys[providerId].key;
+  }
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<'idle' | 'resetting'>('idle');
@@ -81,6 +96,11 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
           const stored = s.credentials[id];
           if (stored) {
             next[id] = { key: stored, validation: 'idle' };
+            // Inputs are uncontrolled — defaultValue only takes effect on
+            // first mount, so push loaded credentials into the live DOM
+            // value once the refs are wired.
+            const el = keyInputRefs.current[id];
+            if (el && el.value === '') el.value = stored;
           }
         }
         return next;
@@ -88,29 +108,13 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
     });
   }, []);
 
-  function updateKey(providerId: ProviderId, key: string) {
-    setProviderKeys(prev => ({
-      ...prev,
-      [providerId]: { key, validation: 'idle' },
-    }));
-  }
-
-  function handleKeyInput(providerId: ProviderId, event: React.FormEvent<HTMLInputElement>) {
-    updateKey(providerId, event.currentTarget.value);
-  }
-
-  function handleKeyPaste(providerId: ProviderId, event: React.ClipboardEvent<HTMLInputElement>) {
-    const pasted = event.clipboardData.getData('text');
-    if (!pasted) return;
-    event.preventDefault();
-    updateKey(providerId, pasted);
-  }
 
   async function handleValidateAndSave() {
     setSaveStatus('saving');
     setSaveError(null);
 
-    const activeKey = providerKeys[activeProvider].key.trim();
+    // Read straight from the DOM since the inputs are uncontrolled.
+    const activeKey = readKey(activeProvider).trim();
     if (!activeKey) {
       setSaveError(`API key for ${PROVIDER_LABELS[activeProvider]} is required.`);
       setSaveStatus('error');
@@ -134,6 +138,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
       ...prev,
       [activeProvider]: {
         ...prev[activeProvider],
+        key: activeKey,
         validation: valid ? 'valid' : 'invalid',
       },
     }));
@@ -146,7 +151,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
 
     try {
       for (const id of ['gemini', 'openai', 'anthropic'] as ProviderId[]) {
-        const k = providerKeys[id].key.trim();
+        const k = readKey(id).trim();
         if (k) await setCredential(id, k);
       }
       await setSettings({ activeProvider, activeModel, density });
@@ -244,12 +249,22 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
                       </label>
                       <div className="flex items-center gap-2">
                         <input
+                          ref={el => { keyInputRefs.current[provider.id] = el; }}
                           id={`key-${provider.id}`}
                           type="text"
-                          value={providerKeys[provider.id].key}
-                          onChange={e => updateKey(provider.id, e.target.value)}
-                          onInput={event => handleKeyInput(provider.id, event)}
-                          onPaste={event => handleKeyPaste(provider.id, event)}
+                          defaultValue={providerKeys[provider.id].key}
+                          onInput={() => {
+                            // Reset the validation marker when the user edits
+                            // the field. We do not mirror the value into React
+                            // state — the input is uncontrolled.
+                            const current = providerKeys[provider.id].validation;
+                            if (current !== 'idle') {
+                              setProviderKeys(prev => ({
+                                ...prev,
+                                [provider.id]: { ...prev[provider.id], validation: 'idle' },
+                              }));
+                            }
+                          }}
                           placeholder={isActive ? 'Required' : 'Optional'}
                           autoComplete="off"
                           autoCorrect="off"
