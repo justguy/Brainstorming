@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useRoute } from '../routing/useRoute';
 import { useBriefSync } from '../useBriefSync';
+import { HandoffInterrogator } from '../HandoffInterrogator';
 import type { Brief, BriefShipStatus, BriefVersion } from '../../../src/types';
 
 /**
@@ -116,8 +117,6 @@ const ERROR_CLASS =
   'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700';
 const STATUS_PILL_BASE_CLASS =
   'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium';
-const INTERROGATOR_SLOT_CLASS =
-  'rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 px-5 py-4 text-sm text-indigo-700';
 
 const STATUS_PILL_TONE: Record<BriefShipStatus, string> = {
   draft: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
@@ -287,18 +286,16 @@ export function HandoffScreen({
       </header>
 
       {/*
-        Pre-ship interrogator slot (bo-164) — active personas re-read the
-        brief and post final critiques as nudges. The component mounts here
-        once it lands; the placeholder block keeps the layout honest in v0
-        without pretending the gate exists yet.
+        Pre-ship interrogator (bo-164). Active personas re-read the latest
+        brief version and post final critiques here before ship. The slot
+        wrapper keeps the existing data-attribute hook for tests / parent
+        layouts that key off it; the inner component owns its own styling.
       */}
       <section
         aria-label="Pre-ship interrogator"
-        className={INTERROGATOR_SLOT_CLASS}
         data-bo-interrogator-slot="true"
       >
-        Pre-ship interrogator lands in <code>bo-164</code>. Active personas
-        will re-read the brief and post final critiques here before ship.
+        <HandoffInterrogator brief={brief} />
       </section>
 
       <section aria-label="Channels" className="flex flex-col gap-3">
