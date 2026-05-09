@@ -166,10 +166,34 @@ export function MapScreen({
   return (
     <div className={ROOT_CLASS} aria-label="Cross-board map">
       <header className={HEADER_CLASS}>
-        <h1 className={TITLE_CLASS}>Cross-board map</h1>
-        <p className={SUBTITLE_CLASS}>
-          Every board in this project. Click a board to open it.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className={TITLE_CLASS}>Cross-board map</h1>
+            <p className={SUBTITLE_CLASS}>
+              Every board in this project. Click a board to open it.
+            </p>
+          </div>
+          {/*
+            bo-162 — explicit drawer trigger on the screen the spec calls
+            out as the principles' natural home (Screen 03 right-rail).
+            The drawer itself is mounted at the App level; this button just
+            pokes the global handle so we don't double-mount.
+          */}
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+            onClick={() => {
+              if (typeof window !== 'undefined' && typeof window.__openPrinciplesDrawer === 'function') {
+                window.__openPrinciplesDrawer();
+              }
+            }}
+            aria-label="Open principles drawer"
+            title="Open the project's principles drawer"
+          >
+            <span aria-hidden="true">¶</span>
+            Principles
+          </button>
+        </div>
       </header>
 
       {error && (

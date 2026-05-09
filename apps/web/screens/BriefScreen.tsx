@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useRoute } from '../routing/useRoute';
 import { useBriefSync } from '../useBriefSync';
+import { usePromoteToPrinciple } from '../usePromoteToPrinciple';
 import Markdown from '../../../src/workspace/markdown';
 import type { Brief, BriefShipStatus, BriefVersion } from '../../../src/types';
 
@@ -179,6 +180,33 @@ export function BriefScreen({
     return briefStateToMarkdown(version);
   }, [version]);
 
+  // bo-162 — wire the brief into the same promote-to-principle path the
+  // idea inspector uses. Source string is the latest version's problem
+  // statement, falling back to desired outcome (both are principle-shaped
+  // single-sentence fields). Button is hidden when neither is present.
+  const { promoteToPrinciple } = usePromoteToPrinciple();
+  const principleCandidate = useMemo(() => {
+    if (!version) return '';
+    const problem = version.briefState.problemStatement?.trim() ?? '';
+    if (problem.length > 0) return problem;
+    const outcome = version.briefState.desiredOutcome?.trim() ?? '';
+    return outcome;
+  }, [version]);
+
+  const handlePromoteClick = useCallback(() => {
+    if (!principleCandidate) return;
+    void promoteToPrinciple(principleCandidate).then((added) => {
+      if (typeof window === 'undefined' || typeof window.alert !== 'function') {
+        return;
+      }
+      window.alert(
+        added
+          ? 'Promoted to a project principle. Open the Principles drawer to review.'
+          : 'This brief is already a principle on the project.',
+      );
+    });
+  }, [principleCandidate, promoteToPrinciple]);
+
   const handleShipClick = useCallback(() => {
     if (!brief) return;
     if (onShipClick) {
@@ -262,6 +290,23 @@ export function BriefScreen({
             <span aria-hidden="true">●</span>
             {STATUS_PILL_LABEL[status]}
           </span>
+          {/*
+            bo-162 — promote-to-principle from the brief. Hidden when the
+            brief has no problem statement or desired outcome to promote.
+            Clicking writes through useProjectSync; review via the
+            Principles drawer (mounted at the App level).
+          */}
+          {principleCandidate.length > 0 ? (
+            <button
+              type="button"
+              className={SHIP_BUTTON_CLASS}
+              onClick={handlePromoteClick}
+              title="Promote this brief's problem statement to a project principle."
+              aria-label="Promote brief to principle"
+            >
+              <span aria-hidden="true">¶</span>&nbsp;Promote to principle
+            </button>
+          ) : null}
           <button
             type="button"
             className={SHIP_BUTTON_CLASS}

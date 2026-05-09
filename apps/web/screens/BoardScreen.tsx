@@ -54,6 +54,7 @@ import {
 } from '../demoBoardFallback';
 import { findLatestSafeAiUndoTarget } from '../../../src/storage/boardAiUndo';
 import DiscardPile from '../../../src/canvas/DiscardPile';
+import { usePromoteToPrinciple } from '../usePromoteToPrinciple';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 const CAPTURE_CANVAS_SELECTOR = '.bo-canvas';
@@ -152,6 +153,9 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
   const persistedFacilitatorPaused = Boolean(tweaks?.values[DEV_COMPANION_PAUSED_TWEAK_KEY]);
+  // bo-162 — promote-to-principle is wired into the inspector's actions row.
+  // The hook owns dedupe + the IDB write through useProjectSync.
+  const { promoteToPrinciple } = usePromoteToPrinciple();
 
   // These derive from `ideas` and a few collections; without memoization a
   // 1-second clock tick from useCompanionAutomation re-creates every array
@@ -879,6 +883,7 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
             docCount={docCounts[selectedBoardIdea.id] ?? 0}
             onOpenDocs={openDocsPanel}
             onClose={() => setInspectorOpen(false)}
+            onPromoteToPrinciple={promoteToPrinciple}
           />
         ) : null,
         isTurnLogOpen: !usingDemoBoard && turnLogOpen,

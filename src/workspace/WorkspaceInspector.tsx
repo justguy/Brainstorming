@@ -12,6 +12,13 @@ export interface WorkspaceInspectorProps {
   docCount?: number;
   onOpenDocs?: (ideaId: string) => void;
   onClose?: () => void;
+  /**
+   * bo-162 — invoked when the user clicks "Promote to principle" in the
+   * inspector's action row. Caller owns the IDB write; the inspector only
+   * forwards the candidate string. Returns `true` if the principle was
+   * actually added (false on dedupe or empty input).
+   */
+  onPromoteToPrinciple?: (candidate: string) => Promise<boolean> | boolean;
 }
 
 interface HistoryState {
@@ -26,6 +33,7 @@ export function WorkspaceInspector({
   docCount = 0,
   onOpenDocs,
   onClose,
+  onPromoteToPrinciple,
 }: WorkspaceInspectorProps): React.ReactElement {
   const [currentIdea, setCurrentIdea] = useState<Idea>(idea);
   const [history, setHistory] = useState<HistoryState>({ events: [], loading: true, error: null });
@@ -221,6 +229,41 @@ export function WorkspaceInspector({
             {currentIdea.artifactMd && (
               <button type="button" className="bo-insp-btn" onClick={() => { void handleExport(); }}>
                 {exported ? 'Copied' : 'Export'}
+              </button>
+            )}
+            {onPromoteToPrinciple && (
+              /*
+               * bo-162 — Promote-to-principle from the inspector. The button
+               * is only rendered when the parent supplies the callback (so
+               * surfaces without a project context won't show it). We use
+               * the first non-empty line of `rawText` as the candidate —
+               * tighter than the whole body and matches how the brief
+               * surface picks `problemStatement` over its full markdown.
+               * Lightweight `window.alert` feedback matches the convention
+               * used by PersonaPanel and BriefScreen.
+               */
+              <button
+                type="button"
+                className="bo-insp-btn"
+                onClick={() => {
+                  const text = currentIdea.rawText ?? '';
+                  const firstLine = text.split(/\r?\n/).find((line) => line.trim().length > 0) ?? '';
+                  const candidate = (firstLine.trim() || text.trim());
+                  void Promise.resolve(onPromoteToPrinciple(candidate)).then((added) => {
+                    if (typeof window === 'undefined' || typeof window.alert !== 'function') {
+                      return;
+                    }
+                    window.alert(
+                      added
+                        ? 'Promoted to a project principle. Open the Principles drawer to review.'
+                        : 'This idea is already a principle on the project.',
+                    );
+                  });
+                }}
+                title="Add this idea to the project's principles list."
+                aria-label="Promote idea to principle"
+              >
+                ¶ Promote
               </button>
             )}
             {onClose && (
