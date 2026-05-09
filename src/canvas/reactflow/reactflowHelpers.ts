@@ -20,6 +20,7 @@ export interface ConnectionEdgeGeometry {
 export interface SuggestionNodeRenderState {
   animated?: boolean;
   busy?: 'admit' | 'elaborate' | 'dismiss' | null;
+  error?: string | null;
   overflowCount?: number;
   expandedList?: boolean;
 }

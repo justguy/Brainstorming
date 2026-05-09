@@ -27,6 +27,8 @@ export interface BoardCanvasStageProps extends Omit<CanvasProps, 'overlayContent
   onIdeaUpdate?: (updated: Idea) => void;
   onActivateAttentionItem?: (input: { ideaId: string; attentionId: string }) => void;
   showClarificationOverlay?: boolean;
+  /** Extra layers rendered inside the canvas-coordinate overlay (pans/zooms with the board). */
+  extraCanvasOverlay?: React.ReactNode;
 }
 
 function getBusyIdeaIds(critiqueBusyByIdea: CritiqueBusyByIdea | undefined): string[] {
@@ -53,6 +55,7 @@ export function BoardCanvasStage({
   onIdeaUpdate,
   onActivateAttentionItem,
   showClarificationOverlay = true,
+  extraCanvasOverlay,
   ideas,
   groups,
   onOpen,
@@ -126,6 +129,7 @@ export function BoardCanvasStage({
               clusterZoom={clusterZoom}
               surfaceWidth={surfaceBounds.width}
               surfaceHeight={surfaceBounds.height}
+              extraCanvasOverlay={extraCanvasOverlay}
             />
           }
         />
@@ -161,6 +165,7 @@ interface BoardCanvasOverlayStackProps {
   clusterZoom: boolean;
   surfaceWidth: number;
   surfaceHeight: number;
+  extraCanvasOverlay?: React.ReactNode;
 }
 
 function BoardCanvasOverlayStack({
@@ -184,6 +189,7 @@ function BoardCanvasOverlayStack({
   clusterZoom,
   surfaceWidth,
   surfaceHeight,
+  extraCanvasOverlay,
 }: BoardCanvasOverlayStackProps): React.ReactElement {
   return (
     <>
@@ -226,6 +232,7 @@ function BoardCanvasOverlayStack({
         onAccept={onAcceptCritique}
         onDismiss={onDismissCritique}
       />
+      {extraCanvasOverlay}
     </>
   );
 }

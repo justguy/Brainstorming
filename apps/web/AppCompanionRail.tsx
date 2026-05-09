@@ -63,6 +63,8 @@ export interface AppCompanionRailProps {
     recentAiActionOutcomes?: FacilitatorAiActionOutcomeRecord[];
     stagedInsightCount?: number;
   };
+  backgroundAiError?: { source: 'scout' | 'connect' | 'critique'; message: string; at: number } | null;
+  dismissBackgroundAiError?: () => void;
   robotNotes?: {
     title?: string;
     items?: FacilitatorStagedInsight[];
@@ -110,6 +112,8 @@ export function AppCompanionRail({
   onRunClusterBeat,
   onRunSummariseBeat,
   autonomy,
+  backgroundAiError,
+  dismissBackgroundAiError,
   robotNotes,
   session,
 }: AppCompanionRailProps): React.ReactElement {
@@ -158,6 +162,28 @@ export function AppCompanionRail({
       aria-label="AI role dock"
     >
       <div className="mx-auto flex w-full max-w-[340px] flex-col gap-2 bo-compact-stack">
+        {backgroundAiError && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-start justify-between gap-2 rounded-[14px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700 shadow-sm"
+          >
+            <span className="leading-5">
+              <span className="font-semibold capitalize">{backgroundAiError.source}</span>{' '}
+              {backgroundAiError.message}
+            </span>
+            {dismissBackgroundAiError && (
+              <button
+                type="button"
+                onClick={dismissBackgroundAiError}
+                className="text-rose-500 hover:text-rose-700"
+                aria-label="Dismiss background AI error"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
         <div className="bo-companion-primary-stack flex flex-col gap-2">
           <DevCompanionCard
             hasApiKey={hasApiKey}

@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Brainstorm — Build Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1814;
+    --ink-soft: #4a4640;
+    --ink-faint: rgba(26,24,20,0.5);
+    --paper: #f6f1e4;
+    --paper-dark: #ece6d6;
+    --accent-ai: #2e86c7;
+    --accent-ghost: #7a5cab;
+    --accent-revives: #2f8f5e;
+    --accent-contradict: #c94a3a;
+    --y: #f5e27a; --p: #f4b4b0; --b: #b4d4e8; --pe: #f4c88c; --g: #bcd9a8; --l: #c9bde0;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+    --sans: "Inter", system-ui, sans-serif;
+    --hand: "Kalam", cursive;
+    --hand-head: "Caveat", cursive;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.6; }
+  body {
+    background-image: radial-gradient(circle at 1px 1px, rgba(26,24,20,0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .page { max-width: 980px; margin: 0 auto; padding: 64px 56px 160px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--ink-soft); margin-bottom: 10px;
+  }
+  h1 { font-family: var(--hand-head); font-size: 76px; line-height: 0.95; margin: 0 0 12px; letter-spacing: -0.01em; }
+  h1 em { font-style: italic; background: rgba(46,134,199,0.16); padding: 0 10px; }
+  .sub { font-size: 18px; color: var(--ink-soft); max-width: 720px; margin-bottom: 40px; }
+  h2 {
+    font-family: var(--hand-head); font-size: 44px; margin: 80px 0 10px; letter-spacing: -0.01em;
+    border-top: 2px solid var(--ink); padding-top: 32px;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: 14px; font-weight: 600;
+    letter-spacing: 0.1em; color: var(--accent-contradict); vertical-align: 0.4em;
+    margin-right: 8px;
+  }
+  h3 { font-family: var(--sans); font-size: 19px; font-weight: 700; margin: 32px 0 6px; letter-spacing: -0.005em; }
+  h4 { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); margin: 22px 0 6px; font-weight: 600; }
+  p { margin: 0 0 14px; text-wrap: pretty; max-width: 760px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; max-width: 760px; }
+  li { margin-bottom: 6px; }
+  code, pre { font-family: var(--mono); font-size: 13px; }
+  code { background: var(--paper-dark); padding: 1px 5px; border-radius: 3px; }
+  pre {
+    background: #fffdf5; border: 1.4px solid var(--ink); border-radius: 5px;
+    padding: 14px 16px; overflow-x: auto; line-height: 1.5;
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.15);
+    margin: 14px 0 18px;
+  }
+  pre code { background: transparent; padding: 0; }
+  .tok-key { color: var(--accent-contradict); }
+  .tok-str { color: var(--accent-revives); }
+  .tok-com { color: var(--ink-faint); font-style: italic; }
+  .tok-typ { color: var(--accent-ghost); font-weight: 600; }
+
+  blockquote {
+    margin: 14px 0 20px; padding: 12px 18px;
+    background: var(--y);
+    border-left: 4px solid var(--ink);
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.15);
+    font-family: var(--hand); font-size: 16px; line-height: 1.5;
+    transform: rotate(-0.15deg);
+    max-width: 760px;
+  }
+  blockquote .lbl { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); display: block; font-weight: 600; margin-bottom: 4px; }
+  blockquote b { color: var(--ink); }
+
+  table { border-collapse: collapse; margin: 14px 0 20px; max-width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 12px; border: 1px solid rgba(26,24,20,0.3); vertical-align: top; }
+  th { background: var(--paper-dark); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; }
+  td code { font-size: 12px; }
+
+  .scr-card {
+    margin: 24px 0 32px;
+    background: #fffdf5; border: 1.6px solid var(--ink); border-radius: 6px;
+    box-shadow: 3px 3px 0 rgba(26,24,20,0.16);
+    overflow: hidden;
+  }
+  .scr-hd {
+    padding: 18px 24px 14px; background: var(--paper);
+    display: flex; gap: 16px; align-items: flex-start;
+    border-bottom: 1.6px solid var(--ink);
+  }
+  .scr-hd .num {
+    font-family: var(--hand-head); font-weight: 700; font-size: 56px;
+    line-height: 0.85; color: var(--accent-ai); flex-shrink: 0;
+  }
+  .scr-hd .ti { flex: 1; min-width: 0; }
+  .scr-hd .when {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 4px;
+  }
+  .scr-hd h3 { margin: 0 0 6px; font-family: var(--hand-head); font-size: 32px; font-weight: 700; line-height: 1; }
+  .scr-hd p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+  .scr-hd .pri-chip {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 12px; flex-shrink: 0; align-self: flex-start;
+    border: 1.4px solid var(--accent-ai); color: var(--accent-ai);
+    background: rgba(46,134,199,0.06);
+  }
+  .scr-hd .pri-chip.p1 { color: var(--accent-revives); border-color: var(--accent-revives); background: rgba(47,143,94,0.08); }
+  .scr-hd .pri-chip.p3 { color: var(--accent-ghost); border-color: var(--accent-ghost); background: rgba(122,92,171,0.06); }
+
+  .scr-body { padding: 18px 24px 22px; }
+  .scr-body h4:first-child { margin-top: 0; }
+  .scr-body ul { padding-left: 20px; }
+  .scr-body li { font-size: 14px; }
+
+  .flow {
+    background: var(--paper-dark);
+    border-left: 3px solid var(--accent-ai);
+    padding: 10px 14px; margin: 10px 0 16px;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+    border-radius: 0 4px 4px 0;
+  }
+  .flow .arr { color: var(--accent-ai); font-weight: 700; }
+
+  .nb {
+    border-left: 3px solid var(--accent-contradict);
+    padding: 8px 14px; margin: 12px 0;
+    font-size: 13.5px; color: var(--ink-soft);
+    background: rgba(201,74,58,0.05);
+  }
+  .nb b { color: var(--ink); }
+  .nb .lbl {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent-contradict); font-weight: 600; margin-right: 8px;
+  }
+
+  hr { border: 0; border-top: 1.5px dashed rgba(26,24,20,0.3); margin: 32px 0; }
+
+  .toc {
+    background: #fffdf5; border: 1.4px solid var(--ink); border-radius: 5px;
+    padding: 16px 22px; margin: 0 0 40px;
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.16);
+  }
+  .toc .lbl { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; margin-bottom: 8px; }
+  .toc ol { margin: 0; padding-left: 22px; max-width: none; column-count: 2; column-gap: 36px; }
+  .toc li { font-size: 13.5px; margin-bottom: 4px; break-inside: avoid; }
+  .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--ink-faint); }
+  .toc a:hover { border-bottom-color: var(--ink); }
+
+  .kbd {
+    display: inline-block;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    padding: 1px 6px; border: 1px solid var(--ink); border-radius: 3px;
+    background: #fffdf5;
+    box-shadow: 0 1.5px 0 rgba(26,24,20,0.3);
+    line-height: 1.3;
+  }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 1px 7px; border-radius: 10px; font-weight: 600;
+    border: 1.2px solid currentColor;
+  }
+  .pill.ai { color: var(--accent-ai); }
+  .pill.user { color: var(--accent-revives); }
+  .pill.crit { color: var(--accent-contradict); }
+  .pill.ghost { color: var(--accent-ghost); }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<div class="eyebrow">Build spec · v1 · for the implementer</div>
+<h1>How to build <em>this</em>, screen by screen.</h1>
+<div class="sub">
+  This document is the contract between design and the LLM that ships it. It defines the <b>data model</b>, <b>shared primitives</b>, and <b>per-screen behavior</b> for the eight screens in <code>Screen Map.html</code>. Read it linearly the first time. Reference per-screen sections after.
+</div>
+
+<div class="toc">
+  <div class="lbl">Contents</div>
+  <ol>
+    <li><a href="#mental">Mental model</a></li>
+    <li><a href="#data">Core data model</a></li>
+    <li><a href="#prims">Shared primitives</a></li>
+    <li><a href="#s01">Screen 01 · Multi-board home</a></li>
+    <li><a href="#s02">Screen 02 · Cluster view</a></li>
+    <li><a href="#s03">Screen 03 · Cross-board map</a></li>
+    <li><a href="#s04">Screen 04 · The Brief</a></li>
+    <li><a href="#s05">Screen 05 · Connection inspector</a></li>
+    <li><a href="#s06">Screen 06 · Project log</a></li>
+    <li><a href="#s07">Screen 07 · Handoff</a></li>
+    <li><a href="#s08">Screen 08 · Persona panel</a></li>
+    <li><a href="#flows">Cross-cutting flows</a></li>
+    <li><a href="#order">Build order &amp; milestones</a></li>
+    <li><a href="#accept">Acceptance criteria</a></li>
+  </ol>
+</div>
+
+<!-- ─── MENTAL MODEL ─── -->
+<h2 id="mental"><span class="num">00</span>Mental model</h2>
+<p>
+  Brainstorm is <b>not a whiteboard tool with AI bolted on</b>. It is a <b>thinking workshop</b> in which AI personas are first-class participants. Three rules govern the whole system:
+</p>
+<ol>
+  <li><b>The board is the source of truth.</b> Every other surface — inspector, brief, log, handoff — is a projection of board state. Editing a projection edits the board.</li>
+  <li><b>AI suggests; the user confirms.</b> Nothing the AI proposes lands on the board until the user accepts (or auto-accept is explicitly turned on per persona). Every AI move is reversible and attributed.</li>
+  <li><b>Phases are descriptive, not gating.</b> An idea moves through 8 phases (frame → diverge → cluster → critique → brief → review → handoff → archive). The system <i>suggests</i> the next phase but never blocks the user from skipping or returning.</li>
+</ol>
+<blockquote>
+  <span class="lbl">If you only remember one thing</span>
+  Treat AI like a junior collaborator who leaves <b>margin notes</b> in pencil. The user is always the one who picks up the pen.
+</blockquote>
+
+<!-- ─── DATA MODEL ─── -->
+<h2 id="data"><span class="num">01</span>Core data model</h2>
+<p>The whole product is a graph of these eight entities. Anything not derivable from them is an implementation accident.</p>
+
+<h3>Project</h3>
+<p>The top-level container — a workspace with shared autonomy settings, persona roster, and N boards.</p>
+<pre><code><span class="tok-key">Project</span> {
+  id, title, owner, members[],
+  <span class="tok-com">// global controls</span>
+  autonomyDial: <span class="tok-typ">"silent" | "suggestive" | "active" | "takes-pen"</span>,
+  personaRoster: PersonaId[],   <span class="tok-com">// who can be in the room</span>
+  principles: IdeaId[],         <span class="tok-com">// ideas promoted from boards (see §03)</span>
+  createdAt, updatedAt
+}</code></pre>
+
+<h3>Board</h3>
+<p>One thinking project. Every idea, sticky, and line lives on exactly one board (or, for principles, multiple).</p>
+<pre><code><span class="tok-key">Board</span> {
+  id, projectId, title, summary?,
+  status: <span class="tok-typ">"active" | "paused" | "archived"</span>,
+  currentPhase: <span class="tok-typ">1..8</span>,
+  ideas: IdeaId[],
+  connections: ConnectionId[],
+  clusters: ClusterId[],
+  activePersonas: PersonaId[],  <span class="tok-com">// override of project roster</span>
+  lastActivityAt, openedBy
+}</code></pre>
+
+<h3>Idea (the sticky)</h3>
+<p>The atomic unit. An idea is what users put on the board and what graduates into a brief.</p>
+<pre><code><span class="tok-key">Idea</span> {
+  id, boardId, position: {x, y}, color: StickyColor,
+  title, body?,
+  phase: <span class="tok-typ">1..8</span>,                 <span class="tok-com">// per-idea phase, can lag board</span>
+  authorRef: { kind: <span class="tok-str">"user" | "persona"</span>, id },
+  tags: string[],
+  contradictions: IdeaId[],         <span class="tok-com">// reverse-indexed for speed</span>
+  parentIdeaId?: IdeaId,            <span class="tok-com">// for child ideas / forks</span>
+  pinnedToBoardIds: BoardId[],      <span class="tok-com">// for cross-board ideas / principles</span>
+  state: <span class="tok-typ">"draft" | "live" | "settled" | "muted"</span>,
+  createdAt, updatedAt
+}</code></pre>
+
+<h3>Connection (the line)</h3>
+<p>A typed, directed edge between two ideas. Lines are first-class — they have authors, confidence, and history. <b>Screen 05 inspects these.</b></p>
+<pre><code><span class="tok-key">Connection</span> {
+  id, boardId, from: IdeaId, to: IdeaId,
+  type: <span class="tok-typ">"parent-of" | "shares-theme" | "contradicts" | "depends-on" | "evidence-for"</span>,
+  authorRef: { kind, id },
+  confidence: <span class="tok-typ">0..1</span>,            <span class="tok-com">// AI-drawn lines come with this</span>
+  reasoning?: string,               <span class="tok-com">// why drawn — shown in inspector</span>
+  createdAt, supersededBy?: ConnectionId
+}</code></pre>
+
+<h3>Cluster</h3>
+<p>A named grouping of ideas. Can be AI-proposed or user-drawn. Visible only on Screen 02.</p>
+<pre><code><span class="tok-key">Cluster</span> {
+  id, boardId, label, ideaIds: IdeaId[],
+  source: <span class="tok-typ">"ai" | "user-lasso"</span>,
+  confidence?: <span class="tok-typ">0..1</span>,
+  haloColor: <span class="tok-typ">"revive" | "ghost" | "ai" | "ink"</span>,
+  state: <span class="tok-typ">"proposed" | "accepted" | "dismissed"</span>
+}</code></pre>
+
+<h3>Persona</h3>
+<p>An AI participant with a fixed role. Built-ins: Scout, Synthesizer, Devil's Advocate, Historian. Users can spawn custom personas per board.</p>
+<pre><code><span class="tok-key">Persona</span> {
+  id, name, role: <span class="tok-typ">"challenger" | "synthesizer" | "advocate" | "historian" | "custom"</span>,
+  bio: string, avatarColor,
+  active: boolean,
+  scope: <span class="tok-typ">"project" | "board"</span>,    <span class="tok-com">// custom personas are usually board-scoped</span>
+  costPerTurn?: number,
+  interruptPolicy: <span class="tok-typ">"never" | "on-demand" | "auto-on-trigger"</span>
+}</code></pre>
+
+<h3>LogEvent</h3>
+<p>The append-only history of everything that happened on a board. Powers Screen 06's scrubber.</p>
+<pre><code><span class="tok-key">LogEvent</span> {
+  id, boardId, ts,
+  kind: <span class="tok-typ">"idea-created" | "idea-edited" | "connection-drawn" | "cluster-proposed" | "phase-advanced" | "ai-nudge" | "persona-toggled" | ...</span>,
+  authorRef: { kind, id },
+  payload: <span class="tok-typ">JSON</span>,                <span class="tok-com">// kind-specific</span>
+  reversed: boolean
+}</code></pre>
+
+<h3>Brief</h3>
+<p>The output document an idea graduates to in phase 5+. Sections are computed from the idea + its connected children + its log.</p>
+<pre><code><span class="tok-key">Brief</span> {
+  id, ideaId, version,
+  sections: { problem, approach, mustStayTrue, risks, openQuestions, ... },
+  marginNotes: { sectionId, personaId, body, ts }[],
+  status: <span class="tok-typ">"draft" | "ready-for-review" | "shipped"</span>
+}</code></pre>
+
+<!-- ─── PRIMITIVES ─── -->
+<h2 id="prims"><span class="num">02</span>Shared primitives</h2>
+<p>Every screen reuses the same small set of UI atoms. Build these once.</p>
+
+<table>
+  <tr><th>Primitive</th><th>What</th><th>Used on</th></tr>
+  <tr><td><code>&lt;Sticky&gt;</code></td><td>The paper sticky note. Color, title, body, author chip, phase dot, drag handle.</td><td>01, 02, 03, 04, 05, 06</td></tr>
+  <tr><td><code>&lt;ConnectionLine&gt;</code></td><td>SVG path between two stickies. Type → color &amp; dash pattern. Hoverable.</td><td>02, 05</td></tr>
+  <tr><td><code>&lt;PhaseStrip&gt;</code></td><td>1–8 phase bar with current highlighted, click-to-jump.</td><td>02, 04, 06</td></tr>
+  <tr><td><code>&lt;PersonaChip&gt;</code></td><td>Avatar + name + role glyph. Hover → bio. Click → toggles persona on/off for current board.</td><td>02, 04, 06, 08</td></tr>
+  <tr><td><code>&lt;NudgeCard&gt;</code></td><td>The dashed-purple AI suggestion card. Always has [accept] [preview] [dismiss]. <b>Never auto-applies</b>.</td><td>01, 02, 03, 04</td></tr>
+  <tr><td><code>&lt;ConfirmBar&gt;</code></td><td>Sticky bottom bar that gates ALL phase advances. Title + diff summary + [advance] [stay].</td><td>02, 04</td></tr>
+  <tr><td><code>&lt;BoardThumbnail&gt;</code></td><td>Mini-board preview — 4–6 colored squares + status. Used wherever a board appears as an item.</td><td>01, 03, 06</td></tr>
+</table>
+
+<h4>Connection-line visual grammar</h4>
+<table>
+  <tr><th>Type</th><th>Color</th><th>Stroke</th><th>Glyph</th></tr>
+  <tr><td><code>parent-of</code></td><td>Ink</td><td>Solid 2.5px</td><td>↑</td></tr>
+  <tr><td><code>shares-theme</code></td><td>AI blue</td><td>Solid 2px</td><td>↗</td></tr>
+  <tr><td><code>contradicts</code></td><td>Contradict red</td><td>Dashed 2.5px</td><td>⚡</td></tr>
+  <tr><td><code>depends-on</code></td><td>Revives green</td><td>Solid 2px arrow</td><td>→</td></tr>
+  <tr><td><code>evidence-for</code></td><td>Revives green</td><td>Dotted 1.5px</td><td>·</td></tr>
+</table>
+
+<div class="nb">
+  <span class="lbl">Important</span> Persona avatars carry the persona color across <b>every</b> surface. Scout is always blue, Synthesizer green, Devil's red-pink, Historian peach. Custom personas pick from <code>l</code>/<code>y</code>/<code>p</code>. This consistency is how users learn who's talking.
+</div>
+
+<!-- ─── SCREENS ─── -->
+
+<h2><span class="num">03</span>The eight screens</h2>
+<p>For each: <b>purpose</b>, <b>entry/exit</b>, <b>layout regions</b>, <b>key interactions</b>, <b>AI hooks</b>, <b>edge cases</b>. Visual reference: <code>Screen Map.html</code>.</p>
+
+<!-- ─── 01 ─── -->
+<div class="scr-card" id="s01">
+  <div class="scr-hd">
+    <div class="num">01</div>
+    <div class="ti">
+      <div class="when">Always-visited entry · the project's home base</div>
+      <h3>Multi-board home</h3>
+      <p>A tiled view of all boards in the project, ordered by recent activity, with AI digests on what changed while you were away.</p>
+    </div>
+    <span class="pri-chip p1">P1</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Entry</h4>
+    <ul>
+      <li>App launch (default route).</li>
+      <li>Logo click from any other screen.</li>
+      <li>Deep link <code>/p/:projectId</code>.</li>
+    </ul>
+
+    <h4>Layout regions</h4>
+    <ul>
+      <li><b>Header pill</b> · project name + member count + <code>+ new board</code> button.</li>
+      <li><b>Active row</b> · boards with activity in last 7d. Sort by <code>lastActivityAt desc</code>.</li>
+      <li><b>Archive drawer</b> · boards with <code>status === "archived"</code>. Collapsed by default.</li>
+      <li><b>Search bar</b> · persistent top-right; opens <code>&lt;CrossBoardSearch&gt;</code> overlay (queries idea titles, tags, brief sections).</li>
+    </ul>
+
+    <h4>Key interactions</h4>
+    <div class="flow">
+      click board <span class="arr">→</span> route to <code>/b/:boardId</code> (Screen 02 default zoom)<br>
+      hover board <span class="arr">→</span> reveal "open · archive · duplicate" actions<br>
+      drag board between rows <span class="arr">→</span> change status<br>
+      click <code>+ new board</code> <span class="arr">→</span> empty-state: "What are you trying to figure out?" — single textarea, AI seeds first 3 stickies on submit
+    </div>
+
+    <h4>AI hooks</h4>
+    <ul>
+      <li>If a board has activity since user's last visit, render a <code>&lt;NudgeCard&gt;</code> over its thumbnail summarizing what changed (e.g. <i>"3 new connections, 1 contradiction"</i>).</li>
+      <li>If user hasn't opened a board in 14d, propose archive.</li>
+    </ul>
+
+    <h4>Edge cases</h4>
+    <ul>
+      <li><b>Zero boards</b> — the whole canvas becomes the new-board prompt. No empty grid.</li>
+      <li><b>Shared boards from other projects</b> — separate "Shared with you" section under archive.</li>
+    </ul>
+
+    <h4>Exit</h4>
+    <p>Click any board → <a href="#s02">Screen 02</a>. Search result click → <a href="#s02">Screen 02</a> with the matching idea pre-focused.</p>
+
+  </div>
+</div>
+
+<!-- ─── 02 ─── -->
+<div class="scr-card" id="s02">
+  <div class="scr-hd">
+    <div class="num">02</div>
+    <div class="ti">
+      <div class="when">The board itself · the workhorse</div>
+      <h3>Cluster view (board canvas)</h3>
+      <p>The infinite-pan board with stickies, connection lines, and — critically — <b>auto-grouping halos</b> when zoomed out past 50%.</p>
+    </div>
+    <span class="pri-chip p1">P1</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Two zoom modes</h4>
+    <p>This screen has <b>one DOM, two visual modes</b>, smoothly tweened by zoom level:</p>
+    <ul>
+      <li><b>Zoom &gt; 50%</b> — sticky-level. Read text, draw lines, edit ideas. Halos render as faint backgrounds.</li>
+      <li><b>Zoom ≤ 50%</b> — cluster-level. Stickies become 22×16 chips. Halos become bold; cluster labels become primary text. AI suggestions for cluster merges/splits appear here.</li>
+    </ul>
+
+    <h4>Layout regions</h4>
+    <ul>
+      <li><b>Top-left</b> · phase strip (<code>&lt;PhaseStrip&gt;</code>) and breadcrumb back to home.</li>
+      <li><b>Top-right</b> · zoom control + view toggle (<i>stickies / clusters / map</i>).</li>
+      <li><b>Right rail</b> · active personas (<code>&lt;PersonaChip&gt;</code> stack) + idea search.</li>
+      <li><b>Bottom-left</b> · the running <code>&lt;NudgeCard&gt;</code> queue from synthesizer/scout.</li>
+      <li><b>Bottom-center</b> · <code>&lt;ConfirmBar&gt;</code> appears only when AI proposes a phase advance.</li>
+    </ul>
+
+    <h4>Key interactions</h4>
+    <div class="flow">
+      click sticky <span class="arr">→</span> open <a href="#s05">inspector</a> in <i>focus</i> or <i>bloom</i> mode (already designed)<br>
+      click line <span class="arr">→</span> open <a href="#s05">connection inspector</a><br>
+      drag sticky <span class="arr">→</span> live update <code>position</code>; if dropped inside a halo, prompt to add to cluster<br>
+      lasso (hold <span class="kbd">⇧</span>) <span class="arr">→</span> creates a user cluster; AI auto-suggests a name<br>
+      double-click empty space <span class="arr">→</span> new sticky, focused for typing
+    </div>
+
+    <h4>AI hooks</h4>
+    <ul>
+      <li><b>Synthesizer</b> proposes new clusters, merges, or splits via <code>&lt;NudgeCard&gt;</code>. <span class="pill ai">accept</span> writes to <code>Cluster</code>; <span class="pill">preview</span> shows ghost halos non-destructively.</li>
+      <li><b>Scout</b> may propose reframing an idea — surfaces as a margin note on the relevant sticky.</li>
+      <li><b>Devil's Advocate</b> auto-spawns when a sticky's body contains an unsupported claim (per autonomy dial). Drops a <code>contradicts</code> line as <i>proposed</i>.</li>
+    </ul>
+
+    <div class="nb">
+      <span class="lbl">Don't</span> Don't auto-apply any AI move when autonomy is below <code>"takes-pen"</code>. Render as proposed (dashed, 60% opacity) and require user confirm.
+    </div>
+
+    <h4>Exit</h4>
+    <p>Click sticky → inspector overlay (modal-on-board). Click <code>↗ brief</code> on an idea ≥ phase 5 → <a href="#s04">Screen 04</a>. Click <code>↗ map</code> → <a href="#s03">Screen 03</a>. Click breadcrumb → <a href="#s01">Screen 01</a>.</p>
+
+  </div>
+</div>
+
+<!-- ─── 03 ─── -->
+<div class="scr-card" id="s03">
+  <div class="scr-hd">
+    <div class="num">03</div>
+    <div class="ti">
+      <div class="when">When ideas travel between boards</div>
+      <h3>Cross-board map</h3>
+      <p>A galaxy view: every board is a planet, sized by activity. Edges between boards mean <b>shared ideas</b> — same <code>Idea.id</code> pinned to multiple boards, or AI-detected theme overlap.</p>
+    </div>
+    <span class="pri-chip">P2</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Entry</h4>
+    <ul>
+      <li>Top-right view toggle on Screen 02.</li>
+      <li>Project menu → "Map".</li>
+    </ul>
+
+    <h4>Layout regions</h4>
+    <ul>
+      <li><b>Canvas</b> · force-directed layout of <code>BoardThumbnail</code> as planets.</li>
+      <li><b>Edges</b> · two kinds:
+        <ul>
+          <li><i>Solid (purple)</i> — explicit pinned idea (<code>Idea.pinnedToBoardIds.length &gt; 1</code>).</li>
+          <li><i>Dashed (green)</i> — AI-detected theme overlap, with confidence.</li>
+        </ul>
+      </li>
+      <li><b>Right rail</b> · principles drawer — ideas the user has promoted to <code>Project.principles</code>.</li>
+    </ul>
+
+    <h4>Key interactions</h4>
+    <div class="flow">
+      click planet <span class="arr">→</span> route to <a href="#s02">Screen 02</a> for that board<br>
+      click edge <span class="arr">→</span> popover lists shared ideas; <span class="pill user">jump</span> to either side<br>
+      Synthesizer nudge: "<i>X appears on 3 boards — promote to principle?</i>" <span class="arr">→</span> on accept, idea moves to project-level <code>principles[]</code> and gains a <span class="pill ghost">★</span> badge everywhere it appears
+    </div>
+
+    <h4>AI hooks</h4>
+    <ul>
+      <li>Background job recomputes theme overlaps after any board update.</li>
+      <li>The "promote to principle" nudge fires when an idea (or paraphrase) appears on ≥ 3 boards.</li>
+    </ul>
+
+    <h4>Exit</h4>
+    <p>Click planet → <a href="#s02">02</a>. Click principle → opens it as an inspector overlay over <a href="#s01">home</a>.</p>
+
+  </div>
+</div>
+
+<!-- ─── 04 ─── -->
+<div class="scr-card" id="s04">
+  <div class="scr-hd">
+    <div class="num">04</div>
+    <div class="ti">
+      <div class="when">Output surface · phase 5+</div>
+      <h3>The Brief</h3>
+      <p>An idea that has reached phase 5 graduates from sticky to document. The brief is <b>computed</b> from the idea + its child ideas + its log; it's <b>editable</b> in place; AI keeps leaving margin notes.</p>
+    </div>
+    <span class="pri-chip p1">P1</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Entry</h4>
+    <ul>
+      <li>Click <code>↗ brief</code> on a sticky in phase ≥ 5.</li>
+      <li>Inspector "graduate to brief" action (auto-fires the first time an idea hits phase 5).</li>
+    </ul>
+
+    <h4>Layout regions</h4>
+    <ul>
+      <li><b>Header</b> · brief title (= idea title) + phase strip + version pill.</li>
+      <li><b>Document body</b> · sections in a fixed order (<i>Problem · Approach · Must stay true · Risks · Open questions</i>). Each section is editable contenteditable text.</li>
+      <li><b>Right margin</b> · AI margin notes (<code>Brief.marginNotes</code>) — sticky-styled, 90px wide, persona-attributed.</li>
+      <li><b>Footer</b> · "send to <a href="#s07">handoff</a>" + "back to board" + version dropdown.</li>
+    </ul>
+
+    <h4>Computed sections</h4>
+    <table>
+      <tr><th>Section</th><th>Computed from</th></tr>
+      <tr><td>Problem</td><td>Phase-1 frame sticky body + any user edits</td></tr>
+      <tr><td>Approach</td><td>The idea body + its highest-confidence <code>parent-of</code> children</td></tr>
+      <tr><td>Must stay true</td><td>Stickies tagged <code>constraint</code> in the idea's connected subgraph</td></tr>
+      <tr><td>Risks</td><td>Connections of type <code>contradicts</code> + Devil's Advocate notes</td></tr>
+      <tr><td>Open questions</td><td>Stickies in <code>state: "draft"</code> attached as children</td></tr>
+    </table>
+
+    <h4>Key interactions</h4>
+    <div class="flow">
+      edit any section text <span class="arr">→</span> writes back to source sticky; show inline "<i>edit on board too</i>" highlight for 3s<br>
+      click margin note <span class="arr">→</span> jump to source sticky on board<br>
+      <span class="kbd">⌘ S</span> <span class="arr">→</span> snapshot current text into <code>Brief.versions[]</code>
+    </div>
+
+    <h4>AI hooks</h4>
+    <ul>
+      <li>Whenever the brief is opened, run all active personas with brief-context-aware prompts. New margin notes append to the right rail with persona color.</li>
+      <li>Scout asks for citations on unsupported claims.</li>
+      <li>Historian flags ambiguous terms (links to glossary).</li>
+    </ul>
+
+    <h4>Edge cases</h4>
+    <ul>
+      <li>If a source sticky is deleted while the brief is open, mark the affected section <i>"orphan — reattach or delete"</i> — never silently drop content.</li>
+      <li>Briefs are versioned. Editing an old version forks a new one.</li>
+    </ul>
+
+    <h4>Exit</h4>
+    <p>Footer → <a href="#s07">handoff</a> or <a href="#s02">board</a>.</p>
+
+  </div>
+</div>
+
+<!-- ─── 05 ─── -->
+<div class="scr-card" id="s05">
+  <div class="scr-hd">
+    <div class="num">05</div>
+    <div class="ti">
+      <div class="when">Click on a line · the lines have stories</div>
+      <h3>Connection inspector (popover)</h3>
+      <p>Not a full screen — a popover that opens at click point. Shows who drew the line, why, with what confidence, and lets the user flip the type, edit reasoning, or delete.</p>
+    </div>
+    <span class="pri-chip">P2</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Entry</h4>
+    <p>Single click on any <code>&lt;ConnectionLine&gt;</code> on Screen 02 (sticky-level zoom only).</p>
+
+    <h4>Layout</h4>
+    <ul>
+      <li><b>Header</b> · type pill + glyph + "<i>from → to</i>" idea titles.</li>
+      <li><b>Body</b> · reasoning string, confidence meter, "show on board" mini map.</li>
+      <li><b>Author row</b> · persona avatar + name + relative time.</li>
+      <li><b>Actions</b> · <span class="pill">flip type</span> · <span class="pill">show reasoning</span> · <span class="pill crit">↶ delete</span></li>
+    </ul>
+
+    <h4>Key interactions</h4>
+    <div class="flow">
+      flip type <span class="arr">→</span> dropdown of all 5 types; on change, log a new <code>Connection</code> with <code>supersededBy</code> back-pointing<br>
+      delete <span class="arr">→</span> soft-delete with 5s undo toast (don't actually drop the row — set <code>state: "deleted"</code> for log replay)<br>
+      while popover is open, the rest of the board dims to 30% opacity to focus the line
+    </div>
+
+    <h4>AI hooks</h4>
+    <ul>
+      <li>"Show reasoning" expands the AI's chain-of-thought for why this line was drawn (only for AI-authored connections).</li>
+      <li>If user changes type, AI may post a counter-nudge ("<i>are you sure? these contradict in 2 places</i>") — also dismissible.</li>
+    </ul>
+
+    <h4>Exit</h4>
+    <p>Click outside popover, <span class="kbd">esc</span>, or any action button.</p>
+
+  </div>
+</div>
+
+<!-- ─── 06 ─── -->
+<div class="scr-card" id="s06">
+  <div class="scr-hd">
+    <div class="num">06</div>
+    <div class="ti">
+      <div class="when">Replay · audit · trust</div>
+      <h3>Project log + scrubber</h3>
+      <p>An append-only feed of every move on the board, with a timeline scrubber that re-renders the board to past state. Foundational for trust ("did the AI just do that?") and undo.</p>
+    </div>
+    <span class="pri-chip">P2</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Entry</h4>
+    <ul>
+      <li>Right rail icon on Screen 02 (clock).</li>
+      <li>Keyboard <span class="kbd">⌘ K</span>.</li>
+    </ul>
+
+    <h4>Layout</h4>
+    <ul>
+      <li><b>Filter row</b> · pills: <i>all · AI only · my edits · connections · contradictions</i>.</li>
+      <li><b>Event list</b> · vertical timeline, newest first. Each event has dot color by author kind, time, action sentence with bolded entities, and a <code>↶ rewind to here</code> hover action.</li>
+      <li><b>Bottom scrubber</b> · play/pause + draggable knob + relative-time label.</li>
+    </ul>
+
+    <h4>Key interactions</h4>
+    <div class="flow">
+      drag knob <span class="arr">→</span> board on Screen 02 (peek-rendered) replays state at that <code>ts</code><br>
+      release knob OR click <code>fork from here</code> <span class="arr">→</span> creates a branch board (copy with truncated log)<br>
+      click event <span class="arr">→</span> jump board view to the affected idea, highlight it briefly<br>
+      <code>↶ rewind to here</code> <span class="arr">→</span> rolls log forward as <i>reversed</i> events; original log preserved
+    </div>
+
+    <h4>Edge cases</h4>
+    <ul>
+      <li>Events are immutable. Undo creates a new event of kind <code>reverse-of</code>.</li>
+      <li>Forking from history doesn't fork live AI conversations — those start fresh on the new branch.</li>
+    </ul>
+
+  </div>
+</div>
+
+<!-- ─── 07 ─── -->
+<div class="scr-card" id="s07">
+  <div class="scr-hd">
+    <div class="num">07</div>
+    <div class="ti">
+      <div class="when">Phase 8 · ship the brief</div>
+      <h3>Handoff</h3>
+      <p>A small panel of integration channels (GitHub, Slack, Linear, Notion). Each channel auto-formats the brief for that medium. Preview before ship; ship is a one-click action that records a <code>Handoff</code> event.</p>
+    </div>
+    <span class="pri-chip p3">P3</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Entry</h4>
+    <p>Footer button on <a href="#s04">Screen 04</a>: <code>send to handoff →</code>.</p>
+
+    <h4>Layout</h4>
+    <ul>
+      <li>Each <b>channel card</b> shows: icon, name, formatted preview, "ship" or "preview" button.</li>
+      <li>Channels selected here are independent — one brief can ship to multiple destinations in one session.</li>
+    </ul>
+
+    <h4>Per-channel formatting</h4>
+    <table>
+      <tr><th>Channel</th><th>Format</th></tr>
+      <tr><td>GitHub issue</td><td>Title = brief title. Body = sections as Markdown headings; "Must stay true" → checkboxes.</td></tr>
+      <tr><td>Slack post</td><td>TL;DR (≤ 3 sentences) + link back to brief. Posts to a target channel chosen here.</td></tr>
+      <tr><td>Linear ticket</td><td>Brief mapped to ticket fields; "Risks" → labels; checks for <i>owner</i>/<i>estimate</i> and warns if missing.</td></tr>
+      <tr><td>Notion doc</td><td>Full brief preserved including margin notes as Notion comments.</td></tr>
+    </table>
+
+    <h4>AI hooks</h4>
+    <ul>
+      <li>Pre-flight check: AI flags missing fields per channel (no owner, no estimate, etc).</li>
+      <li>Post-ship: a <code>handoff-confirmed</code> event lands on the log; brief moves to <code>status: "shipped"</code>.</li>
+    </ul>
+
+    <h4>Edge cases</h4>
+    <ul>
+      <li>If a channel isn't connected, the card shows a "connect" CTA inline; don't open a separate settings page.</li>
+      <li>"Ship" is idempotent: re-shipping updates the existing destination if found, doesn't duplicate.</li>
+    </ul>
+
+  </div>
+</div>
+
+<!-- ─── 08 ─── -->
+<div class="scr-card" id="s08">
+  <div class="scr-hd">
+    <div class="num">08</div>
+    <div class="ti">
+      <div class="when">Control panel · who's in the room</div>
+      <h3>Persona panel</h3>
+      <p>One autonomy dial + persona toggles + the "spawn custom persona" affordance. Lives in the right rail of Screen 02 (collapsed) and as a settings page (expanded).</p>
+    </div>
+    <span class="pri-chip">P2</span>
+  </div>
+  <div class="scr-body">
+
+    <h4>Autonomy dial</h4>
+    <p>4 stops. Behavioral contract:</p>
+    <table>
+      <tr><th>Stop</th><th>What changes</th></tr>
+      <tr><td><code>silent</code></td><td>No nudges. Personas only respond when @-summoned.</td></tr>
+      <tr><td><code>suggestive</code></td><td>Nudges appear in queue; never auto-dismiss; never auto-apply.</td></tr>
+      <tr><td><code>active</code> (default)</td><td>Devil's auto-spawns counters; Synthesizer auto-clusters; user still confirms.</td></tr>
+      <tr><td><code>takes-pen</code></td><td>Some moves auto-apply (clustering, line drawing) with toast + undo. Phase advances still require <code>&lt;ConfirmBar&gt;</code>.</td></tr>
+    </table>
+
+    <h4>Persona row anatomy</h4>
+    <ul>
+      <li>Avatar (color = persona color), name, role, toggle.</li>
+      <li>Hover → bio + recent actions count.</li>
+      <li>Click name → opens persona detail (bio, prompt, cost, scope).</li>
+    </ul>
+
+    <h4>Spawning a custom persona</h4>
+    <div class="flow">
+      "+ custom persona" <span class="arr">→</span> form: name, one-sentence bio, tone, scope (<i>this board / project</i>)<br>
+      submit <span class="arr">→</span> AI suggests a system prompt; user can edit; persona joins active roster
+    </div>
+
+    <h4>Edge cases</h4>
+    <ul>
+      <li><b>Cost cap</b> per persona is enforced at the run loop; exceeding it pauses the persona with a toast, never silently.</li>
+      <li>Custom personas with <code>scope: "board"</code> are listed under their board only and don't survive board archive.</li>
+    </ul>
+
+  </div>
+</div>
+
+<!-- ─── CROSS-CUTTING ─── -->
+<h2 id="flows"><span class="num">04</span>Cross-cutting flows</h2>
+
+<h3>The idea lifecycle</h3>
+<p>An idea moves through 8 phases. Each phase change emits a <code>phase-advanced</code> log event and may unlock surfaces (briefs become available at 5; handoff at 8).</p>
+<pre><code>1. <span class="tok-typ">frame</span>      <span class="tok-com">// "what are we trying to figure out?"</span>
+2. <span class="tok-typ">diverge</span>    <span class="tok-com">// generate options, no judgment yet</span>
+3. <span class="tok-typ">cluster</span>    <span class="tok-com">// group similar ideas (Screen 02 shines)</span>
+4. <span class="tok-typ">critique</span>   <span class="tok-com">// Devil's gets loud; counter-evidence</span>
+5. <span class="tok-typ">brief</span>      <span class="tok-com">// Screen 04 unlocks; idea graduates</span>
+6. <span class="tok-typ">review</span>     <span class="tok-com">// share for comment; margin notes accumulate</span>
+7. <span class="tok-typ">handoff</span>    <span class="tok-com">// Screen 07; ship to integrations</span>
+8. <span class="tok-typ">archive</span>    <span class="tok-com">// idea is done; remains queryable, log preserved</span></code></pre>
+
+<h3>The AI nudge protocol</h3>
+<p>Every AI move follows the same shape:</p>
+<ol>
+  <li>AI produces a <code>NudgeProposal</code> with <code>kind</code> (cluster, line, sticky, phase, brief-edit), payload, reasoning.</li>
+  <li>System creates a <code>LogEvent</code> with <code>kind: "ai-nudge"</code> and renders a <code>&lt;NudgeCard&gt;</code> in the relevant queue.</li>
+  <li>On user accept → apply payload, mark log event <code>resolved</code>, emit a follow-up event.</li>
+  <li>On dismiss → mark <code>resolved: false</code>, hide card. Don't ask again for the same proposal in the same session.</li>
+  <li>On preview → render the change as ghost (60% opacity, dashed) without writing; click again to accept.</li>
+</ol>
+
+<h3>Persistence &amp; undo</h3>
+<ul>
+  <li>Append-only log is the source of truth. Board state is a <i>fold</i> over the log.</li>
+  <li>Every destructive action ("delete sticky", "delete connection") is a soft-delete with 5s toast undo, then a real delete event.</li>
+  <li>The scrubber on Screen 06 replays by truncating the fold at a given <code>ts</code>; "fork from here" persists that fork as a new board.</li>
+</ul>
+
+<h3>Routing &amp; deep-links</h3>
+<table>
+  <tr><th>Path</th><th>Lands on</th></tr>
+  <tr><td><code>/p/:projectId</code></td><td>Screen 01 (home)</td></tr>
+  <tr><td><code>/b/:boardId</code></td><td>Screen 02 at last zoom/pan</td></tr>
+  <tr><td><code>/b/:boardId?idea=:id</code></td><td>Screen 02 with that idea inspector-focused</td></tr>
+  <tr><td><code>/b/:boardId/map</code></td><td>Screen 03</td></tr>
+  <tr><td><code>/b/:boardId/brief/:ideaId</code></td><td>Screen 04</td></tr>
+  <tr><td><code>/b/:boardId/log</code></td><td>Screen 06</td></tr>
+  <tr><td><code>/b/:boardId/handoff/:briefId</code></td><td>Screen 07</td></tr>
+</table>
+
+<h3>Keyboard contract</h3>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><span class="kbd">⌘ K</span></td><td>Open command palette / cross-board search</td></tr>
+  <tr><td><span class="kbd">⌘ /</span></td><td>Open log scrubber (Screen 06 overlay)</td></tr>
+  <tr><td><span class="kbd">⇧</span> + drag</td><td>Lasso → cluster</td></tr>
+  <tr><td><span class="kbd">esc</span></td><td>Close any popover; exit focus mode</td></tr>
+  <tr><td><span class="kbd">.</span></td><td>Open persona panel</td></tr>
+  <tr><td><span class="kbd">⌘ Z</span></td><td>Undo last user-authored event</td></tr>
+</table>
+
+<!-- ─── BUILD ORDER ─── -->
+<h2 id="order"><span class="num">05</span>Build order &amp; milestones</h2>
+<p>Build the data model first. Build screens in this order even if priorities suggest otherwise — each later screen depends on the data structures earlier screens force you to formalize.</p>
+
+<h3>M1 · Foundations (week 1–2)</h3>
+<ul>
+  <li>Data model: <code>Project</code>, <code>Board</code>, <code>Idea</code>, <code>Connection</code>, <code>LogEvent</code>.</li>
+  <li>Append-only log + fold-to-state engine.</li>
+  <li>Shared primitives: <code>&lt;Sticky&gt;</code>, <code>&lt;ConnectionLine&gt;</code>, <code>&lt;NudgeCard&gt;</code>.</li>
+</ul>
+
+<h3>M2 · The board works (week 2–4)</h3>
+<ul>
+  <li>Screen 02 sticky-level zoom (no clusters yet, no AI).</li>
+  <li>Screen 05 connection inspector — needed early to validate the line model.</li>
+  <li>Screen 06 log feed (no scrubber yet; just append-only feed).</li>
+</ul>
+
+<h3>M3 · AI joins the room (week 4–6)</h3>
+<ul>
+  <li>Persona system + Screen 08.</li>
+  <li>Screen 02 cluster zoom + Synthesizer auto-clustering.</li>
+  <li>Nudge protocol fully wired.</li>
+</ul>
+
+<h3>M4 · Output &amp; navigation (week 6–8)</h3>
+<ul>
+  <li>Screen 01 multi-board home.</li>
+  <li>Screen 04 The Brief.</li>
+  <li>Screen 06 scrubber (rewind + fork).</li>
+</ul>
+
+<h3>M5 · System scale (week 8+)</h3>
+<ul>
+  <li>Screen 03 cross-board map + principles.</li>
+  <li>Screen 07 handoff + first 2 integrations (GitHub, Notion).</li>
+  <li>Custom personas.</li>
+</ul>
+
+<!-- ─── ACCEPTANCE ─── -->
+<h2 id="accept"><span class="num">06</span>Acceptance criteria</h2>
+<p>The system is "done" with each milestone when these are demonstrably true:</p>
+
+<h4>Trust</h4>
+<ul>
+  <li>Every change to the board has a corresponding <code>LogEvent</code> with author and timestamp.</li>
+  <li>No AI move below <code>takes-pen</code> autonomy ever modifies state without an explicit user accept.</li>
+  <li>Every destructive action has a 5-second undo toast.</li>
+</ul>
+
+<h4>Coherence</h4>
+<ul>
+  <li>Editing a sticky on the board updates the brief in real time, and vice-versa.</li>
+  <li>Persona color is consistent across every surface that mentions that persona.</li>
+  <li>Phase strip on board, brief, and log always agree.</li>
+</ul>
+
+<h4>Recoverability</h4>
+<ul>
+  <li>Closing the tab and re-opening lands the user exactly where they left off (route + scroll + zoom).</li>
+  <li>Scrubber rewind followed by "back to now" perfectly restores the live state.</li>
+  <li>Forking from history yields a board whose log replays identically up to the fork point.</li>
+</ul>
+
+<h4>Discoverability</h4>
+<ul>
+  <li>A user who has never seen Brainstorm can, given only Screen 01, reach a usable brief on Screen 04 in one session without help.</li>
+  <li>Every keyboard shortcut has a hover-discoverable equivalent.</li>
+</ul>
+
+<blockquote>
+  <span class="lbl">North star</span>
+  When the user opens this product, they should feel like they've walked into <b>their own studio</b> — the boards are theirs, the AI is junior staff with margin pencils, and the user is always the one signing off. Build for that feeling, not for the feature list.
+</blockquote>
+
+</div>
+
+</body>
+</html>

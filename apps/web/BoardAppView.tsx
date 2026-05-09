@@ -1,5 +1,6 @@
 import React from 'react';
 import { deriveIdeaBeadState } from '../../src/orchestrator/beadState';
+import { AppApiKeyBanner } from './AppApiKeyBanner';
 import { AppCompanionRail } from './AppCompanionRail';
 import { AppHeaderBar } from './AppHeaderBar';
 import { BoardCanvasStage } from './BoardCanvasStage';
@@ -13,6 +14,7 @@ interface BoardAppViewProps {
   companionRail: React.ComponentProps<typeof AppCompanionRail>;
   canvasStage: React.ComponentProps<typeof BoardCanvasStage>;
   workspaceOverlays: React.ComponentProps<typeof BoardWorkspaceOverlays>;
+  selectedIdeaDockContent?: React.ReactNode;
   beadStrip?: React.ReactNode;
   discardPile?: React.ReactNode;
   turnLogPanel?: React.ReactNode;
@@ -28,6 +30,7 @@ export function BoardAppView({
   companionRail,
   canvasStage,
   workspaceOverlays,
+  selectedIdeaDockContent,
   beadStrip,
   discardPile,
   turnLogPanel,
@@ -41,7 +44,7 @@ export function BoardAppView({
     <BoardSelectedIdeaDock
       idea={workspaceOverlays.selectedBoardIdea}
       docCount={workspaceOverlays.docCounts[workspaceOverlays.selectedBoardIdea.id] ?? 0}
-      dockContent={workspaceOverlays.selectedIdeaDockContent}
+      dockContent={selectedIdeaDockContent}
       isTurnLogOpen={workspaceOverlays.isTurnLogOpen}
       canOpenDocs={Boolean(workspaceOverlays.onOpenDocs)}
       canToggleTurnLog={Boolean(workspaceOverlays.onToggleTurnLog)}
@@ -74,6 +77,7 @@ export function BoardAppView({
 
       <div className="bo-shell-topbar">
         <AppHeaderBar {...header} />
+        {showApiKeyBanner && <AppApiKeyBanner onOpenOptions={onOpenOptions} />}
       </div>
 
       {beadStrip && (

@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What screens do we still need? · Brainstorm system map</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f5efe1;
+    --paper-dark: #ebe4d3;
+    --ink: #1a1814;
+    --ink-soft: #4a443a;
+    --ink-faint: rgba(26,24,20,0.5);
+    --accent-ai: #2e86c7;
+    --accent-ghost: #7a5cab;
+    --accent-revive: #2a8a4a;
+    --accent-contradict: #c94a3a;
+    --y: #f5e27a; --p: #f4b4b0; --b: #b4d4e8; --pe: #f4c88c; --g: #bcd9a8; --l: #c9bde0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #e5e0d1; font-family: "Inter", system-ui, sans-serif; color: var(--ink); }
+  body {
+    background-image: radial-gradient(circle, rgba(26,24,20,0.045) 1px, transparent 1.5px);
+    background-size: 24px 24px;
+    min-height: 100vh;
+    padding: 50px 56px 100px;
+  }
+  .head { max-width: 1480px; margin: 0 auto 44px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 40px; align-items: end; }
+  .head .tag { font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px; }
+  .head h1 { font-family: "Caveat", cursive; font-size: 56px; font-weight: 700; margin: 0; line-height: 1; letter-spacing: -0.5px; }
+  .head h1 em { font-style: italic; background: rgba(46,134,199,0.16); padding: 2px 10px; }
+  .head .lede { font-size: 14.5px; color: var(--ink-soft); line-height: 1.6; }
+  .head .lede b { color: var(--ink); }
+
+  .legend { max-width: 1480px; margin: 0 auto 32px; display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .legend .pri {
+    font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    background: #fffdf5; border: 1.4px solid var(--ink); padding: 4px 10px; border-radius: 14px;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.18);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .legend .pri::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--ink); }
+  .legend .pri.p1::before { background: var(--accent-revive); }
+  .legend .pri.p2::before { background: var(--accent-ai); }
+  .legend .pri.p3::before { background: var(--accent-ghost); }
+
+  .grid {
+    max-width: 1480px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+  }
+  .card {
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 6px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2), 0 14px 30px rgba(26,24,20,0.1);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .card .hd { padding: 14px 18px 10px; display: flex; gap: 14px; align-items: flex-start; border-bottom: 1.4px dashed rgba(26,24,20,0.3); background: var(--paper); }
+  .card .hd .num {
+    font-family: "Caveat", cursive; font-weight: 700; font-size: 38px;
+    line-height: 1; color: var(--accent-ai); flex-shrink: 0;
+  }
+  .card.p1 .hd .num { color: var(--accent-revive); }
+  .card.p3 .hd .num { color: var(--accent-ghost); }
+  .card .hd .ti { flex: 1; min-width: 0; }
+  .card .hd .why-tag { font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 3px; }
+  .card .hd h3 { margin: 0; font-family: "Caveat", cursive; font-size: 28px; font-weight: 700; line-height: 1.05; letter-spacing: -0.3px; }
+  .card .hd .pri-chip {
+    font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 12px;
+    border: 1.2px solid var(--accent-ai); color: var(--accent-ai);
+    flex-shrink: 0;
+  }
+  .card.p1 .hd .pri-chip { color: var(--accent-revive); border-color: var(--accent-revive); background: rgba(42,138,74,0.08); }
+  .card.p3 .hd .pri-chip { color: var(--accent-ghost); border-color: var(--accent-ghost); }
+
+  .card .desc { padding: 12px 18px 14px; font-size: 13px; color: var(--ink-soft); line-height: 1.55; border-bottom: 1.4px solid var(--ink); }
+  .card .desc b { color: var(--ink); }
+
+  .stage {
+    height: 280px;
+    background:
+      repeating-linear-gradient(0deg, rgba(26,24,20,0.05) 0 1px, transparent 1px 22px),
+      repeating-linear-gradient(90deg, rgba(26,24,20,0.05) 0 1px, transparent 1px 22px),
+      var(--paper);
+    position: relative;
+    overflow: hidden;
+  }
+  .card .ft {
+    padding: 10px 18px 12px;
+    background: var(--paper-dark);
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    font-family: "Inter", sans-serif; font-size: 11.5px; color: var(--ink-soft);
+  }
+  .card .ft .pin { font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink-faint); }
+  .card .ft b { color: var(--ink); }
+
+  /* mini sticky used in mockups */
+  .mini-st {
+    position: absolute; padding: 5px 7px; font-family: "Kalam", cursive;
+    font-size: 9px; line-height: 1.2; background: var(--y);
+    box-shadow: 1px 1.5px 0 rgba(26,24,20,0.22);
+    width: 76px; min-height: 30px;
+  }
+  .mini-st.p { background: var(--p); }
+  .mini-st.b { background: var(--b); }
+  .mini-st.pe { background: var(--pe); }
+  .mini-st.g { background: var(--g); }
+  .mini-st.l { background: var(--l); }
+  .mini-st .tt { font-weight: 700; font-size: 9.5px; line-height: 1.1; }
+  .mini-st .sub { font-size: 8px; color: rgba(26,24,20,0.6); margin-top: 1px; }
+  .mini-st.tiny { width: 22px; height: 16px; padding: 0; min-height: 0; box-shadow: 0.5px 0.5px 0 rgba(26,24,20,0.3); }
+
+  .anno-tag {
+    position: absolute;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700;
+    background: var(--accent-ghost); color: white;
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .anno-tag.ai { background: var(--accent-ai); }
+  .anno-tag.rev { background: var(--accent-revive); }
+  .anno-tag.con { background: var(--accent-contradict); }
+  .anno-tag.ink { background: var(--ink); }
+
+  .scribble {
+    position: absolute;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 13px; line-height: 1.05;
+    color: var(--accent-revive); pointer-events: none;
+  }
+  .scribble.bl { color: var(--accent-ai); }
+  .scribble.pu { color: var(--accent-ghost); }
+
+  /* ─── 1 · MULTI-BOARD HOME ─── */
+  .home-art { padding: 18px; }
+  .home-board {
+    position: absolute;
+    background: #fffdf5; border: 1.5px solid var(--ink);
+    border-radius: 5px; padding: 8px 10px;
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.18);
+    width: 158px; height: 110px;
+    overflow: hidden;
+  }
+  .home-board .htitle { font-family: "Caveat", cursive; font-weight: 700; font-size: 16px; line-height: 1; }
+  .home-board .hsub { font-family: "JetBrains Mono", monospace; font-size: 8px; color: var(--ink-faint); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+  .home-board .hprev {
+    position: absolute; left: 8px; right: 8px; bottom: 22px; height: 38px;
+    display: flex; gap: 2px; flex-wrap: wrap; align-content: flex-start;
+  }
+  .home-board .hprev div { width: 16px; height: 11px; background: var(--y); border: 0.5px solid rgba(26,24,20,0.3); }
+  .home-board .hstatus {
+    position: absolute; left: 8px; right: 8px; bottom: 6px;
+    font-family: "JetBrains Mono", monospace; font-size: 8px;
+    color: var(--ink-faint); letter-spacing: 0.06em; text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+  .home-board.active { box-shadow: 0 0 0 2px var(--accent-ai), 2px 2px 0 rgba(26,24,20,0.18); }
+  .home-board.archived { opacity: 0.55; }
+  .home-board.new { border-style: dashed; background: transparent; display: flex; align-items: center; justify-content: center; box-shadow: none; }
+  .home-board.new .plus { font-family: "Caveat"; font-size: 36px; line-height: 0.7; color: var(--ink-soft); }
+  .home-art .nav-pill {
+    position: absolute; top: 16px; left: 16px;
+    background: #fffdf5; border: 1.4px solid var(--ink); border-radius: 18px;
+    padding: 5px 10px;
+    font-family: "JetBrains Mono"; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.18);
+    display: flex; gap: 8px; align-items: center;
+  }
+  .home-art .nav-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-revive); }
+
+  /* ─── 2 · CLUSTER VIEW ─── */
+  .cluster-art { }
+  .cluster-halo {
+    position: absolute;
+    border: 2.5px dashed var(--accent-revive);
+    border-radius: 28px;
+    background: rgba(42,138,74,0.06);
+  }
+  .cluster-halo.alt { border-color: var(--accent-ghost); background: rgba(122,92,171,0.06); }
+  .cluster-halo.alt2 { border-color: var(--accent-ai); background: rgba(46,134,199,0.06); }
+  .cluster-label-c {
+    position: absolute;
+    background: var(--accent-revive); color: white;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 13px; padding: 2px 8px; border-radius: 4px;
+    letter-spacing: 0;
+  }
+  .cluster-label-c.alt  { background: var(--accent-ghost); }
+  .cluster-label-c.alt2 { background: var(--accent-ai); }
+  .zoom-ctl {
+    position: absolute; right: 14px; top: 14px;
+    background: #fffdf5; border: 1.4px solid var(--ink);
+    border-radius: 6px; padding: 4px 8px;
+    font-family: "JetBrains Mono"; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    display: flex; gap: 8px; align-items: center;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.18);
+  }
+  .zoom-ctl b { color: var(--accent-ai); }
+  .ai-suggest {
+    position: absolute; bottom: 14px; left: 14px; right: 14px;
+    background: #fffdf5; border: 1.4px solid var(--accent-ghost);
+    border-radius: 6px; padding: 8px 10px;
+    box-shadow: 2px 2px 0 rgba(122,92,171,0.25);
+    display: flex; gap: 10px; align-items: center;
+  }
+  .ai-suggest .av { width: 22px; height: 22px; border-radius: 50%; background: var(--g); border: 1.4px solid var(--ink); display: flex; align-items: center; justify-content: center; font-family: "Caveat"; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+  .ai-suggest .txt { flex: 1; font-family: "Kalam", cursive; font-size: 12px; line-height: 1.25; }
+  .ai-suggest .txt b { font-weight: 700; }
+  .ai-suggest .btns { display: flex; gap: 4px; }
+  .ai-suggest .btns button { font-family: "Inter"; font-size: 10px; font-weight: 600; padding: 3px 8px; border: 1.2px solid var(--ink); border-radius: 4px; background: #fffdf5; cursor: pointer; }
+  .ai-suggest .btns button.primary { background: var(--ink); color: #fffdf5; }
+
+  /* ─── 3 · CROSS-BOARD MAP ─── */
+  .galaxy-art { padding: 12px; }
+  .planet {
+    position: absolute;
+    border: 1.6px solid var(--ink);
+    border-radius: 50%;
+    background: #fffdf5;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    text-align: center;
+    cursor: pointer;
+  }
+  .planet .pname { font-family: "Caveat", cursive; font-weight: 700; font-size: 13px; line-height: 1; padding: 0 6px; }
+  .planet .pcount { font-family: "JetBrains Mono"; font-size: 8px; color: var(--ink-faint); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+  .planet.y { background: var(--y); }
+  .planet.b { background: var(--b); }
+  .planet.pe { background: var(--pe); }
+  .planet.g { background: var(--g); }
+  .planet.l { background: var(--l); }
+  .planet.p { background: var(--p); }
+
+  /* ─── 4 · THE BRIEF ─── */
+  .brief-art { padding: 14px 18px; overflow-y: auto; background: #fffdf5; }
+  .brief-art .doc-heading { font-family: "Caveat", cursive; font-weight: 700; font-size: 22px; line-height: 1; margin-bottom: 4px; }
+  .brief-art .doc-meta { font-family: "JetBrains Mono"; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 10px; }
+  .brief-art h4 { font-family: "JetBrains Mono"; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); margin: 8px 0 4px; }
+  .brief-art p, .brief-art li { font-family: "Inter"; font-size: 11px; color: var(--ink-soft); margin: 0 0 4px; line-height: 1.4; }
+  .brief-art p b, .brief-art li b { color: var(--ink); font-weight: 700; }
+  .brief-art ul { padding-left: 16px; margin: 0; }
+  .brief-art .from-board {
+    background: var(--paper); border-left: 2px solid var(--accent-ai);
+    padding: 4px 8px; font-family: "Kalam", cursive; font-size: 11px;
+    margin: 4px 0; display: inline-block;
+  }
+  .brief-art .live-edit {
+    background: rgba(46,134,199,0.1); padding: 0 3px; border-radius: 2px; font-style: normal;
+  }
+  .brief-art .ai-margin {
+    position: absolute; right: 10px; width: 90px;
+    background: var(--y); border: 1px solid rgba(26,24,20,0.3);
+    padding: 5px 7px; box-shadow: 1px 1.5px 0 rgba(26,24,20,0.22);
+    font-family: "Kalam"; font-size: 10px; line-height: 1.2;
+    transform: rotate(2deg);
+  }
+  .brief-art .ai-margin .who { font-family: "JetBrains Mono"; font-size: 7.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 2px; }
+
+  /* ─── 5 · CONNECTION INSPECTOR ─── */
+  .conn-art { }
+  .conn-line {
+    position: absolute; pointer-events: none;
+  }
+  .conn-popover {
+    position: absolute;
+    background: #fffdf5;
+    border: 1.6px solid var(--accent-ai);
+    border-radius: 8px;
+    box-shadow: 3px 3px 0 rgba(46,134,199,0.25);
+    padding: 10px 12px 12px;
+    width: 190px;
+  }
+  .conn-popover .conn-type {
+    font-family: "JetBrains Mono"; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent-ai); font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .conn-popover h5 { font-family: "Caveat", cursive; font-weight: 700; font-size: 16px; margin: 0 0 4px; }
+  .conn-popover .body { font-family: "Inter"; font-size: 10px; line-height: 1.4; color: var(--ink-soft); margin-bottom: 6px; }
+  .conn-popover .who-drew {
+    display: flex; gap: 5px; align-items: center;
+    font-family: "JetBrains Mono"; font-size: 8.5px; color: var(--ink-faint);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .conn-popover .who-drew .av { width: 16px; height: 16px; border-radius: 50%; background: var(--g); border: 1px solid var(--ink); display: flex; align-items: center; justify-content: center; font-family: "Caveat"; font-size: 10px; font-weight: 700; }
+  .conn-popover .actions { display: flex; gap: 4px; margin-top: 6px; }
+  .conn-popover .actions button { font-family: "Inter"; font-size: 9.5px; font-weight: 600; padding: 3px 6px; border: 1px solid var(--ink); border-radius: 3px; background: #fffdf5; cursor: pointer; }
+  .conn-popover .actions button.del { color: var(--accent-contradict); border-color: var(--accent-contradict); }
+
+  /* ─── 6 · LOG / TIMELINE ─── */
+  .log-art { padding: 12px 16px; overflow-y: auto; background: #fffdf5; }
+  .log-art .filter-row { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+  .log-art .filter-row .f { font-family: "JetBrains Mono"; font-size: 8.5px; padding: 2px 7px; border: 1px solid var(--ink); border-radius: 10px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+  .log-art .filter-row .f.on { background: var(--ink); color: #fffdf5; }
+  .log-event {
+    position: relative;
+    padding: 6px 10px 6px 26px;
+    margin-bottom: 5px;
+    border-left: 1.5px solid rgba(26,24,20,0.2);
+    margin-left: 8px;
+  }
+  .log-event::before {
+    content: "";
+    position: absolute; left: -5px; top: 8px;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #fffdf5; border: 1.5px solid var(--ink);
+  }
+  .log-event.ai::before { background: var(--accent-ghost); border-color: var(--accent-ghost); }
+  .log-event.user::before { background: var(--y); }
+  .log-event.crit::before { background: var(--accent-contradict); border-color: var(--accent-contradict); }
+  .log-event .when { font-family: "JetBrains Mono"; font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+  .log-event .what { font-family: "Inter"; font-size: 11px; color: var(--ink); line-height: 1.35; }
+  .log-event .what b { font-weight: 700; }
+  .log-event .what em { background: rgba(46,134,199,0.12); padding: 0 3px; border-radius: 2px; font-style: normal; }
+  .scrub {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--paper); border-top: 1.4px solid var(--ink);
+    padding: 8px 14px;
+    display: flex; gap: 10px; align-items: center;
+  }
+  .scrub .play {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fffdf5;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-family: "Inter";
+  }
+  .scrub .bar { flex: 1; height: 5px; background: rgba(26,24,20,0.15); border-radius: 3px; position: relative; }
+  .scrub .bar .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 56%; background: var(--ink); border-radius: 3px; }
+  .scrub .bar .knob { position: absolute; left: 56%; top: 50%; transform: translate(-50%,-50%); width: 11px; height: 11px; background: #fffdf5; border: 1.5px solid var(--ink); border-radius: 50%; }
+  .scrub .lab { font-family: "JetBrains Mono"; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+
+  /* ─── 7 · HANDOFF ─── */
+  .handoff-art { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .ho-channel {
+    background: #fffdf5; border: 1.4px solid var(--ink);
+    border-radius: 6px; padding: 10px 12px;
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.16);
+    display: flex; flex-direction: column;
+  }
+  .ho-channel .ic-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .ho-channel .ic { width: 22px; height: 22px; border-radius: 4px; background: var(--ink); color: #fffdf5; display: flex; align-items: center; justify-content: center; font-family: "Inter"; font-weight: 700; font-size: 11px; }
+  .ho-channel.gh .ic { background: #1a1814; }
+  .ho-channel.sl .ic { background: #4a154b; }
+  .ho-channel.li .ic { background: #2e86c7; }
+  .ho-channel.no .ic { background: #4a443a; }
+  .ho-channel .name { font-family: "Caveat", cursive; font-weight: 700; font-size: 16px; line-height: 1; }
+  .ho-channel .preview {
+    background: var(--paper); padding: 6px 8px;
+    font-family: "JetBrains Mono"; font-size: 8.5px; line-height: 1.4;
+    color: var(--ink-soft); margin-top: 6px; flex: 1;
+    border-radius: 3px;
+  }
+  .ho-channel .preview b { color: var(--ink); }
+  .ho-channel .ship {
+    margin-top: 8px;
+    font-family: "Inter"; font-weight: 600; font-size: 10.5px;
+    padding: 4px 0; border: 1.2px solid var(--ink); border-radius: 4px;
+    background: var(--ink); color: #fffdf5;
+    text-align: center; cursor: pointer;
+  }
+  .ho-channel.preview-mode .ship { background: #fffdf5; color: var(--ink); }
+
+  /* ─── 8 · PERSONA / AUTONOMY ─── */
+  .pers-art { padding: 14px 18px; overflow-y: auto; background: #fffdf5; }
+  .auton-dial {
+    position: relative; height: 40px;
+    margin-bottom: 14px;
+    background: linear-gradient(90deg, var(--g), var(--y), var(--p));
+    border: 1.4px solid var(--ink);
+    border-radius: 22px;
+    padding: 6px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: "JetBrains Mono"; font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: rgba(26,24,20,0.65);
+  }
+  .auton-dial .knob {
+    position: absolute; left: 62%; top: 50%; transform: translate(-50%,-50%);
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--ink); color: #fffdf5;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.3);
+  }
+  .auton-label {
+    text-align: center;
+    font-family: "Caveat", cursive; font-weight: 700; font-size: 18px;
+    line-height: 1; margin-bottom: 12px;
+    color: var(--ink);
+  }
+  .auton-label small { display: block; font-family: "Inter"; font-size: 10.5px; color: var(--ink-soft); font-weight: 400; margin-top: 2px; }
+  .persona-row {
+    display: grid; grid-template-columns: 28px 1fr auto; gap: 8px;
+    align-items: center;
+    padding: 6px 8px; background: var(--paper);
+    border: 1px solid rgba(26,24,20,0.3); border-radius: 5px;
+    margin-bottom: 4px;
+  }
+  .persona-row .av { width: 28px; height: 28px; border-radius: 50%; border: 1.4px solid var(--ink); background: var(--b); display: flex; align-items: center; justify-content: center; font-family: "Caveat"; font-weight: 700; font-size: 14px; }
+  .persona-row .nm { font-family: "Inter"; font-size: 11.5px; font-weight: 600; line-height: 1.1; }
+  .persona-row .role { font-family: "Inter"; font-size: 10px; color: var(--ink-soft); }
+  .persona-row .toggle {
+    width: 28px; height: 16px; border: 1.2px solid var(--ink); border-radius: 10px;
+    background: var(--ink); position: relative;
+  }
+  .persona-row .toggle::after {
+    content: ""; position: absolute; right: 1.5px; top: 1.5px; width: 10px; height: 10px; border-radius: 50%; background: #fffdf5;
+  }
+  .persona-row.off .toggle { background: #fffdf5; }
+  .persona-row.off .toggle::after { left: 1.5px; right: auto; background: var(--ink); }
+
+  /* hint banner at top */
+  .hint-banner {
+    max-width: 1480px; margin: 0 auto 32px;
+    background: var(--y);
+    border: 1.6px solid var(--ink);
+    border-radius: 4px;
+    padding: 14px 22px;
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    line-height: 1.5;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2);
+    transform: rotate(-0.3deg);
+    position: relative;
+  }
+  .hint-banner::before {
+    content: ""; position: absolute; top: -8px; left: 24px;
+    width: 30px; height: 16px; background: rgba(255,255,255,0.5);
+    border: 1px solid rgba(26,24,20,0.3);
+    transform: rotate(-3deg);
+  }
+  .hint-banner b { color: var(--ink); }
+  .hint-banner .lbl { font-family: "JetBrains Mono"; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); display: block; margin-bottom: 4px; }
+
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .head { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div>
+    <div class="tag">Brainstorm system map · what's still missing</div>
+    <h1>Eight screens to round out the system — <em>plus where they slot in</em></h1>
+  </div>
+  <div class="lede">
+    The board + inspector handle one idea well. To make Brainstorm a place you <b>live in</b>, we still need: a <b>home</b> for many boards, a way to <b>see clusters</b> instead of stickies, a <b>cross-board map</b> for ideas that travel, an <b>output surface</b> when an idea is ready, a <b>connection inspector</b> for the lines between ideas, a <b>project log</b> for replay/audit, a <b>handoff</b> screen for shipping, and an <b>autonomy panel</b> for tuning the personas.
+    <br><br>Priorities below — green = ship-blocking, blue = high value, purple = nice-to-have.
+  </div>
+</div>
+
+<div class="hint-banner">
+  <span class="lbl">a note on what's there already</span>
+  <b>Already designed:</b> the board itself, the inspector (focus + bloom), clarification flow, integration guide. <b>Not yet:</b> everything outside one open idea — the navigation around it, the flow of many boards, the moments of output, and the controls that govern AI behaviour.
+</div>
+
+<div class="legend">
+  <span class="pri p1">P1 · ship-blocking</span>
+  <span class="pri p2">P2 · high value</span>
+  <span class="pri p3">P3 · nice-to-have</span>
+  <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-faint); text-transform: uppercase;">→ tell me which to build next</span>
+</div>
+
+<div class="grid">
+
+  <!-- ─── 1 · MULTI-BOARD HOME ─── -->
+  <div class="card p1">
+    <div class="hd">
+      <div class="num">01</div>
+      <div class="ti">
+        <div class="why-tag">entry point · always visited</div>
+        <h3>Multi-board home · your workshops</h3>
+      </div>
+      <span class="pri-chip">P1 · ship-blocking</span>
+    </div>
+    <div class="desc">
+      Boards are <b>workshops</b>, not folders — each holds a single thinking project. Home shows recent activity, who's nudging on which board, and lets AI suggest the right one to open ("Manager digest got 3 new connections since you left").
+    </div>
+    <div class="stage home-art">
+      <div class="nav-pill"><span class="dot"></span> Dev's workshops · 6 active</div>
+
+      <div class="home-board active" style="left: 16px; top: 60px;">
+        <div class="htitle">Onboarding pain</div>
+        <div class="hsub">just left · 2m</div>
+        <div class="hprev">
+          <div></div><div style="background: var(--p);"></div><div style="background: var(--b);"></div>
+          <div style="background: var(--pe);"></div><div></div><div style="background: var(--g);"></div>
+        </div>
+        <div class="hstatus"><span>16 ideas</span><span style="color: var(--accent-ai);">· active</span></div>
+      </div>
+      <div class="home-board" style="left: 192px; top: 60px;">
+        <div class="htitle">Pricing rework</div>
+        <div class="hsub">3 days ago</div>
+        <div class="hprev">
+          <div style="background: var(--pe);"></div><div></div><div style="background: var(--l);"></div>
+          <div style="background: var(--p);"></div>
+        </div>
+        <div class="hstatus"><span>9 ideas</span><span>phase 4</span></div>
+      </div>
+      <div class="home-board" style="left: 368px; top: 60px;">
+        <div class="htitle">Q4 marketing</div>
+        <div class="hsub">last week</div>
+        <div class="hprev">
+          <div style="background: var(--g);"></div><div style="background: var(--b);"></div><div style="background: var(--y);"></div>
+          <div style="background: var(--p);"></div><div style="background: var(--pe);"></div>
+        </div>
+        <div class="hstatus"><span>22 ideas</span><span>phase 7</span></div>
+      </div>
+
+      <div class="home-board archived" style="left: 16px; top: 184px;">
+        <div class="htitle">Mobile app v2</div>
+        <div class="hsub">archived · jul</div>
+        <div class="hprev"><div></div><div></div><div></div></div>
+        <div class="hstatus"><span>shipped</span><span>↗</span></div>
+      </div>
+      <div class="home-board archived" style="left: 192px; top: 184px;">
+        <div class="htitle">Hiring rubric</div>
+        <div class="hsub">archived</div>
+        <div class="hprev"><div></div><div></div></div>
+        <div class="hstatus"><span>shipped</span><span>↗</span></div>
+      </div>
+      <div class="home-board new" style="left: 368px; top: 184px;">
+        <div class="plus">+</div>
+      </div>
+
+      <span class="anno-tag ai" style="left: 16px; top: 50px;">↻ AI nudge · new connection while you were gone</span>
+      <span class="scribble bl" style="left: 540px; top: 90px; max-width: 100px;">recent first<br>· active boards<br>highlighted</span>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>Search across boards</b> · <b>"start fresh" prompt</b> · <b>shared with you</b> tab · <b>archived</b> drawer</span>
+    </div>
+  </div>
+
+  <!-- ─── 2 · CLUSTER VIEW ─── -->
+  <div class="card p1">
+    <div class="hd">
+      <div class="num">02</div>
+      <div class="ti">
+        <div class="why-tag">zoomed-out · groups similar ideas</div>
+        <h3>Cluster view · zoom out, see themes</h3>
+      </div>
+      <span class="pri-chip">P1 · ship-blocking</span>
+    </div>
+    <div class="desc">
+      Same board, zoomed out. Synthesizer auto-groups stickies into <b>halos with names</b> ("Day-1 surfaces," "Cost levers," "Counter-evidence"). Drag any sticky to re-cluster. A floating AI suggestion proposes new clusters or merges. Direct request — this is the <b>connect / group similar</b> screen.
+    </div>
+    <div class="stage cluster-art">
+      <div class="zoom-ctl"><span>zoom</span><b>30%</b><span style="color: var(--ink-faint);">· clusters</span></div>
+
+      <div class="cluster-halo" style="left: 30px; top: 30px; width: 230px; height: 130px;"></div>
+      <div class="cluster-label-c" style="left: 38px; top: 18px;">↗ Day-1 surfaces · 4</div>
+      <div class="mini-st p" style="left: 50px; top: 50px;"><div class="tt">Onboarding pain</div></div>
+      <div class="mini-st b" style="left: 150px; top: 60px;"><div class="tt">Manager digest</div></div>
+      <div class="mini-st pe" style="left: 60px; top: 110px;"><div class="tt">Runbook</div></div>
+      <div class="mini-st" style="left: 160px; top: 115px;"><div class="tt">Buddy week</div></div>
+
+      <div class="cluster-halo alt" style="left: 290px; top: 30px; width: 200px; height: 100px;"></div>
+      <div class="cluster-label-c alt" style="left: 298px; top: 18px;">⫶ Cost levers · 3</div>
+      <div class="mini-st l" style="left: 305px; top: 50px;"><div class="tt">$5/idea ceiling</div></div>
+      <div class="mini-st g" style="left: 400px; top: 50px;"><div class="tt">Cache lens</div></div>
+      <div class="mini-st" style="left: 350px; top: 95px;"><div class="tt">Skip stress</div></div>
+
+      <div class="cluster-halo alt2" style="left: 30px; top: 175px; width: 280px; height: 60px;"></div>
+      <div class="cluster-label-c alt2" style="left: 38px; top: 165px;">⚠ Counter-evidence · 3</div>
+      <div class="mini-st p" style="left: 50px; top: 188px;"><div class="tt">Slack thread</div></div>
+      <div class="mini-st" style="left: 150px; top: 195px;"><div class="tt">Q3 survey</div></div>
+      <div class="mini-st pe" style="left: 230px; top: 193px;"><div class="tt">Old runbook</div></div>
+
+      <!-- loose ones -->
+      <div class="mini-st" style="left: 350px; top: 175px; opacity: 0.7;"><div class="tt">Loose idea</div></div>
+
+      <div class="ai-suggest">
+        <div class="av">∾</div>
+        <div class="txt">
+          <b>Synthesizer:</b> these 3 in "Counter-evidence" actually split into <b>"hire pipeline"</b> and <b>"docs decay"</b> — want me to break them out?
+        </div>
+        <div class="btns">
+          <button class="primary">accept</button>
+          <button>preview</button>
+          <button>×</button>
+        </div>
+      </div>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>Manual lasso</b> · <b>rename cluster</b> · <b>"explain this cluster"</b> · <b>collapse to a single sticky</b> · cluster auto-summary into a new idea</span>
+    </div>
+  </div>
+
+  <!-- ─── 3 · CROSS-BOARD MAP ─── -->
+  <div class="card p2">
+    <div class="hd">
+      <div class="num">03</div>
+      <div class="ti">
+        <div class="why-tag">all your work · galaxy view</div>
+        <h3>Cross-board map · ideas that travel</h3>
+      </div>
+      <span class="pri-chip">P2 · high value</span>
+    </div>
+    <div class="desc">
+      Some ideas matter across multiple boards (a constraint, a learning). The map shows every board as a planet, with <b>edges</b> between boards that share an idea or theme. AI can spot <b>"this idea repeats — promote it to a principle?"</b>
+    </div>
+    <div class="stage galaxy-art">
+      <svg width="100%" height="100%" style="position: absolute; inset: 0; pointer-events: none;">
+        <path d="M 130 100 Q 250 70 380 110" stroke="#7a5cab" stroke-width="1.6" fill="none" stroke-dasharray="5 5" opacity="0.7"></path>
+        <path d="M 130 100 Q 100 180 200 220" stroke="#2a8a4a" stroke-width="1.6" fill="none" stroke-dasharray="5 5" opacity="0.7"></path>
+        <path d="M 380 110 Q 460 180 380 230" stroke="#2e86c7" stroke-width="1.6" fill="none" stroke-dasharray="5 5" opacity="0.7"></path>
+        <path d="M 200 220 Q 290 230 380 230" stroke="#7a5cab" stroke-width="1.6" fill="none" stroke-dasharray="5 5" opacity="0.7"></path>
+      </svg>
+
+      <div class="planet y" style="width: 90px; height: 90px; left: 86px; top: 56px;">
+        <div class="pname">Onboarding</div>
+        <div class="pcount">16 · active</div>
+      </div>
+      <div class="planet b" style="width: 80px; height: 80px; left: 340px; top: 70px;">
+        <div class="pname">Pricing</div>
+        <div class="pcount">9</div>
+      </div>
+      <div class="planet pe" style="width: 70px; height: 70px; left: 165px; top: 185px;">
+        <div class="pname">Q4 mkt</div>
+        <div class="pcount">22</div>
+      </div>
+      <div class="planet g" style="width: 80px; height: 80px; left: 350px; top: 195px;">
+        <div class="pname">Hiring</div>
+        <div class="pcount">12</div>
+      </div>
+      <div class="planet l" style="width: 50px; height: 50px; left: 478px; top: 50px; opacity: 0.6;">
+        <div class="pname" style="font-size: 11px;">Mobile</div>
+      </div>
+
+      <span class="anno-tag" style="left: 220px; top: 78px;">"day-1" travels here</span>
+      <span class="anno-tag rev" style="left: 130px; top: 165px;">shared constraint</span>
+      <span class="anno-tag ai" style="left: 410px; top: 165px;">$ ceiling × 3 boards</span>
+
+      <div style="position: absolute; right: 14px; top: 14px; background: #fffdf5; border: 1.4px solid var(--accent-ghost); border-radius: 6px; padding: 8px 10px; box-shadow: 2px 2px 0 rgba(122,92,171,0.25); font-family: 'Kalam'; font-size: 11px; line-height: 1.3; max-width: 170px;">
+        <span style="font-family: 'JetBrains Mono'; font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ghost); font-weight: 700; display: block; margin-bottom: 3px;">Synthesizer notices</span>
+        "$5/idea ceiling" appears on 3 boards. <b>Promote to project principle?</b>
+      </div>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>Promote idea → principle</b> · <b>pin idea to multiple boards</b> · search across all · principles drawer</span>
+    </div>
+  </div>
+
+  <!-- ─── 4 · THE BRIEF (output) ─── -->
+  <div class="card p1">
+    <div class="hd">
+      <div class="num">04</div>
+      <div class="ti">
+        <div class="why-tag">output surface · phase 5+</div>
+        <h3>The Brief · idea graduates to a doc</h3>
+      </div>
+      <span class="pri-chip">P1 · ship-blocking</span>
+    </div>
+    <div class="desc">
+      When an idea reaches phase 5, it earns a <b>document view</b> — readable, shareable, with AI margin notes still attached. Sections are auto-built from board state ("approach," "rules," "premortem risks"). You can keep editing live; AI commentary stays in the margin.
+    </div>
+    <div class="stage brief-art" style="font-size: 10.5px;">
+      <div class="doc-heading">Day-1 freeze · brief</div>
+      <div class="doc-meta">v3 · phase 5 of 8 · 18 turns · ready for review</div>
+
+      <h4>Problem</h4>
+      <p>New hires <b>can't take their first action for &gt;30 min</b> on day 1. <span class="live-edit">Tightened from "freeze"</span>. Affects ~70% of joiners, weeks 0–2.</p>
+
+      <h4>Approach</h4>
+      <p>Pair model: <b>buddy week</b> (Stripe-style, 5 days) <i>plus</i> <b>sturdy runbook v2</b> as fallback. Both, not either.</p>
+
+      <h4>Must stay true</h4>
+      <ul>
+        <li>Any new hire writes their first PR <b>by Friday</b></li>
+        <li>Buddy must be ≤2y senior — peer pairing, not mentor</li>
+        <li>No new doc unless an existing one was first deleted</li>
+      </ul>
+
+      <h4>Risks (premortem)</h4>
+      <ul>
+        <li><b>If buddies are too busy</b>, falls back to runbook → quality of runbook is load-bearing</li>
+        <li><b>If runbook drifts</b>, Friday-PR still anchors action</li>
+      </ul>
+
+      <div class="ai-margin" style="top: 50px;">
+        <div class="who">Devil's · 6m</div>
+        Have you talked to Q3 hires before deciding?
+      </div>
+      <div class="ai-margin" style="top: 145px;">
+        <div class="who">Scout · 2m</div>
+        Cite the Q3 survey here?
+      </div>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>Live AI co-editing</b> · <b>collapsible sections</b> · <b>"send to handoff"</b> · version history · comments thread</span>
+    </div>
+  </div>
+
+  <!-- ─── 5 · CONNECTION INSPECTOR ─── -->
+  <div class="card p2">
+    <div class="hd">
+      <div class="num">05</div>
+      <div class="ti">
+        <div class="why-tag">click on a line</div>
+        <h3>Connection inspector · the lines have stories</h3>
+      </div>
+      <span class="pri-chip">P2 · high value</span>
+    </div>
+    <div class="desc">
+      You can already inspect a sticky. But the <b>lines between</b> are doing real work — they encode "shares theme," "contradicts," "parent-of." Click any line: who drew it, when, why, with what confidence — and a one-click way to flip the relationship type or delete.
+    </div>
+    <div class="stage conn-art">
+      <div class="mini-st p" style="left: 30px; top: 60px; width: 100px;"><div class="tt">Onboarding pain</div><div class="sub">parent</div></div>
+      <div class="mini-st pe" style="left: 30px; top: 180px; width: 100px;"><div class="tt">Runbook v2</div><div class="sub">child idea</div></div>
+
+      <svg width="100%" height="100%" class="conn-line">
+        <path d="M 80 100 Q 90 145 80 180" stroke="#2e86c7" stroke-width="2.5" fill="none"></path>
+        <text x="100" y="148" font-family="Kalam" font-size="13" fill="#2e86c7" font-weight="700">↑ parent-of</text>
+        <circle cx="80" cy="148" r="6" fill="#fffdf5" stroke="#2e86c7" stroke-width="2"></circle>
+      </svg>
+
+      <div class="conn-popover" style="right: 16px; top: 36px;">
+        <div class="conn-type">↑ parent-of · structural</div>
+        <h5>Onboarding pain → Runbook v2</h5>
+        <div class="body">
+          Runbook is one of <b>4 children</b> of onboarding pain. Inherits <em>"day-1"</em> framing. Confidence: <b>0.84</b>.
+        </div>
+        <div class="who-drew">
+          <div class="av">∾</div>
+          <span>Synthesizer · 8m ago</span>
+        </div>
+        <div class="actions">
+          <button>flip type</button>
+          <button>show reasoning</button>
+          <button class="del">↶ delete line</button>
+        </div>
+      </div>
+
+      <span class="anno-tag con" style="right: 16px; bottom: 16px; max-width: 180px;">contradicts uses red dashed · click works the same way</span>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>Hover to dim everything else</b> · "show all lines of this type" filter · <b>strength meter</b> on each line</span>
+    </div>
+  </div>
+
+  <!-- ─── 6 · LOG / TIMELINE ─── -->
+  <div class="card p2">
+    <div class="hd">
+      <div class="num">06</div>
+      <div class="ti">
+        <div class="why-tag">replay · audit · trust</div>
+        <h3>Project log · scrub through history</h3>
+      </div>
+      <span class="pri-chip">P2 · high value</span>
+    </div>
+    <div class="desc">
+      Every move on the board is logged — AI nudges, your edits, persona spawns, line draws. The log is also a <b>scrubber</b>: drag the timeline back and the board re-renders to that state. Filter by who (AI / you / specific persona) and by impact.
+    </div>
+    <div class="stage log-art" style="padding-bottom: 50px;">
+      <div class="filter-row">
+        <span class="f on">all</span>
+        <span class="f">AI only</span>
+        <span class="f">my edits</span>
+        <span class="f">connections</span>
+        <span class="f">contradictions</span>
+      </div>
+      <div class="log-event ai">
+        <div class="when">2m · Scout</div>
+        <div class="what">Suggested <em>outside-in lens</em>: "10× ops lead would call it shadowing"</div>
+      </div>
+      <div class="log-event crit">
+        <div class="when">3m · Devil's</div>
+        <div class="what">Counter posted to Scout's framing — flagged Runbook risk</div>
+      </div>
+      <div class="log-event user">
+        <div class="when">7m · You</div>
+        <div class="what">Edited "freeze" → "freeze <em>on day 1</em>"</div>
+      </div>
+      <div class="log-event ai">
+        <div class="when">8m · Synthesizer</div>
+        <div class="what">Drew <b>shares-theme</b> line · Onboarding pain ↔ Manager digest</div>
+      </div>
+      <div class="log-event ai">
+        <div class="when">11m · Historian</div>
+        <div class="what">Flagged 6 ambiguities · 5 resolved, 1 deferred</div>
+      </div>
+      <div class="log-event user">
+        <div class="when">14m · You</div>
+        <div class="what">Created idea from cluster</div>
+      </div>
+
+      <div class="scrub">
+        <div class="play">▶</div>
+        <div class="bar"><div class="fill"></div><div class="knob"></div></div>
+        <span class="lab">14m · scrub</span>
+      </div>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>Time-travel rewind</b> · "fork from here" branch · export log to CSV · undo any single move</span>
+    </div>
+  </div>
+
+  <!-- ─── 7 · HANDOFF ─── -->
+  <div class="card p3">
+    <div class="hd">
+      <div class="num">07</div>
+      <div class="ti">
+        <div class="why-tag">phase 8 · ship the brief</div>
+        <h3>Handoff · where the brief goes next</h3>
+      </div>
+      <span class="pri-chip">P3 · nice-to-have</span>
+    </div>
+    <div class="desc">
+      Last phase: send the brief somewhere it lives. Each channel <b>auto-formats</b> for that medium — GitHub issue gets checkboxes, Slack gets a TL;DR, Notion gets the full doc. Preview before ship. AI flags missing links ("Linear ticket has no owner — assign?").
+    </div>
+    <div class="stage handoff-art">
+      <div class="ho-channel gh">
+        <div class="ic-row"><div class="ic">GH</div><div class="name">GitHub issue</div></div>
+        <div class="preview"><b>title:</b> Day-1 freeze · buddy + runbook<br><b>body:</b> ☐ pair model<br>☐ runbook v2<br>☐ Friday-PR check</div>
+        <div class="ship">ship →</div>
+      </div>
+      <div class="ho-channel sl preview-mode">
+        <div class="ic-row"><div class="ic">SL</div><div class="name">Slack post</div></div>
+        <div class="preview"><b>#eng-process</b><br>TL;DR: new hires can't act for &gt;30m. Pairing+runbook fixes both …</div>
+        <div class="ship">preview</div>
+      </div>
+      <div class="ho-channel li">
+        <div class="ic-row"><div class="ic">LI</div><div class="name">Linear ticket</div></div>
+        <div class="preview"><b>P2 · process</b><br><span style="color: var(--accent-contradict);">⚠ no owner assigned</span><br>Estimate: 1w</div>
+        <div class="ship">ship →</div>
+      </div>
+      <div class="ho-channel no preview-mode">
+        <div class="ic-row"><div class="ic">NO</div><div class="name">Notion doc</div></div>
+        <div class="preview"><b>Onboarding/Day-1 freeze v3</b><br>full brief · margins preserved</div>
+        <div class="ship">preview</div>
+      </div>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>One handoff = many channels</b> · diff against last shipped · "owner has been pinged" tracking</span>
+    </div>
+  </div>
+
+  <!-- ─── 8 · PERSONA / AUTONOMY ─── -->
+  <div class="card p2">
+    <div class="hd">
+      <div class="num">08</div>
+      <div class="ti">
+        <div class="why-tag">control panel · who's in the room</div>
+        <h3>Persona panel · tune the AI room</h3>
+      </div>
+      <span class="pri-chip">P2 · high value</span>
+    </div>
+    <div class="desc">
+      A single dial sets <b>autonomy</b> — silent / suggestive / active challenger / takes-the-pen. Below: each persona toggle (Scout, Synthesizer, Devil's, Historian, custom) with a short bio. You can <b>spawn a custom persona</b> ("ex-CFO who hates over-engineering") for one board.
+    </div>
+    <div class="stage pers-art">
+      <div class="auton-label">Active challenger<small>Scout pushes back, Devil's auto-spawns on framing claims</small></div>
+      <div class="auton-dial">
+        <span>silent</span>
+        <span>suggestive</span>
+        <span style="color: var(--ink); font-weight: 700;">active</span>
+        <span>takes pen</span>
+        <div class="knob">·</div>
+      </div>
+
+      <h4 style="font-family: 'JetBrains Mono'; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px;">In the room · 4 of 6</h4>
+
+      <div class="persona-row">
+        <div class="av" style="background: var(--b);">S</div>
+        <div><div class="nm">Scout</div><div class="role">challenger · finds outside framings</div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="persona-row">
+        <div class="av" style="background: var(--g);">∾</div>
+        <div><div class="nm">Synthesizer</div><div class="role">connects · spots clusters & shared themes</div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="persona-row">
+        <div class="av" style="background: var(--p); border-color: var(--accent-contradict);">!</div>
+        <div><div class="nm">Devil's advocate</div><div class="role">contradicts · stress-tests claims</div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="persona-row">
+        <div class="av" style="background: var(--pe);">H</div>
+        <div><div class="nm">Historian</div><div class="role">flags ambiguities · keeps glossary</div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="persona-row off">
+        <div class="av" style="background: var(--l);">+</div>
+        <div><div class="nm">Custom · "ex-CFO who hates bloat"</div><div class="role">off · activate for this board</div></div>
+        <div class="toggle"></div>
+      </div>
+    </div>
+    <div class="ft">
+      <span class="pin">also on this screen</span>
+      <span><b>Per-board override</b> · "summon for this turn" temp invite · cost cap per persona · "let Scout interrupt me" toggle</span>
+    </div>
+  </div>
+
+</div>
+
+<div style="max-width: 1480px; margin: 40px auto 0; padding: 24px 28px; background: #fffdf5; border: 1.6px solid var(--ink); border-radius: 6px; box-shadow: 0 3px 0 rgba(26,24,20,0.18);">
+  <div style="font-family: 'JetBrains Mono'; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px;">Sequencing recommendation</div>
+  <div style="font-family: 'Caveat', cursive; font-size: 24px; font-weight: 700; line-height: 1.15; margin-bottom: 12px;">Build the P1 trio first · Home → Cluster view → Brief.</div>
+  <div style="font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; max-width: 900px;">
+    Those three close the loop: a place to <b>start</b>, a way to <b>see emerging structure</b>, and a place where ideas <b>graduate to output</b>. Without them users can't justify the system as more than a single-board toy. The P2 set (cross-board map, connection inspector, log, persona panel) makes it feel <i>cohesive</i>. Handoff (P3) is last — the brief is editable enough that ad-hoc copy-paste covers it for v1.
+  </div>
+</div>
+
+</body>
+</html>

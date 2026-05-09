@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Focus & Bloom — two modes for opening an idea</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f5efe1;
+    --paper-dark: #ebe4d3;
+    --ink: #1a1814;
+    --ink-soft: #4a443a;
+    --ink-faint: rgba(26,24,20,0.45);
+    --accent-contradict: #c94a3a;
+    --accent-revive: #2a8a4a;
+    --accent-ai: #2e86c7;
+    --accent-ghost: #7a5cab;
+    --sticky-yellow: #f5e27a;
+    --sticky-pink: #f4b4b0;
+    --sticky-blue: #b4d4e8;
+    --sticky-peach: #f4c88c;
+    --sticky-green: #bcd9a8;
+    --sticky-lilac: #c9bde0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #e5e0d1; font-family: "Inter", system-ui, sans-serif; color: var(--ink); }
+  body {
+    background-color: #e5e0d1;
+    background-image: radial-gradient(circle, rgba(26,24,20,0.04) 1px, transparent 1.5px);
+    background-size: 28px 28px;
+    min-height: 100vh;
+    padding: 40px 48px 100px;
+  }
+  .head { max-width: 1640px; margin: 0 auto 36px; display: flex; align-items: flex-end; gap: 32px; justify-content: space-between; }
+  .head .tag { font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+  .head h1 { font-family: "Caveat", cursive; font-size: 44px; font-weight: 700; margin: 0; letter-spacing: -0.5px; max-width: 900px; line-height: 1.05; }
+  .head h1 em { font-style: italic; background: rgba(46,134,199,0.15); padding: 0 6px; }
+  .head .lede { font-size: 14px; color: var(--ink-soft); max-width: 540px; line-height: 1.55; }
+  .stack { max-width: 1640px; margin: 0 auto; display: flex; flex-direction: column; gap: 36px; }
+
+  .panel {
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 4px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2), 0 12px 28px rgba(26,24,20,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 22px; border-bottom: 1.4px solid var(--ink); background: var(--paper);
+  }
+  .panel-header .pill { font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-ai); }
+  .panel-header .pill.b { color: var(--accent-revive); }
+  .panel-header h2 { margin: 0; font-family: "Caveat", cursive; font-weight: 700; font-size: 26px; }
+  .panel-header .right { font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--ink-soft); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .art {
+    position: relative; height: 1020px;
+    background: repeating-linear-gradient(0deg, rgba(26,24,20,0.05) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(26,24,20,0.05) 0 1px, transparent 1px 28px), var(--paper);
+    overflow: hidden;
+  }
+
+  .sticky {
+    position: absolute; padding: 10px 12px; font-family: "Kalam", cursive; font-size: 13px; line-height: 1.3;
+    background: var(--sticky-yellow); box-shadow: 2px 3px 0 rgba(26,24,20,0.22), 4px 8px 18px rgba(26,24,20,0.12);
+    width: 170px; color: var(--ink);
+  }
+  .sticky.s-pink  { background: var(--sticky-pink); }
+  .sticky.s-blue  { background: var(--sticky-blue); }
+  .sticky.s-peach { background: var(--sticky-peach); }
+  .sticky.s-green { background: var(--sticky-green); }
+  .sticky.s-lilac { background: var(--sticky-lilac); }
+  .sticky .tt { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+  .sticky .meta { font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(26,24,20,0.55); margin-top: 6px; }
+
+  .board-toolbar { position: absolute; top: 16px; left: 16px; display: flex; gap: 6px; z-index: 5; }
+  .board-toolbar .tool {
+    width: 30px; height: 30px; background: #fffdf5; border: 1.4px solid var(--ink);
+    border-radius: 6px; box-shadow: 0 2px 0 rgba(26,24,20,0.2);
+    display: flex; align-items: center; justify-content: center; font-family: "JetBrains Mono", monospace; font-size: 13px;
+  }
+  .board-toolbar .tool.on { background: var(--ink); color: #fffdf5; }
+
+  /* ─── A · FOCUS MODE ─── */
+  .focus-art .focus-thumb {
+    position: absolute; top: 16px; right: 16px; width: 220px; height: 150px;
+    background: var(--paper); border: 1.6px solid var(--ink); border-radius: 6px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2); overflow: hidden; z-index: 6;
+  }
+  .focus-art .focus-thumb .thumb-label {
+    position: absolute; top: -10px; left: 8px; background: var(--accent-ai); color: white;
+    font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
+    padding: 2px 7px; border-radius: 3px; border: 1.4px solid var(--ink); text-transform: uppercase;
+  }
+  .focus-art .focus-thumb .mini {
+    position: absolute; background: var(--sticky-yellow); width: 24px; height: 16px;
+    border: 0.6px solid rgba(26,24,20,0.4); box-shadow: 0.5px 0.5px 0 rgba(26,24,20,0.2);
+  }
+  .focus-art .focus-thumb .mini.you { outline: 2px dashed var(--accent-ai); outline-offset: 2px; z-index: 3; }
+  .focus-art .focus-thumb .restore {
+    position: absolute; bottom: 6px; right: 6px;
+    font-family: "Inter"; font-size: 10px; font-weight: 600;
+    background: #fffdf5; border: 1px solid var(--ink); padding: 2px 6px; border-radius: 3px; cursor: pointer;
+  }
+
+  .focus-surface {
+    position: absolute; top: 16px; left: 16px; right: 250px; bottom: 16px;
+    background: #fffdf5; border: 1.8px solid var(--ink); border-radius: 8px;
+    box-shadow: 0 4px 0 rgba(26,24,20,0.18), 0 18px 30px rgba(26,24,20,0.1);
+    display: grid;
+    grid-template-columns: 220px 1fr 280px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "head head head" "phases conv neigh";
+    overflow: hidden;
+  }
+  .fs-head { grid-area: head; padding: 18px 24px 14px; border-bottom: 1.4px solid var(--ink); background: var(--paper); display: flex; align-items: flex-start; gap: 12px; }
+  .fs-head .you-here { font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink-faint); display: flex; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .fs-head .you-here .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-ai); animation: pulse-soft 1.6s ease-out infinite; }
+  @keyframes pulse-soft {
+    0% { box-shadow: 0 0 0 0 rgba(46,134,199,0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(46,134,199,0); }
+    100% { box-shadow: 0 0 0 0 rgba(46,134,199,0); }
+  }
+  .fs-head h3 { font-family: "Caveat", cursive; font-weight: 700; font-size: 32px; line-height: 1; margin: 0 0 4px; letter-spacing: -0.4px; }
+  .fs-head .prov { font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--ink-soft); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .fs-head .prov .pchip { background: var(--sticky-peach); font-family: "Kalam", cursive; font-size: 12px; padding: 0 6px; border-radius: 3px; border: 1px solid rgba(26,24,20,0.25); text-transform: none; letter-spacing: 0; }
+  .fs-head .prov .pmodel { background: var(--ink); color: #fffdf5; padding: 1px 5px; border-radius: 2px; }
+  .fs-head .closer { margin-left: auto; border: 1.4px solid var(--ink); background: #fffdf5; padding: 5px 10px; border-radius: 5px; font-family: "Inter"; font-weight: 600; font-size: 11.5px; cursor: pointer; box-shadow: 0 2px 0 rgba(26,24,20,0.18); flex-shrink: 0; }
+
+  .fs-phases { grid-area: phases; border-right: 1.4px dashed rgba(26,24,20,0.3); padding: 18px 14px 18px 22px; background: var(--paper); overflow-y: auto; }
+  .fs-phases h4 { font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 12px; }
+  .vphase-list { position: relative; padding-left: 16px; }
+  .vphase-list::before { content: ""; position: absolute; left: 9px; top: 8px; bottom: 8px; width: 1.5px; background: repeating-linear-gradient(180deg, var(--ink) 0 4px, transparent 4px 8px); opacity: 0.35; }
+  .vphase { position: relative; padding: 4px 0 4px 14px; cursor: pointer; border-radius: 3px; margin-bottom: 1px; font-family: "Inter"; font-size: 12px; color: var(--ink-soft); line-height: 1.3; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .vphase:hover { background: rgba(26,24,20,0.05); }
+  .vphase::before { content: ""; position: absolute; left: -16px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background: #fffdf5; border: 1.5px solid var(--ink); z-index: 2; }
+  .vphase.done::before { background: var(--ink); }
+  .vphase.done::after { content: "✓"; position: absolute; left: -14px; top: 50%; transform: translateY(-50%); color: #fffdf5; font-size: 9px; z-index: 3; }
+  .vphase.optional::before { width: 10px; height: 10px; border-style: dashed; left: -15px; }
+  .vphase.active { background: rgba(46,134,199,0.1); color: var(--accent-ai); font-weight: 700; }
+  .vphase.active::before { background: var(--accent-ai); border-color: var(--ink); box-shadow: 0 0 0 3px rgba(46,134,199,0.18); }
+  .vphase.locked { color: var(--ink-faint); }
+  .vphase .vp-num { font-family: "JetBrains Mono", monospace; font-size: 9.5px; color: var(--ink-faint); margin-right: 4px; }
+  .vphase.active .vp-num { color: var(--accent-ai); }
+  .vphase .vp-meta { font-family: "JetBrains Mono", monospace; font-size: 9px; color: var(--ink-faint); }
+  .vphase-list .lock-divider { margin: 8px 0 4px; font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); padding-left: 0; }
+
+  .fs-conv { grid-area: conv; padding: 18px 22px 24px; overflow-y: auto; }
+  .conv-label { display: flex; justify-content: space-between; align-items: center; font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 12px; }
+  .conv-label .listening { color: var(--accent-ai); font-weight: 700; display: inline-flex; gap: 5px; align-items: center; }
+  .conv-label .listening::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-ai); animation: pulse-soft 1.4s ease-out infinite; }
+
+  .turn { display: grid; grid-template-columns: 32px 1fr; gap: 10px; margin-bottom: 14px; }
+  .turn .av { width: 32px; height: 32px; border-radius: 50%; border: 1.6px solid var(--ink); display: flex; align-items: center; justify-content: center; font-family: "Caveat", cursive; font-weight: 700; font-size: 16px; background: #fffdf5; box-shadow: 1.5px 1.5px 0 rgba(26,24,20,0.22); }
+  .turn.scout .av  { background: var(--sticky-blue); }
+  .turn.synth .av  { background: var(--sticky-green); }
+  .turn.devil .av  { background: var(--sticky-pink); border-color: var(--accent-contradict); }
+  .turn.user .av   { background: var(--sticky-yellow); }
+  .turn .body { background: #fffdf5; border: 1.4px solid var(--ink); border-radius: 8px 8px 8px 2px; padding: 10px 12px 12px; box-shadow: 2px 2px 0 rgba(26,24,20,0.15); }
+  .turn.user .body { background: var(--paper); border-radius: 8px 8px 2px 8px; border-style: dashed; }
+  .turn.devil .body { border-color: var(--accent-contradict); box-shadow: 2px 2px 0 rgba(201,74,58,0.25); }
+  .turn .who { display: flex; gap: 6px; align-items: center; font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 5px; }
+  .turn .who .name { color: var(--ink); font-weight: 700; }
+  .turn.scout .who .name { color: #2e6da8; }
+  .turn.synth .who .name { color: #2a8a4a; }
+  .turn.devil .who .name { color: var(--accent-contradict); }
+  .turn .who .role { border: 1px solid currentColor; padding: 0 5px; border-radius: 2px; font-size: 8.5px; opacity: 0.75; }
+  .turn .who .when { margin-left: auto; color: var(--ink-faint); font-size: 9px; }
+  .turn .said { font-family: "Kalam", cursive; font-size: 14px; line-height: 1.4; color: var(--ink); }
+  .turn .said em { background: rgba(46,134,199,0.14); padding: 0 3px; border-radius: 2px; font-style: normal; font-weight: 600; }
+  .turn.devil .said em { background: rgba(201,74,58,0.14); }
+  .turn .deltas { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+  .turn .delta { font-family: "JetBrains Mono", monospace; font-size: 9px; background: rgba(46,134,199,0.12); color: #2e6da8; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+  .turn .delta.warn { background: rgba(216,147,40,0.18); color: #8a5a10; }
+  .turn .delta.bad  { background: rgba(201,74,58,0.14); color: var(--accent-contradict); }
+  .turn .options { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .turn .opt { display: flex; gap: 8px; align-items: flex-start; background: var(--paper); border: 1.2px solid rgba(26,24,20,0.4); border-radius: 5px; padding: 7px 9px; cursor: pointer; }
+  .turn .opt:hover { background: #fffdf5; box-shadow: 2px 2px 0 rgba(26,24,20,0.15); }
+  .turn .opt .opt-key { font-family: "JetBrains Mono", monospace; font-size: 9.5px; font-weight: 700; border: 1px solid var(--ink); padding: 1px 5px; border-radius: 3px; background: #fffdf5; flex-shrink: 0; margin-top: 1px; }
+  .turn .opt .opt-text { font-family: "Kalam", cursive; font-size: 13px; line-height: 1.3; }
+  .turn .opt .opt-text b { font-weight: 700; }
+
+  .confirm-bar { margin-top: 12px; padding: 12px 14px; background: #fffdf5; border: 1.6px solid var(--accent-ai); border-radius: 6px; box-shadow: 3px 3px 0 rgba(46,134,199,0.22); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .confirm-bar .cb-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-ai); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .confirm-bar .cb-text { flex: 1; min-width: 200px; }
+  .confirm-bar .cb-q { display: block; font-family: "Caveat", cursive; font-size: 19px; font-weight: 700; line-height: 1.1; margin-bottom: 2px; }
+  .confirm-bar .cb-text small { font-family: "Inter"; font-size: 11.5px; color: var(--ink-soft); }
+  .confirm-bar .cb-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cb-btn { font-family: "Inter"; font-weight: 600; font-size: 11.5px; padding: 7px 12px; border: 1.5px solid var(--ink); border-radius: 5px; background: #fffdf5; color: var(--ink); cursor: pointer; box-shadow: 0 2px 0 rgba(26,24,20,0.22); white-space: nowrap; }
+  .cb-btn.primary { background: var(--ink); color: #fffdf5; }
+  .cb-btn.ghost { box-shadow: none; border-style: dashed; background: transparent; }
+
+  .fs-neigh { grid-area: neigh; border-left: 1.4px dashed rgba(26,24,20,0.3); padding: 18px; background: var(--paper); overflow-y: auto; }
+  .fs-neigh h4 { font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 10px; }
+  .neigh-card { background: #fffdf5; border: 1.4px solid var(--ink); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; box-shadow: 2px 2px 0 rgba(26,24,20,0.15); cursor: pointer; position: relative; }
+  .neigh-card:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 rgba(26,24,20,0.2); }
+  .neigh-card .nc-swatch { position: absolute; left: -3px; top: 8px; bottom: 8px; width: 4px; border-radius: 2px; background: var(--sticky-peach); }
+  .neigh-card.blue  .nc-swatch { background: var(--sticky-blue); }
+  .neigh-card.pink  .nc-swatch { background: var(--sticky-pink); }
+  .neigh-card .nc-rel { font-family: "JetBrains Mono", monospace; font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ghost); font-weight: 700; margin-bottom: 3px; }
+  .neigh-card .nc-title { font-family: "Kalam", cursive; font-size: 13.5px; font-weight: 700; line-height: 1.2; }
+  .neigh-card .nc-why { font-family: "Inter"; font-size: 10.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.4; }
+  .neigh-card .nc-go { font-family: "Inter"; font-size: 10.5px; font-weight: 600; color: var(--accent-ai); margin-top: 6px; text-decoration: underline; text-decoration-style: dotted; display: inline-block; }
+  .neigh-divider { border: none; border-top: 1px dashed rgba(26,24,20,0.25); margin: 14px 0 10px; }
+  .quick-actions { display: flex; flex-direction: column; gap: 6px; }
+  .quick-actions .qa { display: flex; align-items: center; gap: 8px; background: #fffdf5; border: 1.2px solid var(--ink); padding: 7px 9px; border-radius: 5px; font-family: "Inter"; font-size: 11.5px; cursor: pointer; box-shadow: 0 1.5px 0 rgba(26,24,20,0.15); }
+  .quick-actions .qa:hover { transform: translate(-1px,-1px); }
+  .quick-actions .qa .ic { font-family: "JetBrains Mono"; font-size: 12px; color: var(--ink-faint); }
+
+  .focus-tether { position: absolute; pointer-events: none; z-index: 4; }
+
+  .anno { position: absolute; font-family: "Caveat", cursive; font-weight: 700; color: var(--accent-revive); font-size: 16px; line-height: 1.15; max-width: 200px; pointer-events: none; z-index: 8; }
+  .anno.b { color: var(--accent-ghost); }
+
+  /* ─── B · BLOOM IN PLACE ─── */
+  .bloom-art .bloom-card {
+    position: absolute; left: 410px; top: 130px; width: 540px;
+    background: #fffdf5; border: 2px solid var(--ink); border-radius: 8px;
+    box-shadow: 6px 8px 0 rgba(26,24,20,0.2), 12px 18px 36px rgba(26,24,20,0.18);
+    z-index: 10; overflow: hidden; transform: rotate(-0.6deg);
+  }
+  .bc-header { background: var(--sticky-yellow); padding: 12px 16px 14px; border-bottom: 1.6px solid var(--ink); position: relative; }
+  .bc-header .you-here { font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink-soft); display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .bc-header .you-here .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-ai); animation: pulse-soft 1.6s ease-out infinite; }
+  .bc-header h3 { font-family: "Caveat", cursive; font-weight: 700; font-size: 30px; line-height: 1; margin: 0 0 4px; letter-spacing: -0.4px; }
+  .bc-header .prov { font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--ink-soft); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .bc-header .prov .pchip { background: #fffdf5; font-family: "Kalam", cursive; font-size: 12px; padding: 0 6px; border-radius: 3px; border: 1px solid rgba(26,24,20,0.35); text-transform: none; letter-spacing: 0; }
+  .bc-header .closer { position: absolute; right: 12px; top: 12px; border: 1.4px solid var(--ink); background: #fffdf5; width: 28px; height: 28px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-family: "JetBrains Mono"; font-size: 14px; box-shadow: 0 2px 0 rgba(26,24,20,0.18); cursor: pointer; }
+  .bc-collapse { position: absolute; right: 50px; top: 14px; font-family: "Inter"; font-size: 11px; font-weight: 600; background: #fffdf5; border: 1.4px solid var(--ink); padding: 4px 9px; border-radius: 5px; box-shadow: 0 2px 0 rgba(26,24,20,0.18); cursor: pointer; }
+
+  .bc-phases { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--paper); border-bottom: 1px dashed rgba(26,24,20,0.3); }
+  .bc-phases .lbl { font-family: "JetBrains Mono", monospace; font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); flex-shrink: 0; }
+  .bc-phases .track { flex: 1; position: relative; height: 18px; display: flex; justify-content: space-between; align-items: center; }
+  .bc-phases .track::before { content: ""; position: absolute; left: 6px; right: 6px; top: 50%; height: 1.5px; transform: translateY(-50%); background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 9px); opacity: 0.3; }
+  .bc-phases .pdot { width: 14px; height: 14px; border-radius: 50%; background: #fffdf5; border: 1.6px solid var(--ink); z-index: 2; position: relative; cursor: pointer; }
+  .bc-phases .pdot.done { background: var(--ink); }
+  .bc-phases .pdot.active { background: var(--accent-ai); box-shadow: 0 0 0 3px rgba(46,134,199,0.2); }
+  .bc-phases .pdot.opt { width: 10px; height: 10px; border-style: dashed; }
+  .bc-phases .pdot.opt.done { background: var(--ink); }
+
+  .bc-body { padding: 14px 18px; max-height: 540px; overflow-y: auto; }
+  .bc-foot { border-top: 1.4px solid var(--ink); background: var(--paper-dark); padding: 10px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .bc-foot .question { flex: 1; font-family: "Caveat", cursive; font-size: 18px; font-weight: 700; line-height: 1.1; }
+  .bc-foot .qprompt { font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ai); font-weight: 700; display: block; margin-bottom: 2px; }
+
+  .neigh-halo { position: absolute; border: 2px dashed var(--accent-ghost); border-radius: 14px; pointer-events: none; z-index: 6; animation: halo-breathe 2.4s ease-in-out infinite; }
+  @keyframes halo-breathe {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.04); }
+  }
+  .neigh-halo .halo-tag { position: absolute; top: -10px; left: 10px; background: var(--accent-ghost); color: white; font-family: "JetBrains Mono", monospace; font-size: 8.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  .bloom-art svg.connections { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+
+  .mode-badge { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fffdf5; font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: 0.14em; font-weight: 700; padding: 4px 12px; border-radius: 12px; text-transform: uppercase; z-index: 12; }
+  .mode-badge.b { background: var(--accent-ghost); }
+
+  .bloom-dock { position: absolute; right: 24px; bottom: 24px; background: #fffdf5; border: 1.6px solid var(--ink); border-radius: 30px; padding: 6px 10px 6px 6px; box-shadow: 0 3px 0 rgba(26,24,20,0.18); display: flex; gap: 6px; align-items: center; z-index: 9; }
+  .bloom-dock .dot { width: 28px; height: 28px; border-radius: 50%; border: 1.4px solid var(--ink); background: var(--sticky-blue); display: flex; align-items: center; justify-content: center; font-family: "Caveat"; font-weight: 700; font-size: 14px; }
+  .bloom-dock .dot.s2 { background: var(--sticky-green); }
+  .bloom-dock .dot.s3 { background: var(--sticky-pink); }
+  .bloom-dock .dot.s4 { background: var(--sticky-peach); }
+  .bloom-dock .lab { font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); padding-left: 4px; }
+
+  .compare { max-width: 1640px; margin: 36px auto 0; background: #fffdf5; border: 1.6px solid var(--ink); border-radius: 6px; padding: 22px 28px; box-shadow: 0 3px 0 rgba(26,24,20,0.18); }
+  .compare h3 { font-family: "Caveat", cursive; font-size: 26px; margin: 0 0 14px; }
+  .compare .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .compare .col { border-left: 3px solid var(--ink); padding: 0 0 0 16px; }
+  .compare .col.b { border-left-color: var(--accent-ghost); }
+  .compare .col h4 { font-family: "Caveat", cursive; font-size: 22px; margin: 0 0 4px; font-weight: 700; }
+  .compare .col .when { font-family: "JetBrains Mono"; font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px; display: block; }
+  .compare .col ul { margin: 0; padding-left: 18px; line-height: 1.6; font-size: 13px; color: var(--ink-soft); }
+  .compare .col ul li b { color: var(--ink); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div>
+    <div class="tag">Inspector mode exploration</div>
+    <h1>Two ways to open an idea: <em>focus mode</em> vs <em>bloom in place</em></h1>
+  </div>
+  <div class="lede">
+    The drawer was too cramped. Two replacements — <b>(A) focus mode</b> takes over the screen for deep work but keeps the board glance-able in a corner thumbnail; <b>(B) bloom in place</b> expands the sticky itself on the board so you can keep working with everything else around it. Both let you swap as you work — focus when committing, bloom when glancing.
+  </div>
+</div>
+
+<div class="stack">
+
+  <!-- ─── A · FOCUS MODE ─── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="pill">A · Focus mode</span>
+      <h2>Take over the screen, keep the board in the corner</h2>
+      <span class="right">deep work · 70% surface · board still alive</span>
+    </div>
+
+    <div class="art focus-art">
+      <span class="mode-badge">▸ Focus on · Outside-in lens</span>
+
+      <div class="board-toolbar">
+        <div class="tool on">↗</div>
+        <div class="tool">∾</div>
+        <div class="tool">+</div>
+      </div>
+
+      <div class="focus-thumb">
+        <div class="thumb-label">Board · 16 ideas · click to restore</div>
+        <div class="mini" style="left: 14px; top: 32px; transform: rotate(-3deg);"></div>
+        <div class="mini you" style="left: 88px; top: 50px; transform: rotate(2deg);"></div>
+        <div class="mini" style="left: 130px; top: 30px; background: var(--sticky-peach); transform: rotate(-2deg);"></div>
+        <div class="mini" style="left: 170px; top: 70px; background: var(--sticky-blue); transform: rotate(4deg);"></div>
+        <div class="mini" style="left: 30px; top: 80px; background: var(--sticky-pink); transform: rotate(-4deg);"></div>
+        <div class="mini" style="left: 60px; top: 110px; background: var(--sticky-green); transform: rotate(2deg);"></div>
+        <div class="mini" style="left: 130px; top: 100px; background: var(--sticky-lilac); transform: rotate(-1deg);"></div>
+        <div class="mini" style="left: 170px; top: 120px; background: var(--sticky-peach); transform: rotate(3deg);"></div>
+        <div class="restore">restore board</div>
+      </div>
+
+      <svg class="focus-tether" style="right: 240px; top: 50px; width: 60px; height: 80px;" viewBox="0 0 60 80">
+        <path d="M 50 16 Q 30 30 6 60" stroke="#1a1814" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-dasharray="4 4" opacity="0.55"></path>
+        <circle cx="6" cy="60" r="3" fill="#1a1814" opacity="0.55"></circle>
+      </svg>
+
+      <div class="focus-surface">
+
+        <div class="fs-head">
+          <div>
+            <div class="you-here"><span class="pulse"></span> Dev · in the room with you</div>
+            <h3>Outside-in lens · day-1 freeze</h3>
+            <div class="prov">
+              <span>Born from</span>
+              <span class="pchip">Scout</span>
+              <span>·</span>
+              <span class="pmodel">gemini-2.5-pro</span>
+              <span>·</span>
+              <span>14m ago</span>
+              <span>·</span>
+              <span style="color: var(--accent-contradict); font-weight: 600;">↶ undo</span>
+            </div>
+          </div>
+          <button class="closer">↙ to bloom</button>
+          <button class="closer">× exit</button>
+        </div>
+
+        <div class="fs-phases">
+          <h4>Lifecycle · 3 of 13</h4>
+          <div class="vphase-list">
+            <div class="vphase done"><span><span class="vp-num">0</span>Ambiguities</span><span class="vp-meta">12m</span></div>
+            <div class="vphase done optional"><span><span class="vp-num">0.5a</span>Insider lens</span><span class="vp-meta">8m</span></div>
+            <div class="vphase active"><span><span class="vp-num">0.5</span>Outside-in</span><span class="vp-meta">live</span></div>
+            <div class="vphase locked"><span><span class="vp-num">1</span>Clarify</span><span class="vp-meta">queued</span></div>
+            <div class="vphase locked"><span><span class="vp-num">2</span>Approach</span><span class="vp-meta">—</span></div>
+            <div class="vphase locked optional"><span><span class="vp-num">2.5</span>Devil's</span><span class="vp-meta">opt</span></div>
+            <div class="vphase locked"><span><span class="vp-num">3</span>Rules</span><span class="vp-meta">—</span></div>
+            <div class="vphase locked"><span><span class="vp-num">4</span>Premortem</span><span class="vp-meta">—</span></div>
+            <div class="vphase locked optional"><span><span class="vp-num">4.5</span>Stress-test</span><span class="vp-meta">opt</span></div>
+            <div class="vphase locked"><span><span class="vp-num">5</span>Brief</span><span class="vp-meta">—</span></div>
+            <div class="vphase locked"><span><span class="vp-num">6</span>Review</span><span class="vp-meta">—</span></div>
+            <div class="vphase locked"><span><span class="vp-num">7</span>Readiness</span><span class="vp-meta">—</span></div>
+            <div class="vphase locked"><span><span class="vp-num">8</span>Handoff</span><span class="vp-meta">—</span></div>
+            <div class="lock-divider">— jump back —</div>
+            <div class="vphase done"><span style="color: var(--accent-contradict);"><span class="vp-num" style="color: var(--accent-contradict);">↶</span>rewind to 0</span></div>
+          </div>
+        </div>
+
+        <div class="fs-conv">
+          <div class="conv-label">
+            <span>0.5 · Outside-in lens · the conversation</span>
+            <span class="listening">Scout listening</span>
+          </div>
+
+          <div class="turn scout">
+            <div class="av">S</div>
+            <div class="body">
+              <div class="who"><span class="name">Scout</span><span class="role">challenger</span><span class="when">2m</span></div>
+              <div class="said">You're framing this as a <em>docs problem</em>. An ops lead at a 10× shop would say: "you have a <em>shadowing problem</em>." They solved day-1 freeze by pairing, not runbooks.</div>
+              <div class="deltas">
+                <span class="delta">↑ scope · "docs" → "first-day support"</span>
+                <span class="delta warn">⚠ may invalidate Runbook</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="turn devil">
+            <div class="av">!</div>
+            <div class="body">
+              <div class="who"><span class="name">Devil's advocate</span><span class="role">contradicts</span><span class="when">1m</span></div>
+              <div class="said">Counter: <em>most</em> 10× shops also have onboarding doc systems Scout is dismissing. The fix wasn't shadowing — it was <em>shadowing on top of</em> a sturdy runbook.</div>
+              <div class="deltas"><span class="delta bad">contradicts Scout's framing</span></div>
+            </div>
+          </div>
+
+          <div class="turn user">
+            <div class="av">D</div>
+            <div class="body">
+              <div class="who"><span class="name">You · Dev</span><span class="role">edit</span><span class="when">now</span></div>
+              <div class="said">Fair. Tightening: "freeze" → "freeze <em>on day 1</em>." Keep both leads alive — let phase 2 pick.</div>
+            </div>
+          </div>
+
+          <div class="turn scout">
+            <div class="av">S</div>
+            <div class="body">
+              <div class="who"><span class="name">Scout</span><span class="role">asks</span><span class="when">now</span></div>
+              <div class="said">Good. Pick one to actually <em>borrow from</em> before we leave the lens phase:</div>
+              <div class="options">
+                <div class="opt"><div class="opt-key">A</div><div class="opt-text"><b>Stripe-style "buddy week"</b> · paired engineer for 5 days, no docs touched</div></div>
+                <div class="opt"><div class="opt-key">B</div><div class="opt-text"><b>Shopify "first PR by Friday"</b> · make-something-tiny pressure beats reading</div></div>
+                <div class="opt"><div class="opt-key">C</div><div class="opt-text"><b>None of these</b> · write your own outside-in framing</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="confirm-bar">
+            <div class="cb-icon">▸</div>
+            <div class="cb-text">
+              <span class="cb-q">Done with the lens? Move to clarification?</span>
+              <small><b>No auto-advance.</b> Phase only closes when you (or Scout) explicitly say so. Always reversible.</small>
+            </div>
+            <div class="cb-actions">
+              <button class="cb-btn primary">✓ confirm · advance to 1</button>
+              <button class="cb-btn">stay</button>
+              <button class="cb-btn ghost">skip</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="fs-neigh">
+          <h4>Close ideas on the board</h4>
+
+          <div class="neigh-card">
+            <div class="nc-swatch"></div>
+            <div class="nc-rel">↗ overlaps</div>
+            <div class="nc-title">Runbook automation</div>
+            <div class="nc-why">Same trigger (day-1 freeze), different remedy. Devil's wants both alive.</div>
+            <div class="nc-go">jump · or merge →</div>
+          </div>
+
+          <div class="neigh-card blue">
+            <div class="nc-swatch"></div>
+            <div class="nc-rel">⫶ shares theme</div>
+            <div class="nc-title">Manager digest</div>
+            <div class="nc-why">Both are "day-1 surfaces" — Synthesizer drew a line.</div>
+            <div class="nc-go">view connection →</div>
+          </div>
+
+          <div class="neigh-card pink">
+            <div class="nc-swatch"></div>
+            <div class="nc-rel">↑ parent</div>
+            <div class="nc-title">Onboarding pain</div>
+            <div class="nc-why">This idea is its child. Inherits constraints.</div>
+            <div class="nc-go">jump up →</div>
+          </div>
+
+          <hr class="neigh-divider">
+
+          <h4>Quick actions</h4>
+          <div class="quick-actions">
+            <div class="qa"><span class="ic">📎</span>ops-onboarding-2024.pdf</div>
+            <div class="qa"><span class="ic">🔗</span>competitor teardown</div>
+            <div class="qa"><span class="ic">+</span>add artifact</div>
+            <div class="qa"><span class="ic">⊕</span>spawn related idea</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="anno" style="right: 24px; bottom: 200px;">right rail keeps neighbors,<br>artifacts & quick actions<br>visible always</div>
+      <div class="anno" style="right: 28px; top: 180px;">board minimized →<br>still glanceable ·<br>"restore" or click<br>any mini-sticky</div>
+      <div class="anno" style="left: 20px; bottom: 24px;">left rail = phase journey<br>· any past phase clickable ·<br>future phases queued, locked<br>until confirm</div>
+    </div>
+  </div>
+
+  <!-- ─── B · BLOOM IN PLACE ─── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="pill b">B · Bloom in place</span>
+      <h2>The sticky itself expands · board stays alive around it</h2>
+      <span class="right">light work · keep working other ideas while this one talks</span>
+    </div>
+
+    <div class="art bloom-art">
+      <span class="mode-badge b">✿ Bloomed · Outside-in lens</span>
+
+      <div class="board-toolbar">
+        <div class="tool on">↗</div>
+        <div class="tool">∾</div>
+        <div class="tool">+</div>
+      </div>
+
+      <div class="sticky s-pink"  style="left: 80px; top: 80px;  transform: rotate(-3deg);"><div class="tt">Onboarding pain</div>new hires freeze day 1 · root cluster<div class="meta">parent · 8 children</div></div>
+      <div class="sticky s-peach" style="left: 70px; top: 240px; transform: rotate(2deg);"><div class="tt">Runbook automation</div>"if-X-then-Y" decision tree<div class="meta">overlaps · same trigger</div></div>
+      <div class="sticky s-blue"  style="left: 100px; top: 410px; transform: rotate(-2deg);"><div class="tt">Manager digest</div>weekly summary email<div class="meta">shares theme · day-1</div></div>
+      <div class="sticky s-green" style="left: 60px; top: 580px; transform: rotate(1deg); opacity: 0.6;"><div class="tt">Pair-programming day</div>quarterly · for new joiners<div class="meta">far · maybe related</div></div>
+      <div class="sticky s-lilac" style="left: 1010px; top: 110px; transform: rotate(-2deg); opacity: 0.6;"><div class="tt">Cost ceiling</div>≤$5/idea-explored<div class="meta">constraint</div></div>
+      <div class="sticky s-yellow" style="left: 1040px; top: 280px; transform: rotate(2deg); opacity: 0.6;"><div class="tt">Eng survey · Q3</div>top-2 frustration: docs<div class="meta">evidence</div></div>
+      <div class="sticky s-pink" style="left: 1000px; top: 440px; transform: rotate(-3deg); opacity: 0.6;"><div class="tt">Slack thread #onboarding</div>3 hires asked same q.<div class="meta">evidence</div></div>
+      <div class="sticky s-peach" style="left: 990px; top: 600px; transform: rotate(1deg); opacity: 0.4;"><div class="tt">Old runbook v0.3</div>broken since prod migration<div class="meta">archived</div></div>
+
+      <div class="neigh-halo" style="left: 56px; top: 220px; width: 200px; height: 105px;">
+        <span class="halo-tag">↗ overlaps</span>
+      </div>
+      <div class="neigh-halo" style="left: 86px; top: 390px; width: 200px; height: 105px;">
+        <span class="halo-tag">⫶ shares theme</span>
+      </div>
+      <div class="neigh-halo" style="left: 66px; top: 60px; width: 200px; height: 110px;">
+        <span class="halo-tag">↑ parent</span>
+      </div>
+
+      <svg class="connections" viewBox="0 0 1620 1020" preserveAspectRatio="none">
+        <path d="M 410 240 Q 350 180 256 130" stroke="#7a5cab" stroke-width="1.4" fill="none" stroke-dasharray="4 4" opacity="0.55"></path>
+        <path d="M 410 280 Q 360 280 256 280" stroke="#7a5cab" stroke-width="1.4" fill="none" stroke-dasharray="4 4" opacity="0.55"></path>
+        <path d="M 410 350 Q 360 410 286 450" stroke="#7a5cab" stroke-width="1.4" fill="none" stroke-dasharray="4 4" opacity="0.55"></path>
+      </svg>
+
+      <div class="bloom-card">
+        <div class="bc-header">
+          <button class="closer">×</button>
+          <button class="bc-collapse">⤢ focus</button>
+          <div class="you-here"><span class="pulse"></span> Bloomed · open in place</div>
+          <h3>Outside-in lens · day-1 freeze</h3>
+          <div class="prov">
+            <span class="pchip">Scout</span>
+            <span>·</span>
+            <span style="background: var(--ink); color: #fffdf5; padding: 1px 5px; border-radius: 2px;">gemini-2.5-pro</span>
+            <span>·</span>
+            <span>14m</span>
+            <span>·</span>
+            <span style="color: var(--accent-contradict); font-weight: 600;">↶ undo</span>
+          </div>
+        </div>
+
+        <div class="bc-phases">
+          <span class="lbl">phase</span>
+          <div class="track">
+            <div class="pdot done"></div>
+            <div class="pdot done opt"></div>
+            <div class="pdot active"></div>
+            <div class="pdot"></div>
+            <div class="pdot"></div>
+            <div class="pdot opt"></div>
+            <div class="pdot"></div>
+            <div class="pdot"></div>
+            <div class="pdot opt"></div>
+            <div class="pdot"></div>
+            <div class="pdot"></div>
+            <div class="pdot"></div>
+            <div class="pdot"></div>
+          </div>
+          <span class="lbl" style="color: var(--accent-ai); font-weight: 700;">▸ 0.5 live</span>
+        </div>
+
+        <div class="bc-body">
+          <div class="conv-label">
+            <span>0.5 · the conversation</span>
+            <span class="listening">Scout listening</span>
+          </div>
+
+          <div class="turn scout">
+            <div class="av">S</div>
+            <div class="body">
+              <div class="who"><span class="name">Scout</span><span class="role">challenger</span><span class="when">2m</span></div>
+              <div class="said">You're framing this as <em>docs</em>; a 10× ops lead would call it a <em>shadowing</em> problem. They solved day-1 freeze with pairing, not runbooks.</div>
+              <div class="deltas">
+                <span class="delta">↑ scope</span>
+                <span class="delta warn">⚠ may invalidate Runbook</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="turn synth">
+            <div class="av">∾</div>
+            <div class="body">
+              <div class="who"><span class="name">Synthesizer</span><span class="role">connects</span><span class="when">2m</span></div>
+              <div class="said">3 nearby notes <em>lit up around you</em> — see the halos. Two reinforce, one contradicts.</div>
+            </div>
+          </div>
+
+          <div class="turn devil">
+            <div class="av">!</div>
+            <div class="body">
+              <div class="who"><span class="name">Devil's</span><span class="role">contradicts</span><span class="when">1m</span></div>
+              <div class="said">Most 10× shops have <em>both</em> docs and shadowing. Don't drop runbooks on Scout's word.</div>
+            </div>
+          </div>
+
+          <div class="turn user">
+            <div class="av">D</div>
+            <div class="body">
+              <div class="who"><span class="name">You</span><span class="role">edit</span><span class="when">now</span></div>
+              <div class="said">Keep both. Tightened: "freeze" → "freeze <em>on day 1</em>."</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bc-foot">
+          <div class="question">
+            <span class="qprompt">▸ Scout asks · A / B / C / type</span>
+            Which lens do you want to carry into clarification?
+          </div>
+          <button class="cb-btn primary">✓ confirm · advance</button>
+          <button class="cb-btn">stay</button>
+        </div>
+      </div>
+
+      <div class="bloom-dock">
+        <div class="dot">S</div>
+        <div class="dot s2">∾</div>
+        <div class="dot s3">!</div>
+        <div class="dot s4">H</div>
+        <span class="lab">4 in the room</span>
+      </div>
+
+      <div class="anno b" style="left: 290px; top: 100px;">nearby ideas <i>light up</i><br>around the bloom ·<br>halos label why</div>
+      <div class="anno b" style="left: 970px; top: 480px;">← rest of the board<br>still touchable · drag,<br>connect, edit other<br>ideas mid-bloom</div>
+      <div class="anno b" style="left: 470px; bottom: 26px;">⤢ "focus" button promotes<br>this idea to full focus-mode<br>· no state lost</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="compare">
+  <h3>Which mode for what?</h3>
+  <div class="grid2">
+    <div class="col">
+      <h4>A · Focus mode</h4>
+      <span class="when">when you're committing</span>
+      <ul>
+        <li><b>Big surface</b> — three columns: phase journey, conversation, neighbors. Room to think.</li>
+        <li><b>Board minimized</b> to a thumbnail with tether — glance, click any mini-sticky to switch focus.</li>
+        <li><b>Best for</b> phases that need attention: clarify, approach synthesis, premortem, brief.</li>
+        <li><b>"↙ to bloom"</b> button drops you back to bloom mode without losing place.</li>
+      </ul>
+    </div>
+    <div class="col b">
+      <h4>B · Bloom in place</h4>
+      <span class="when">when you're glancing or weaving</span>
+      <ul>
+        <li><b>The sticky expands</b> on the board — physical metaphor, never lose where the idea lives.</li>
+        <li><b>Halos light up</b> nearby related ideas with relationship labels (overlaps, parent, shares theme).</li>
+        <li><b>Best for</b> light interactions: skim provenance, accept/dismiss a Scout suggestion, draw a connection.</li>
+        <li><b>"⤢ focus" button</b> promotes the bloom into full focus mode when conversation gets serious.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

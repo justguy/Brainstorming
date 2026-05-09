@@ -25,6 +25,22 @@ import { reportLlmFallback } from '../../src/orchestrator/retryAndFallback';
 const HIGHLIGHT_FLASH_MS = 320;
 const REVEAL_WINDOW_MS = 1_800;
 
+// Friendly client-side guard messages (cooldowns, max-active limits). These are
+// expected outcomes — we surface them through the existing throw path but skip
+// the background-AI banner which is reserved for genuine LLM failures.
+class CritiqueGuardError extends Error {
+  readonly __isCritiqueGuard = true;
+  constructor(message: string) {
+    super(message);
+    this.name = 'CritiqueGuardError';
+  }
+}
+
+function isCritiqueGuardError(err: unknown): err is CritiqueGuardError {
+  return err instanceof CritiqueGuardError
+    || (typeof err === 'object' && err !== null && (err as { __isCritiqueGuard?: boolean }).__isCritiqueGuard === true);
+}
+
 type RevealOrigin = 'manual' | 'ai';
 type AnalysisPolicyOptions = {
   origin?: RevealOrigin;
@@ -53,6 +69,7 @@ interface UseBoardAnalysisActionsArgs {
     critiqueId: string;
     outcome: 'accepted' | 'rejected';
   }) => void;
+  onBackgroundError?: (input: { source: 'connect' | 'critique'; error: unknown }) => void;
 }
 
 export function useBoardAnalysisActions({
@@ -64,6 +81,7 @@ export function useBoardAnalysisActions({
   applyCommittedBoard,
   runBoardBeat,
   onCritiqueOutcome,
+  onBackgroundError,
 }: UseBoardAnalysisActionsArgs) {
   const [findingConnections, setFindingConnections] = useState(false);
   const [lastConnectionsRunAt, setLastConnectionsRunAt] = useState<number | null>(null);
@@ -181,6 +199,7 @@ export function useBoardAnalysisActions({
       return nextGenerated;
     } catch (err) {
       console.error('[App] connection finder failed:', err);
+      onBackgroundError?.({ source: 'connect', error: err });
       return [];
     } finally {
       setFindingConnections(false);
@@ -243,11 +262,11 @@ export function useBoardAnalysisActions({
 
       const activeCritiques = await listCritiquesForIdea(ideaId, 'active', boardId);
       if (activeCritiques.length >= 2) {
-        throw new Error('This idea already has the maximum number of active critiques.');
+        throw new CritiqueGuardError('This idea already has the maximum number of active critiques.');
       }
       const mostRecentCritiqueAt = activeCritiques[0]?.createdAt ?? 0;
       if (mostRecentCritiqueAt && Date.now() - mostRecentCritiqueAt < 25_000) {
-        throw new Error('This idea is on critique cooldown. Wait a moment before asking for another critique.');
+        throw new CritiqueGuardError('This idea is on critique cooldown. Wait a moment before asking for another critique.');
       }
 
       const supportingDocs = (await boardRepository.listDocsForIdea(ideaId)).filter(doc => doc.status === 'ready');
@@ -265,7 +284,7 @@ export function useBoardAnalysisActions({
         aggressiveness: beatAggressiveness(options.origin, options.interventionStrength),
       }));
       if (!beatResult.ok || beatResult.proposal.challenges.length === 0) {
-        throw new Error('Devil’s advocate returned no critique.');
+        throw new CritiqueGuardError('Devil’s advocate returned no critique.');
       }
 
       const priorCritiqueTexts = new Set(
@@ -275,7 +294,7 @@ export function useBoardAnalysisActions({
         !priorCritiqueTexts.has(challenge.critique.trim().toLowerCase())
       ));
       if (!nextChallenge) {
-        throw new Error('No new critique surfaced beyond the ones already shown.');
+        throw new CritiqueGuardError('No new critique surfaced beyond the ones already shown.');
       }
 
       if (options.origin === 'ai' && options.executionMode === 'stage') {
@@ -303,6 +322,11 @@ export function useBoardAnalysisActions({
       handleHighlight([ideaId]);
       if (options.origin === 'ai') revealCritique(critiqueResult.critique.id);
       return critiqueResult.critique;
+    } catch (err) {
+      if (!isCritiqueGuardError(err)) {
+        onBackgroundError?.({ source: 'critique', error: err });
+      }
+      throw err;
     } finally {
       setCritiqueBusyByIdea(prev => ({ ...prev, [ideaId]: false }));
     }

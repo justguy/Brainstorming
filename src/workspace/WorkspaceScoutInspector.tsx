@@ -29,6 +29,7 @@ interface WorkspaceScoutInspectorBodyProps {
   onDismissSuggestion?: (id: string) => void;
   onElaborateSuggestion?: (id: string) => void;
   suggestionBusy?: SuggestionBusyState;
+  suggestionError?: string | null;
   onClose?: () => void;
   closeLabel?: string;
 }
@@ -54,6 +55,7 @@ export function WorkspaceScoutInspectorBody({
   onDismissSuggestion,
   onElaborateSuggestion,
   suggestionBusy = null,
+  suggestionError = null,
   onClose,
   closeLabel = 'Close',
 }: WorkspaceScoutInspectorBodyProps): React.ReactElement {
@@ -191,17 +193,32 @@ export function WorkspaceScoutInspectorBody({
         </div>
         <div className="bo-insp-now__actions">
           {suggestion && onAdmitSuggestion && (
-            <button type="button" className="bo-insp-btn bo-insp-btn--primary" onClick={() => onAdmitSuggestion(suggestion.id)}>
+            <button
+              type="button"
+              className="bo-insp-btn bo-insp-btn--primary"
+              onClick={() => onAdmitSuggestion(suggestion.id)}
+              disabled={suggestionBusy !== null}
+            >
               {suggestionBusy === 'admit' ? 'keeping…' : 'keep it →'}
             </button>
           )}
           {suggestion && onDismissSuggestion && (
-            <button type="button" className="bo-insp-btn" onClick={() => onDismissSuggestion(suggestion.id)}>
+            <button
+              type="button"
+              className="bo-insp-btn"
+              onClick={() => onDismissSuggestion(suggestion.id)}
+              disabled={suggestionBusy !== null}
+            >
               {suggestionBusy === 'dismiss' ? 'dismissing…' : 'dismiss'}
             </button>
           )}
           {suggestion && onElaborateSuggestion && (
-            <button type="button" className="bo-insp-btn" onClick={() => onElaborateSuggestion(suggestion.id)}>
+            <button
+              type="button"
+              className="bo-insp-btn"
+              onClick={() => onElaborateSuggestion(suggestion.id)}
+              disabled={suggestionBusy !== null}
+            >
               {suggestionBusy === 'elaborate' ? 'thinking…' : 'show reasoning'}
             </button>
           )}
@@ -211,6 +228,11 @@ export function WorkspaceScoutInspectorBody({
             </button>
           )}
         </div>
+        {suggestion && suggestionError && (
+          <p role="alert" className="bo-insp-error mt-2 text-[11px] font-medium text-rose-600">
+            {suggestionError}
+          </p>
+        )}
       </div>
 
       {promptItems.length > 0 && (
@@ -272,9 +294,21 @@ export function WorkspaceScoutInspectorBody({
             </div>
             <p className="bo-insp-timeline__body">{suggestion.rawText}</p>
             <div className="bo-insp-timeline__tools">
-              {onAdmitSuggestion && <button type="button" onClick={() => onAdmitSuggestion(suggestion.id)}>keep it</button>}
-              {onElaborateSuggestion && <button type="button" onClick={() => onElaborateSuggestion(suggestion.id)}>show reasoning</button>}
-              {onDismissSuggestion && <button type="button" onClick={() => onDismissSuggestion(suggestion.id)}>dismiss</button>}
+              {onAdmitSuggestion && (
+                <button type="button" onClick={() => onAdmitSuggestion(suggestion.id)} disabled={suggestionBusy !== null}>
+                  keep it
+                </button>
+              )}
+              {onElaborateSuggestion && (
+                <button type="button" onClick={() => onElaborateSuggestion(suggestion.id)} disabled={suggestionBusy !== null}>
+                  show reasoning
+                </button>
+              )}
+              {onDismissSuggestion && (
+                <button type="button" onClick={() => onDismissSuggestion(suggestion.id)} disabled={suggestionBusy !== null}>
+                  dismiss
+                </button>
+              )}
             </div>
           </article>
         )}

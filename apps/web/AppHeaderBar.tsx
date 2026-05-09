@@ -26,12 +26,14 @@ export interface AppHeaderBarProps {
   historyState: AppHeaderBarHistoryState;
   historyOpen: boolean;
   linkModeEnabled: boolean;
+  guidanceNotesEnabled: boolean;
   onCaptureAction?: () => void;
   onOpenCapture: () => void;
   onUndo: () => void | Promise<void>;
   onRedo: () => void | Promise<void>;
   onToggleLinkMode: () => void;
   onToggleHistory: () => void;
+  onToggleGuidanceNotes: () => void;
   onSetBoardTheme: (theme: BoardThemeMode) => void | Promise<void>;
   onOpenOptions: () => void;
 }
@@ -48,12 +50,14 @@ export function AppHeaderBar({
   historyState,
   historyOpen,
   linkModeEnabled,
+  guidanceNotesEnabled,
   onCaptureAction,
   onOpenCapture,
   onUndo,
   onRedo,
   onToggleLinkMode,
   onToggleHistory,
+  onToggleGuidanceNotes,
   onSetBoardTheme,
   onOpenOptions,
   boardTitle,
@@ -154,6 +158,17 @@ export function AppHeaderBar({
             aria-label="Toggle link mode"
           >
             <LinkIcon />
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleGuidanceNotes}
+            className={`bo-topbar-icon-button ${guidanceNotesEnabled ? 'is-active' : ''}`}
+            aria-pressed={guidanceNotesEnabled}
+            title={guidanceNotesEnabled ? 'Hide guidance notes inside Focus / Bloom' : 'Show guidance notes inside Focus / Bloom'}
+            aria-label="Toggle guidance notes"
+          >
+            <GuidanceIcon />
           </button>
 
           <button
@@ -272,6 +287,16 @@ function RedoIcon(): React.ReactElement {
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path d="m11.9 5 3.6 3.6-3.6 3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M14.9 8.6H9.6A4.6 4.6 0 0 0 5 13.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function GuidanceIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M5 4.5h6.4l3.1 3.1V15.5H5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M11.4 4.5v3.1h3.1" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M7.4 11h5.2M7.4 13.2h3.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }

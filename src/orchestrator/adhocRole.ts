@@ -19,6 +19,7 @@ export interface RunRoleResult<T> {
   usedFallback: boolean;
   providerId: ProviderId;
   model: string;
+  lastError?: Error;
 }
 
 interface RunAdhocRoleOptions {
@@ -45,7 +46,7 @@ export async function runAdhocRole<T>(
     { role: 'user', content: task },
   ];
 
-  const { result, usedFallback } = await callWithRetry({
+  const { result, usedFallback, lastError } = await callWithRetry({
     providerId: activeProvider,
     model: activeModel,
     messages,
@@ -60,5 +61,6 @@ export async function runAdhocRole<T>(
     usedFallback,
     providerId: activeProvider,
     model: activeModel,
+    lastError,
   };
 }

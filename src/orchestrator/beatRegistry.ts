@@ -1,4 +1,5 @@
 import type {
+  BeatCoachingPrompt,
   BeatConnectionSnapshot,
   BeatContextMap,
   BeatCritiqueChallenge,
@@ -20,6 +21,7 @@ import { boardClusterer, buildBoardClustererTask, type BoardClustererOutput } fr
 
 type BeatRegistryEntry<T extends BeatName> = {
   role: RoleSpec;
+  coachingPrompt: BeatCoachingPrompt;
   buildTask(context: BeatContextMap[T]): string | null;
   mapProposal(context: BeatContextMap[T], result: unknown): BeatProposalMap[T];
 };
@@ -172,6 +174,11 @@ function pickClusterCandidates(context: BeatContextMap['cluster']): string[][] {
 export const beatRegistry: { [K in BeatName]: BeatRegistryEntry<K> } = {
   scout: {
     role: outsideKnowledgeScout,
+    coachingPrompt: {
+      technique: 'Analogy and adjacent-field probing',
+      voice:
+        'Reach for analogies and parallel disciplines the user has not named. Ask: "Where else in the world does this exact problem already get solved?" Surface one analogy, one adjacent-field move, and one contrarian read — never restatements of what is already on the board.',
+    },
     buildTask(context) {
       return buildScoutTask({
         boardIdeas: context.liveIdeas.map(toIdeaStub),
@@ -194,6 +201,11 @@ export const beatRegistry: { [K in BeatName]: BeatRegistryEntry<K> } = {
   },
   connect: {
     role: connectionFinder,
+    coachingPrompt: {
+      technique: 'SCAMPER — Combine and Modify, plus contradiction-hunting',
+      voice:
+        'Look for two notes that build on each other, two that secretly contradict, and one that revives a discarded idea. Ask: "Which of these notes would be stronger if combined? Which one cancels another?" Phrase each suggestion as an explicit relation between named notes.',
+    },
     buildTask(context) {
       return buildConnectionFinderTask({
         boardIdeas: context.liveIdeas.map(toIdeaStub),
@@ -217,6 +229,11 @@ export const beatRegistry: { [K in BeatName]: BeatRegistryEntry<K> } = {
   },
   critique: {
     role: devilsAdvocate,
+    coachingPrompt: {
+      technique: '5 Whys + Worst-Idea / pre-mortem',
+      voice:
+        'Take the contrarian seat. Run a quick five-whys on the focus idea, then imagine the project failed in six months — what was the obvious reason no one wanted to say out loud? Each suggestion should be a sharp question or counter-claim, not a softening.',
+    },
     buildTask(context) {
       const focusIdea = context.liveIdeas.find(idea => idea.id === context.focusIdeaId);
       if (!focusIdea) return null;
@@ -239,6 +256,11 @@ export const beatRegistry: { [K in BeatName]: BeatRegistryEntry<K> } = {
   },
   cluster: {
     role: boardClusterer,
+    coachingPrompt: {
+      technique: 'Reverse-brainstorm on emerging themes',
+      voice:
+        'Themes are forming. For each cluster, name the shared bet in plain language, then ask the reverse-brainstorm question: "What is missing from this cluster that would change the whole picture?" Suggestions should expose either the unspoken theme or the missing twin idea.',
+    },
     buildTask(context) {
       const clusters = pickClusterCandidates(context);
       if (clusters.length === 0) return null;
@@ -271,6 +293,11 @@ export const beatRegistry: { [K in BeatName]: BeatRegistryEntry<K> } = {
   },
   summarise: {
     role: boardSummariser,
+    coachingPrompt: {
+      technique: 'Distillation — "if this were one sentence"',
+      voice:
+        'Compress without flattening. Find the single sentence the board is collectively reaching for, then ask: "What gets lost in that sentence? What would a sceptic say is being smuggled past?" Suggestions should either sharpen the takeaway or surface the smuggled assumption.',
+    },
     buildTask(context) {
       return buildBoardSummariserTask({
         boardTitle: context.boardTitle,
@@ -309,3 +336,7 @@ export const beatRegistry: { [K in BeatName]: BeatRegistryEntry<K> } = {
     },
   },
 };
+
+export function getCoachingPromptForBeat(beat: BeatName): BeatCoachingPrompt {
+  return beatRegistry[beat].coachingPrompt;
+}

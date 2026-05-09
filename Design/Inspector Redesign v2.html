@@ -1,0 +1,1911 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inspector — before / after</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@500;700&family=Patrick+Hand&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f5efe1;
+    --paper-dark: #ebe4d3;
+    --ink: #1a1814;
+    --ink-soft: #4a443a;
+    --ink-faint: rgba(26,24,20,0.45);
+    --ink-ghost: rgba(26,24,20,0.22);
+    --accent-contradict: #c94a3a;
+    --accent-revive: #2a8a4a;
+    --accent-ai: #2e86c7;
+    --accent-warn: #d89328;
+    --sticky-yellow: #f5e27a;
+    --sticky-pink: #f4b4b0;
+    --sticky-blue: #b4d4e8;
+    --sticky-peach: #f4c88c;
+    --sticky-green: #bcd9a8;
+    --sticky-lilac: #c9bde0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #e5e0d1; font-family: "Inter", system-ui, sans-serif; color: var(--ink); }
+  body {
+    background-color: #e5e0d1;
+    background-image: radial-gradient(circle, rgba(26,24,20,0.04) 1px, transparent 1.5px);
+    background-size: 28px 28px;
+    min-height: 100vh;
+    padding: 40px 48px 100px;
+  }
+  .page-head {
+    max-width: 1600px; margin: 0 auto 36px;
+    display: flex; align-items: flex-end; gap: 32px; justify-content: space-between;
+  }
+  .page-head .tag-above {
+    font-family: "JetBrains Mono", monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 6px;
+  }
+  .page-head h1 {
+    font-family: "Caveat", cursive;
+    font-size: 44px; font-weight: 700; margin: 0;
+    letter-spacing: -0.5px; max-width: 800px; line-height: 1.05;
+  }
+  .page-head .lede {
+    font-size: 14px; color: var(--ink-soft); max-width: 520px; line-height: 1.55;
+  }
+  .grid {
+    max-width: 1600px; margin: 0 auto;
+    display: grid; grid-template-columns: 540px 1fr; gap: 32px;
+  }
+  .panel {
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 4px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2), 0 12px 28px rgba(26,24,20,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px; border-bottom: 1.4px solid var(--ink);
+    background: var(--paper);
+  }
+  .panel-header .tag {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .panel-header .tag.bad  { color: var(--accent-contradict); }
+  .panel-header .tag.good { color: var(--accent-revive); }
+  .panel-header h2 {
+    margin: 0;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 24px;
+  }
+
+  /* ───────── BEFORE (screenshot recreation) ───────── */
+  .before-body {
+    padding: 0;
+    background: #fbf9f4;
+    min-height: 1300px;
+  }
+  .before-wrap {
+    padding: 18px 22px 24px;
+  }
+  .bf-label {
+    font-family: "Inter"; font-weight: 700; font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: #5b4f3a;
+  }
+  .bf-title1 {
+    font-family: "Inter"; font-weight: 700; font-size: 13.5px;
+    margin: 2px 0 10px; color: #1a1814;
+  }
+  .bf-close {
+    position: absolute; right: 20px; top: 14px;
+    font-size: 12px; color: #555; cursor: pointer;
+  }
+  .bf-title2 {
+    font-family: "Inter"; font-weight: 700; font-size: 15px;
+    color: #1a1814; margin: 10px 0 6px; line-height: 1.25;
+  }
+  .bf-toolbar {
+    display: flex; gap: 8px; align-items: center;
+    margin: 4px 0 10px;
+  }
+  .bf-toolbar select, .bf-toolbar button {
+    font-size: 11.5px; border: 1px solid #ccc;
+    padding: 4px 8px; border-radius: 4px; background: white;
+    font-family: "Inter"; color: #333;
+  }
+  .bf-meta {
+    display: flex; gap: 5px; align-items: center; flex-wrap: wrap;
+    margin: 0 0 8px;
+  }
+  .bf-meta .dot {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #fcd0c6; color: #8a1f0f;
+    font-size: 10.5px; font-weight: 600;
+    padding: 2px 8px 2px 6px; border-radius: 999px;
+  }
+  .bf-meta .dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #c94a3a; }
+  .bf-meta .step {
+    font-family: "Inter"; font-size: 11.5px; color: #333;
+  }
+  .bf-meta .mini {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+    background: #222; color: white;
+    padding: 2px 6px; border-radius: 3px; text-transform: uppercase;
+  }
+  .bf-meta .gem { font-size: 11px; color: #666; }
+  .bf-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 14px; }
+  .bf-chip {
+    background: #eceae3; color: #444;
+    font-size: 10.5px; padding: 2px 7px; border-radius: 3px;
+  }
+
+  .bf-callout {
+    background: #f0e8ff;
+    padding: 12px 14px 14px; border-radius: 4px;
+    margin: 0 0 16px;
+  }
+  .bf-callout .bf-label { color: #6a4ad9; }
+  .bf-callout .body { font-size: 12px; color: #444; margin-top: 4px; line-height: 1.5; }
+
+  .bf-coord {
+    background: #e6f0ff;
+    padding: 12px 14px 14px; border-radius: 4px;
+  }
+  .bf-coord-head {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; margin-bottom: 8px;
+  }
+  .bf-coord-head .bf-label { color: #2a5ad9; }
+  .bf-coord-legend {
+    display: flex; gap: 10px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+  .bf-coord-legend span.a { color: #2e86c7; }
+  .bf-coord-legend span.c { color: #2a8a4a; }
+  .bf-coord-legend span.n { color: #c94a3a; }
+  .bf-coord-legend span.s { color: #d89328; }
+  .bf-coord .body { font-size: 11.5px; color: #555; margin-bottom: 10px; line-height: 1.4; }
+
+  .bf-beadgrid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .bf-bead {
+    background: white; border-radius: 4px;
+    padding: 8px 10px; position: relative;
+    border-left: 3px solid #d0cfc8;
+  }
+  .bf-bead.done   { border-left-color: #2a8a4a; background: #e8f5ec; }
+  .bf-bead.active { border-left-color: #2e86c7; background: white; }
+  .bf-bead .n {
+    font-size: 9.5px; font-weight: 700; color: #777;
+    letter-spacing: 0.08em;
+  }
+  .bf-bead .t {
+    font-size: 12.5px; font-weight: 700; color: #1a1814;
+    margin: 2px 0 2px;
+  }
+  .bf-bead .sub {
+    font-size: 10.5px; color: #888;
+  }
+  .bf-bead .status {
+    position: absolute; right: 10px; top: 10px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    color: #888;
+  }
+  .bf-bead.done   .status { color: #2a8a4a; }
+  .bf-bead.active .status { color: #2e86c7; }
+
+  .bf-accordion {
+    background: white; border: 1px solid #e8e4d8;
+    border-radius: 4px; padding: 10px 12px;
+    margin: 10px 0 0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .bf-accordion .l {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12.5px; color: #444;
+  }
+  .bf-accordion .circle {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #2a8a4a; color: white; font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  .bf-accordion .lock { font-size: 10.5px; color: #888; }
+  .bf-accordion.active {
+    background: #f0e8ff; border-color: #d0c0f0;
+  }
+  .bf-accordion.active .circle { background: #8a4ad9; }
+
+  .bf-inner {
+    background: #f5efff; padding: 12px 14px; margin-top: -2px;
+    border: 1px dashed #d0c0f0; border-radius: 0 0 4px 4px;
+  }
+  .bf-inner .hint { font-size: 11.5px; color: #666; font-style: italic; margin-bottom: 8px; line-height: 1.5;}
+  .bf-inner .cta {
+    border: 1px dashed #c0b0e0; background: #faf7ff;
+    padding: 8px 10px; border-radius: 4px;
+    font-size: 11.5px; color: #555; line-height: 1.5;
+  }
+
+  /* Red annotations overlaid on BEFORE */
+  .anno {
+    position: absolute; pointer-events: none;
+    font-family: "Caveat", cursive; font-weight: 700;
+    color: var(--accent-contradict);
+    font-size: 16px; line-height: 1.15;
+    max-width: 180px;
+    z-index: 10;
+  }
+  .anno svg { display: block; }
+
+  /* ───────── AFTER ───────── */
+  .after-wrap {
+    display: grid; grid-template-columns: 1fr 440px;
+    min-height: 1300px;
+  }
+  .after-board {
+    position: relative;
+    background:
+      repeating-linear-gradient(0deg, rgba(26,24,20,0.06) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, rgba(26,24,20,0.06) 0 1px, transparent 1px 28px),
+      var(--paper);
+    padding: 26px;
+    overflow: hidden;
+  }
+
+  /* idea card being inspected */
+  .focus-idea {
+    position: absolute; left: 80px; top: 110px;
+    width: 220px;
+    padding: 14px 16px;
+    font-family: "Kalam", cursive;
+    font-size: 15px; line-height: 1.35;
+    color: var(--ink);
+    background: var(--sticky-yellow);
+    box-shadow: 3px 4px 0 rgba(26,24,20,0.3), 6px 10px 24px rgba(26,24,20,0.2);
+    transform: rotate(-2.5deg);
+    z-index: 4;
+  }
+  .focus-idea .tt { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .focus-idea .meta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(26,24,20,0.55); margin-top: 6px;
+  }
+  .focus-idea .sel-ring {
+    position: absolute; inset: -12px;
+    border: 2.5px dashed var(--accent-ai);
+    border-radius: 6px;
+    animation: slow-rot 12s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes slow-rot {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* surrounding context stickies (dimmed) */
+  .ctx-sticky {
+    position: absolute;
+    padding: 10px 12px;
+    font-family: "Kalam", cursive;
+    font-size: 13px; line-height: 1.3;
+    background: var(--sticky-blue);
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.18);
+    width: 150px; opacity: 0.45;
+    transform: rotate(1.5deg);
+  }
+  .ctx-sticky.c-pink { background: var(--sticky-pink); transform: rotate(-2deg); }
+  .ctx-sticky.c-peach { background: var(--sticky-peach); transform: rotate(2.2deg); }
+
+  /* ink connector from idea to inspector */
+  .ink-tether {
+    position: absolute; pointer-events: none; z-index: 3;
+  }
+
+  /* margin notes */
+  .margin-note {
+    position: absolute;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 16px;
+    color: var(--accent-revive);
+    line-height: 1.1;
+    max-width: 170px;
+    pointer-events: none;
+  }
+  .margin-note.info { color: var(--accent-ai); }
+  .margin-note svg { display: block; margin-top: 2px; }
+
+  /* INSPECTOR (right column) */
+  .inspector {
+    background: #fffdf5;
+    border-left: 1.8px solid var(--ink);
+    padding: 20px 22px 120px;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .insp-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 14px;
+  }
+  .insp-head .who {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--accent-ai); font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .insp-head .idea-title {
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 28px; line-height: 1.05;
+    color: var(--ink); margin: 0;
+    letter-spacing: -0.4px;
+  }
+  .insp-head .close {
+    border: 1.4px solid var(--ink);
+    background: #fffdf5;
+    width: 28px; height: 28px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+    font-family: "JetBrains Mono", monospace; font-size: 14px;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.18);
+  }
+
+  .insp-provenance {
+    border: 1.4px solid var(--ink);
+    border-radius: 4px;
+    padding: 11px 14px 12px;
+    background: var(--paper);
+    margin-bottom: 14px;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.15);
+  }
+  .insp-provenance .row {
+    display: flex; gap: 10px; align-items: baseline;
+    font-size: 12.5px; line-height: 1.45;
+  }
+  .insp-provenance .row + .row { margin-top: 4px; }
+  .insp-provenance .k {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint); min-width: 68px; flex-shrink: 0;
+  }
+  .insp-provenance .v { color: var(--ink); }
+  .insp-provenance .v em { font-style: normal; font-weight: 700; }
+  .insp-provenance .v .chip {
+    background: var(--sticky-peach);
+    font-family: "Kalam", cursive; font-size: 12.5px;
+    padding: 0 6px; border-radius: 3px;
+    border: 1px solid rgba(26,24,20,0.25);
+  }
+  .insp-provenance .v .model {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px; background: var(--ink); color: #fffdf5;
+    padding: 1px 5px; border-radius: 2px;
+  }
+  .insp-provenance .v .undo-link {
+    font-family: "Inter"; font-size: 11px;
+    color: var(--accent-contradict); font-weight: 600;
+    cursor: pointer; text-decoration: underline;
+  }
+
+  .insp-sect-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 600;
+    margin: 20px 0 10px;
+    display: flex; justify-content: space-between;
+  }
+  .insp-sect-label .right {
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+
+  /* journey strip — horizontal bead walk */
+  .journey {
+    background: var(--paper-dark);
+    border: 1.4px solid var(--ink);
+    border-radius: 6px;
+    padding: 14px 14px 10px;
+    position: relative;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.15);
+  }
+  .journey-track {
+    position: relative;
+    padding-bottom: 30px;
+  }
+  .journey-line {
+    position: absolute;
+    top: 11px; left: 12px; right: 12px;
+    height: 2px;
+  }
+  .journey-line::before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 9px);
+    opacity: 0.28;
+  }
+  .journey-line .filled {
+    position: absolute; top: 0; left: 0;
+    height: 100%; width: 32%;
+    background: var(--ink);
+  }
+  .journey-beads {
+    display: flex; justify-content: space-between;
+    position: relative;
+  }
+  .jbead {
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+    flex: 1; min-width: 0;
+  }
+  .jbead .dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #fffdf5;
+    border: 2px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; font-weight: 700;
+    position: relative; z-index: 2;
+  }
+  .jbead.done .dot { background: var(--ink); color: #fffdf5; }
+  .jbead.done .dot::after {
+    content: "✓"; font-size: 11px; line-height: 1;
+  }
+  .jbead.done .dot .num { display: none; }
+  .jbead.active .dot {
+    background: var(--accent-ai); color: white;
+    border-color: var(--ink);
+    box-shadow: 0 0 0 4px rgba(46,134,199,0.2);
+  }
+  .jbead.active .dot::after {
+    content: ""; position: absolute; inset: -6px;
+    border: 2px dashed var(--accent-ai);
+    border-radius: 50%;
+    animation: slow-rot 8s linear infinite;
+  }
+  .jbead.soft .dot { background: #ffe68a; border-style: solid; }
+  .jbead.flag .dot {
+    background: var(--accent-contradict);
+    color: white; border-color: var(--ink);
+  }
+  .jbead .lbl {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8.5px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-top: 8px;
+    text-align: center;
+    white-space: nowrap;
+    transform: rotate(-28deg) translate(-18px, 10px);
+    transform-origin: top center;
+  }
+  .jbead.done .lbl { color: var(--ink-soft); }
+  .jbead.active .lbl {
+    color: var(--accent-ai);
+    font-weight: 700;
+    font-size: 9.5px;
+  }
+  .jbead.optional .dot {
+    width: 16px; height: 16px;
+    background: #fffdf5; border-style: dashed;
+    border-width: 1.5px;
+  }
+  .jbead.optional.done .dot { background: var(--ink); }
+  .jbead.optional .lbl { opacity: 0.7; }
+
+  .journey-meta {
+    display: flex; justify-content: space-between;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px dashed rgba(26,24,20,0.22);
+  }
+
+  /* active-step card */
+  .now-card {
+    background: #fffdf5;
+    border: 1.8px solid var(--ink);
+    border-radius: 6px;
+    padding: 14px 16px;
+    box-shadow: 3px 3px 0 rgba(26,24,20,0.22);
+    position: relative;
+    margin-top: 12px;
+  }
+  .now-card::before {
+    content: "NOW";
+    position: absolute;
+    top: -11px; left: 14px;
+    background: var(--accent-ai); color: white;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em;
+    padding: 3px 8px; border-radius: 3px;
+    border: 1.4px solid var(--ink);
+  }
+  .now-card .step-name {
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 22px; line-height: 1.1;
+    margin: 2px 0 4px;
+  }
+  .now-card .step-sub {
+    font-family: "Inter"; font-size: 11.5px;
+    color: var(--ink-soft); line-height: 1.45;
+    margin-bottom: 10px;
+  }
+  .now-card .say {
+    font-family: "Kalam", cursive;
+    font-size: 14px; line-height: 1.4;
+    background: var(--paper);
+    padding: 10px 12px; border-radius: 4px;
+    border: 1.4px dashed rgba(26,24,20,0.35);
+    color: var(--ink);
+  }
+  .now-card .say b {
+    font-family: "Inter"; font-size: 10px; letter-spacing: 0.09em;
+    text-transform: uppercase; font-weight: 600;
+    color: var(--accent-ai);
+    display: block; margin-bottom: 4px;
+  }
+  .now-card .actions {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .now-card .btn {
+    font-family: "Inter"; font-weight: 600; font-size: 12.5px;
+    padding: 7px 12px;
+    border: 1.5px solid var(--ink);
+    border-radius: 5px;
+    background: #fffdf5; color: var(--ink);
+    cursor: pointer;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.22);
+  }
+  .now-card .btn.primary { background: var(--ink); color: #fffdf5; }
+
+  /* timeline of intervention history */
+  .timeline {
+    position: relative;
+    padding-left: 20px;
+  }
+  .timeline::before {
+    content: ""; position: absolute;
+    left: 7px; top: 6px; bottom: 6px;
+    width: 1.5px;
+    background: repeating-linear-gradient(180deg, var(--ink) 0 3px, transparent 3px 7px);
+    opacity: 0.35;
+  }
+  .tl-row {
+    position: relative;
+    padding: 10px 0 10px 6px;
+    border-bottom: 1px dashed rgba(26,24,20,0.15);
+  }
+  .tl-row:last-child { border-bottom: none; }
+  .tl-row::before {
+    content: ""; position: absolute;
+    left: -16px; top: 14px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+  }
+  .tl-row.ai::before { background: var(--accent-ai); border-color: var(--ink); }
+  .tl-row.user::before { background: var(--sticky-yellow); border-color: var(--ink); }
+  .tl-row.edit::before { background: var(--sticky-peach); border-color: var(--ink); }
+  .tl-row .tl-head {
+    display: flex; gap: 8px; align-items: baseline;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 3px;
+  }
+  .tl-row .tl-head .who {
+    color: var(--accent-ai); font-weight: 700;
+  }
+  .tl-row.user .tl-head .who { color: var(--ink); }
+  .tl-row.edit .tl-head .who { color: #8a5a20; }
+  .tl-row .tl-head .when {
+    color: var(--ink-faint); margin-left: auto;
+  }
+  .tl-row .tl-body {
+    font-family: "Kalam", cursive; font-size: 14px;
+    color: var(--ink); line-height: 1.4;
+  }
+  .tl-row .tl-body em {
+    background: rgba(46,134,199,0.14);
+    padding: 0 4px; border-radius: 2px; font-style: normal;
+  }
+  .tl-row .tl-tools {
+    display: flex; gap: 8px; margin-top: 6px;
+  }
+  .tl-row .tl-tools button {
+    font-family: "Inter"; font-size: 10.5px; font-weight: 500;
+    color: var(--ink-soft);
+    background: transparent;
+    border: none; cursor: pointer;
+    padding: 0; text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+  }
+  .tl-row .tl-tools button:hover { color: var(--ink); }
+
+  /* attached artifacts footer */
+  .artifacts {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;
+  }
+  .artif {
+    display: flex; align-items: center; gap: 6px;
+    background: #fffdf5;
+    border: 1.4px solid var(--ink);
+    padding: 6px 10px; border-radius: 5px;
+    font-family: "Inter"; font-size: 11.5px; font-weight: 500;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.18);
+    cursor: pointer;
+  }
+  .artif .icn { font-family: "JetBrains Mono"; font-size: 11px; color: var(--ink-faint); }
+  .artif .n {
+    background: var(--ink); color: #fffdf5;
+    font-family: "JetBrains Mono"; font-size: 9.5px;
+    padding: 0 5px; border-radius: 2px;
+  }
+
+  /* principles footer */
+  .principles {
+    max-width: 1600px; margin: 40px auto 0;
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 6px;
+    padding: 22px 28px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.18);
+  }
+  .principles h3 {
+    font-family: "Caveat", cursive;
+    font-size: 26px; margin: 0 0 14px;
+  }
+  .principles .grid5 {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 22px;
+  }
+  .principles .p { border-left: 3px solid var(--ink); padding-left: 14px; }
+  .principles .p .n {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em;
+    color: var(--ink-faint);
+  }
+  .principles .p .t {
+    font-family: "Caveat", cursive;
+    font-size: 20px; font-weight: 700;
+    margin: 2px 0 6px;
+  }
+  .principles .p .d {
+    font-size: 13px; color: var(--ink-soft); line-height: 1.5;
+  }
+  .principles .p .d em { background: rgba(46,134,199,0.14); padding: 0 3px; font-style: normal; font-weight: 600; }
+
+  /* ────────── conversational inspector v2 ────────── */
+
+  /* compact header: title + provenance breadcrumb in one row */
+  .v2-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px;
+  }
+  .v2-head .v2-eye {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+    display: flex; gap: 6px; align-items: center;
+  }
+  .v2-head .v2-eye .pulse {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent-ai);
+    box-shadow: 0 0 0 0 rgba(46,134,199,0.5);
+    animation: pulse-soft 1.6s ease-out infinite;
+  }
+  @keyframes pulse-soft {
+    0% { box-shadow: 0 0 0 0 rgba(46,134,199,0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(46,134,199,0); }
+    100% { box-shadow: 0 0 0 0 rgba(46,134,199,0); }
+  }
+  .v2-head .idea-title {
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 30px; line-height: 1; margin: 0;
+    letter-spacing: -0.4px;
+  }
+  .v2-head .v2-prov {
+    margin-top: 6px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  }
+  .v2-head .v2-prov .pchip {
+    background: var(--sticky-peach);
+    font-family: "Kalam", cursive; font-size: 12px;
+    padding: 0 6px; border-radius: 3px;
+    border: 1px solid rgba(26,24,20,0.25);
+    text-transform: none; letter-spacing: 0;
+  }
+  .v2-head .v2-prov .pmodel {
+    background: var(--ink); color: #fffdf5;
+    padding: 1px 5px; border-radius: 2px;
+  }
+  .v2-head .v2-prov .pdot { color: var(--ink-faint); }
+  .v2-head .v2-prov .pundo {
+    color: var(--accent-contradict); cursor: pointer;
+    text-decoration: underline; text-decoration-style: dotted;
+    font-family: "Inter"; font-weight: 600; font-size: 10.5px;
+    text-transform: none; letter-spacing: 0;
+  }
+
+  /* phase journey strip — slim, every bead clickable */
+  .v2-phases {
+    margin-top: 14px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    background: var(--paper);
+    border: 1.4px solid var(--ink);
+    border-radius: 999px;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.15);
+    position: relative;
+  }
+  .v2-phases-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--ink-faint);
+    flex-shrink: 0;
+    border-right: 1px solid rgba(26,24,20,0.2);
+    padding-right: 10px;
+  }
+  .v2-phases-label b { color: var(--accent-ai); }
+  .v2-phase-track {
+    flex: 1; position: relative;
+    height: 22px;
+  }
+  .v2-phase-line {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    left: 6px; right: 6px;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 9px);
+    opacity: 0.3;
+  }
+  .v2-phase-line .fill {
+    position: absolute; left: 0; top: 0; height: 100%;
+    width: 22%;
+    background: var(--ink); opacity: 0.85;
+  }
+  .v2-phase-row {
+    display: flex; justify-content: space-between; align-items: center;
+    height: 100%;
+    position: relative;
+  }
+  .v2-ph {
+    position: relative;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .v2-ph .ph-dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fffdf5;
+    border: 2px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8.5px; font-weight: 700;
+    z-index: 2; position: relative;
+    transition: transform 100ms ease;
+  }
+  .v2-ph:hover .ph-dot { transform: scale(1.18); }
+  .v2-ph.done .ph-dot { background: var(--ink); color: #fffdf5; }
+  .v2-ph.done .ph-dot::after { content: "✓"; font-size: 9px; }
+  .v2-ph.done .ph-dot .num { display: none; }
+  .v2-ph.active .ph-dot {
+    background: var(--accent-ai); color: white;
+    box-shadow: 0 0 0 3px rgba(46,134,199,0.2);
+  }
+  .v2-ph.active .ph-dot::after {
+    content: ""; position: absolute; inset: -4px;
+    border: 1.6px dashed var(--accent-ai); border-radius: 50%;
+    animation: slow-rot 8s linear infinite;
+  }
+  .v2-ph.optional .ph-dot {
+    width: 12px; height: 12px;
+    border-style: dashed; border-width: 1.5px;
+  }
+  .v2-ph.optional.done .ph-dot { background: var(--ink); }
+  /* hover tooltip */
+  .v2-ph .ph-tip {
+    position: absolute; bottom: calc(100% + 6px); left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink); color: #fffdf5;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 4px 8px; border-radius: 3px;
+    white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    transition: opacity 120ms ease;
+    z-index: 10;
+  }
+  .v2-ph .ph-tip::after {
+    content: ""; position: absolute; top: 100%; left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--ink);
+  }
+  .v2-ph:hover .ph-tip { opacity: 1; }
+  /* permanent label only on active */
+  .v2-ph.active .ph-tip {
+    opacity: 1;
+    background: var(--accent-ai);
+  }
+  .v2-ph.active .ph-tip::after { border-top-color: var(--accent-ai); }
+  .v2-phases .ph-rewind {
+    flex-shrink: 0;
+    font-family: "Inter"; font-size: 10.5px; font-weight: 600;
+    color: var(--accent-contradict);
+    cursor: pointer;
+    padding-left: 8px;
+    border-left: 1px solid rgba(26,24,20,0.2);
+    text-decoration: underline; text-decoration-style: dotted;
+  }
+
+  /* collapsible phase block */
+  .phase-block { margin-bottom: 10px; }
+  .phase-block summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px;
+    background: rgba(26,24,20,0.04);
+    border: 1px dashed rgba(26,24,20,0.3);
+    border-radius: 5px;
+  }
+  .phase-block summary::-webkit-details-marker { display: none; }
+  .phase-block summary:hover { background: rgba(26,24,20,0.07); }
+  .phase-block[open] summary {
+    background: transparent;
+    border-bottom: 0;
+    border-radius: 5px 5px 0 0;
+    margin-bottom: 8px;
+  }
+  .phase-block.active > summary {
+    background: #fffdf5;
+    border: 1.6px solid var(--accent-ai);
+    border-radius: 6px;
+    box-shadow: 0 2px 0 rgba(46,134,199,0.2);
+  }
+  .phase-block.active[open] > summary { border-radius: 6px 6px 0 0; }
+  .phase-block .pb-pill {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-soft);
+    background: var(--paper);
+    border: 1.4px solid var(--ink);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .phase-block.done > summary .pb-pill {
+    background: var(--ink); color: #fffdf5;
+  }
+  .phase-block.active > summary .pb-pill {
+    background: var(--accent-ai); color: white; border-color: var(--ink);
+  }
+  .phase-block .pb-summary {
+    flex: 1;
+    font-family: "Inter"; font-size: 11.5px;
+    color: var(--ink-soft); line-height: 1.4;
+  }
+  .phase-block.active .pb-summary {
+    color: var(--ink); font-weight: 600;
+  }
+  .phase-block .pb-summary b { color: var(--ink); font-weight: 700; }
+  .phase-block .pb-chev {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; color: var(--ink-faint);
+    flex-shrink: 0;
+    transition: transform 160ms ease;
+  }
+  .phase-block[open] .pb-chev { transform: rotate(90deg); }
+  .phase-block .pb-when {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; color: var(--ink-faint);
+    letter-spacing: 0.06em; text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .phase-block .pb-body {
+    padding: 4px 0 8px;
+  }
+
+  /* explicit confirm/advance bar at the bottom of the active phase */
+  .confirm-bar {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: #fffdf5;
+    border: 1.6px solid var(--accent-ai);
+    border-radius: 6px;
+    box-shadow: 3px 3px 0 rgba(46,134,199,0.22);
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .confirm-bar .cb-icon {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent-ai); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .confirm-bar .cb-text {
+    flex: 1; min-width: 200px;
+    font-family: "Inter"; font-size: 12px; line-height: 1.4;
+    color: var(--ink);
+  }
+  .confirm-bar .cb-text b { font-weight: 700; }
+  .confirm-bar .cb-text .cb-q {
+    display: block;
+    font-family: "Caveat", cursive; font-size: 18px; font-weight: 700;
+    line-height: 1.1; margin-bottom: 2px;
+  }
+  .confirm-bar .cb-actions {
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .confirm-bar .cb-btn {
+    font-family: "Inter"; font-weight: 600; font-size: 11.5px;
+    padding: 7px 12px;
+    border: 1.5px solid var(--ink);
+    border-radius: 5px;
+    background: #fffdf5; color: var(--ink);
+    cursor: pointer;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.22);
+    white-space: nowrap;
+  }
+  .confirm-bar .cb-btn.primary { background: var(--ink); color: #fffdf5; }
+  .confirm-bar .cb-btn.ghost { box-shadow: none; border-style: dashed; background: transparent; }
+  .confirm-bar .cb-llm {
+    margin-left: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .confirm-bar .cb-llm .yn {
+    border: 1.4px solid var(--ink);
+    background: var(--paper);
+    border-radius: 999px;
+    padding: 2px 8px;
+    color: var(--ink);
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .confirm-bar .cb-llm .yn.no { color: var(--accent-contradict); border-color: var(--accent-contradict); }
+
+  /* ─── conversation room ─── */
+  .v2-room {
+    margin-top: 18px;
+  }
+  .v2-room-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .v2-room-label .listening {
+    color: var(--accent-ai); font-weight: 700;
+    display: inline-flex; gap: 5px; align-items: center;
+  }
+  .v2-room-label .listening::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-ai);
+    animation: pulse-soft 1.4s ease-out infinite;
+  }
+
+  /* turn — universal block for AI personas + user */
+  .turn {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .turn .av {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 1.6px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 16px;
+    background: #fffdf5;
+    box-shadow: 1.5px 1.5px 0 rgba(26,24,20,0.22);
+  }
+  .turn.scout .av    { background: var(--sticky-blue); }
+  .turn.synth .av    { background: var(--sticky-green); }
+  .turn.devil .av    { background: var(--sticky-pink); border-color: var(--accent-contradict); }
+  .turn.histor .av   { background: var(--sticky-peach); }
+  .turn.user .av     { background: var(--sticky-yellow); }
+
+  .turn .body {
+    background: #fffdf5;
+    border: 1.4px solid var(--ink);
+    border-radius: 8px 8px 8px 2px;
+    padding: 10px 12px 12px;
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.15);
+    position: relative;
+  }
+  .turn.user .body {
+    background: var(--paper);
+    border-radius: 8px 8px 2px 8px;
+    border-style: dashed;
+    border-width: 1.4px;
+  }
+  .turn.devil .body {
+    border-color: var(--accent-contradict);
+    box-shadow: 2px 2px 0 rgba(201,74,58,0.25);
+  }
+  .turn .body::before {
+    content: ""; position: absolute;
+    left: -7px; top: 9px;
+    width: 10px; height: 10px;
+    background: inherit;
+    border-left: 1.4px solid var(--ink);
+    border-bottom: 1.4px solid var(--ink);
+    transform: rotate(45deg);
+    background: #fffdf5;
+  }
+  .turn.user .body::before {
+    left: auto; right: -7px;
+    border: none;
+    border-right: 1.4px dashed var(--ink);
+    border-top: 1.4px dashed var(--ink);
+    background: var(--paper);
+  }
+  .turn.devil .body::before { border-color: var(--accent-contradict); }
+
+  .turn .who {
+    display: flex; gap: 6px; align-items: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 5px;
+  }
+  .turn .who .name { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; }
+  .turn.scout  .who .name { color: #2e6da8; }
+  .turn.synth  .who .name { color: #2a8a4a; }
+  .turn.devil  .who .name { color: var(--accent-contradict); }
+  .turn.histor .who .name { color: #a06a2a; }
+  .turn .who .role {
+    border: 1px solid currentColor;
+    padding: 0 5px; border-radius: 2px;
+    font-size: 8.5px;
+    opacity: 0.75;
+  }
+  .turn .who .when { margin-left: auto; color: var(--ink-faint); font-size: 9px; }
+
+  .turn .said {
+    font-family: "Kalam", cursive;
+    font-size: 14px; line-height: 1.4;
+    color: var(--ink);
+  }
+  .turn .said em {
+    background: rgba(46,134,199,0.14);
+    padding: 0 3px; border-radius: 2px; font-style: normal;
+    font-weight: 600;
+  }
+  .turn.devil .said em { background: rgba(201,74,58,0.14); }
+
+  /* embedded "showing" content inside a turn — nearby ideas, evidence, etc. */
+  .turn .show {
+    margin-top: 10px;
+    border: 1.2px dashed rgba(26,24,20,0.3);
+    border-radius: 5px;
+    padding: 8px 10px;
+    background: var(--paper);
+  }
+  .turn .show-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .turn .neighbors {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .turn .neighbor {
+    display: flex; gap: 8px; align-items: center;
+    background: #fffdf5;
+    border: 1px solid rgba(26,24,20,0.3);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: "Kalam", cursive;
+    font-size: 12.5px;
+  }
+  .turn .neighbor .nswatch {
+    width: 14px; height: 14px; border-radius: 2px;
+    flex-shrink: 0;
+    border: 1px solid rgba(26,24,20,0.4);
+  }
+  .turn .neighbor .nswatch.peach { background: var(--sticky-peach); }
+  .turn .neighbor .nswatch.blue  { background: var(--sticky-blue); }
+  .turn .neighbor .nswatch.pink  { background: var(--sticky-pink); }
+  .turn .neighbor .nswatch.green { background: var(--sticky-green); }
+  .turn .neighbor .nlbl { flex: 1; line-height: 1.2; }
+  .turn .neighbor .nsim {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; color: var(--ink-faint);
+    letter-spacing: 0.06em;
+  }
+  .turn .neighbor .ngo {
+    font-family: "Inter"; font-size: 10.5px; font-weight: 600;
+    color: var(--accent-ai);
+    cursor: pointer;
+    text-decoration: underline; text-decoration-style: dotted;
+  }
+
+  /* suggestion options — what the AI proposes you do next */
+  .turn .options {
+    margin-top: 10px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .turn .opt {
+    display: flex; gap: 8px; align-items: flex-start;
+    background: var(--paper);
+    border: 1.2px solid rgba(26,24,20,0.4);
+    border-radius: 5px;
+    padding: 7px 9px;
+    cursor: pointer;
+    transition: transform 100ms ease, box-shadow 100ms ease;
+  }
+  .turn .opt:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 2px 2px 0 rgba(26,24,20,0.2);
+    background: #fffdf5;
+  }
+  .turn .opt .opt-key {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; font-weight: 700;
+    border: 1px solid var(--ink);
+    padding: 1px 5px; border-radius: 3px;
+    background: #fffdf5;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .turn .opt .opt-text {
+    font-family: "Kalam", cursive; font-size: 13px;
+    line-height: 1.3;
+  }
+  .turn .opt .opt-text b { font-weight: 700; }
+
+  /* turn footer actions */
+  .turn .turn-actions {
+    margin-top: 10px;
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .turn .turn-actions .ta {
+    font-family: "Inter"; font-size: 10.5px; font-weight: 500;
+    color: var(--ink-soft);
+    background: transparent;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  .turn .turn-actions .ta:hover { color: var(--ink); }
+
+  /* phase divider in conversation flow */
+  .phase-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 8px 0 14px;
+  }
+  .phase-divider .pd-line {
+    flex: 1; height: 1px;
+    background: repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 9px);
+    opacity: 0.35;
+  }
+  .phase-divider .pd-pill {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-soft);
+    background: var(--paper);
+    border: 1.4px solid var(--ink);
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+  .phase-divider .pd-pill.done {
+    background: var(--ink); color: #fffdf5;
+  }
+  .phase-divider .pd-pill.active {
+    background: var(--accent-ai); color: white;
+    border-color: var(--ink);
+  }
+
+  /* live composer at bottom */
+  .v2-composer {
+    margin-top: 18px;
+    background: var(--paper-dark);
+    border: 1.6px solid var(--ink);
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 3px 3px 0 rgba(26,24,20,0.2);
+    position: sticky;
+    bottom: 12px;
+  }
+  .v2-composer .cmp-prompt {
+    display: flex; gap: 8px; align-items: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent-ai);
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .v2-composer .cmp-prompt .blink {
+    width: 8px; height: 14px;
+    background: var(--accent-ai);
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink {
+    0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; }
+  }
+  .v2-composer .cmp-q {
+    font-family: "Caveat", cursive;
+    font-size: 19px; font-weight: 700;
+    line-height: 1.15;
+    color: var(--ink);
+    margin-bottom: 10px;
+  }
+  .v2-composer .cmp-input {
+    background: #fffdf5;
+    border: 1.4px solid var(--ink);
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    color: var(--ink-faint);
+    min-height: 40px;
+    line-height: 1.4;
+  }
+  .v2-composer .cmp-input .cursor {
+    display: inline-block;
+    width: 1.5px; height: 14px;
+    background: var(--ink);
+    vertical-align: middle;
+    animation: blink 1s steps(2) infinite;
+    margin-left: 1px;
+  }
+  .v2-composer .cmp-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-top: 10px;
+  }
+  .v2-composer .cmp-row .cbtn {
+    font-family: "Inter"; font-weight: 600; font-size: 11.5px;
+    padding: 6px 11px;
+    border: 1.4px solid var(--ink);
+    border-radius: 5px;
+    background: #fffdf5; color: var(--ink);
+    cursor: pointer;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.22);
+  }
+  .v2-composer .cmp-row .cbtn.primary { background: var(--ink); color: #fffdf5; }
+  .v2-composer .cmp-row .cbtn.danger {
+    background: #fffdf5; color: var(--accent-contradict);
+    border-color: var(--accent-contradict);
+  }
+  .v2-composer .cmp-row .cmp-meta {
+    margin-left: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; color: var(--ink-faint);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+
+  /* attached strip — always-on but minimized */
+  .v2-attached {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(26,24,20,0.2);
+  }
+  .v2-attached .v2-att {
+    display: flex; align-items: center; gap: 5px;
+    background: transparent;
+    border: 1px solid rgba(26,24,20,0.4);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-family: "Inter"; font-size: 10.5px;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .v2-attached .v2-att:hover { background: #fffdf5; color: var(--ink); border-color: var(--ink); }
+  .v2-attached .v2-att .icn {
+    font-family: "JetBrains Mono"; font-size: 10px;
+    color: var(--ink-faint);
+  }
+
+  /* "what AI just changed" hint chips */
+  .turn .deltas {
+    display: flex; gap: 5px; flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .turn .delta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.06em;
+    background: rgba(46,134,199,0.12);
+    color: #2e6da8;
+    padding: 2px 6px; border-radius: 3px;
+    font-weight: 600;
+  }
+  .turn .delta.warn {
+    background: rgba(216,147,40,0.18);
+    color: #8a5a10;
+  }
+  .turn .delta.bad {
+    background: rgba(201,74,58,0.14);
+    color: var(--accent-contradict);
+  }
+
+  /* phase-summary banner — shows what happened in a closed phase */
+  .phase-summary {
+    background: rgba(26,24,20,0.04);
+    border: 1px dashed rgba(26,24,20,0.3);
+    border-radius: 5px;
+    padding: 8px 12px;
+    margin-bottom: 14px;
+    display: flex; gap: 10px; align-items: flex-start;
+    font-family: "Inter"; font-size: 11.5px;
+    color: var(--ink-soft);
+    line-height: 1.45;
+  }
+  .phase-summary .ps-ico {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--ink); color: #fffdf5;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .phase-summary b { color: var(--ink); font-weight: 700; }
+  .phase-summary .ps-link {
+    color: var(--accent-ai); font-weight: 600; cursor: pointer;
+    text-decoration: underline; text-decoration-style: dotted;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div>
+    <div class="tag-above">Inspector · v2 · brainstorm-in-the-room</div>
+    <h1>The inspector is a <em style="font-style: italic; background: rgba(46,134,199,0.15); padding: 0 6px;">conversation</em>, not a config panel.</h1>
+  </div>
+  <div class="lede">
+    Open the inspector and you should feel the AI <b>thinking out loud about this idea</b> — Scout challenging your framing, Synthesizer surfacing nearby work on the board, Devil's advocate pushing back, Historian remembering what you already settled. Each phase opens with a voice, asks a question, and waits for you. Skip, undo, or pick A/B/C and the conversation moves on.
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- ───────── BEFORE ───────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="tag bad">BEFORE · current inspector</span>
+      <h2>"Every intervention…"</h2>
+      <span class="tag bad">1,300px of scroll</span>
+    </div>
+    <div class="before-body">
+      <div class="before-wrap">
+        <div class="bf-close">Close</div>
+        <div class="bf-label">Inspector</div>
+        <div class="bf-title1">Every intervention on the board should carry its provenance, detailing what trig…</div>
+
+        <div class="bf-title2">Every intervention on the board should carry its provenance, detailing what trig…</div>
+        <div class="bf-toolbar">
+          <select><option>Standard</option></select>
+          <button>Docs</button>
+          <button>Export</button>
+        </div>
+        <div class="bf-meta">
+          <span class="dot">red</span>
+          <span class="step">Step 0.5 / 8 — Outside-in lens</span>
+          <span class="mini">MICRO</span>
+          <span class="gem">gemini</span>
+        </div>
+        <div class="bf-chips">
+          <span class="bf-chip">provenance</span>
+          <span class="bf-chip">undo</span>
+          <span class="bf-chip">audit-trail</span>
+          <span class="bf-chip">AI</span>
+          <span class="bf-chip">facilitator-surface</span>
+          <span class="bf-chip">from-scout</span>
+        </div>
+
+        <div class="bf-callout">
+          <div class="bf-label">Secondary Inspector</div>
+          <div class="body">The active brainstorm loop now runs on the board. Use this drawer to review the full phase trail, attached docs, and export when the idea is ready.</div>
+        </div>
+
+        <div class="bf-coord">
+          <div class="bf-coord-head">
+            <div class="bf-label">Bead coordination</div>
+            <div class="bf-coord-legend">
+              <span class="a">ACTIVE</span><span class="c">COMPLETED</span><span class="n">NEEDS ATTENTION</span><span class="s">SOFT NUDGE</span>
+            </div>
+          </div>
+          <div class="body">The runtime stays derived from the current phase. Review flags and nudges layer on top without moving the idea.</div>
+          <div class="bf-beadgrid">
+            <div class="bf-bead done">
+              <div class="n">0 · AMBIGUITIES</div>
+              <div class="t">Ambiguity detection</div>
+              <div class="sub">6 open ambiguities</div>
+              <div class="status">COMPLETED</div>
+            </div>
+            <div class="bf-bead active">
+              <div class="n">0.5 · LENS</div>
+              <div class="t">Outside-in lens</div>
+              <div class="sub">0 lenses</div>
+              <div class="status">ACTIVE</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">1 · CLARIFY</div>
+              <div class="t">Clarification questions</div>
+              <div class="sub">No clarification questions yet</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">2 · APPROACHES</div>
+              <div class="t">Approach synthesis</div>
+              <div class="sub">0 approaches explored</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">2.5 · CHALLENGES</div>
+              <div class="t">Devil's advocate</div>
+              <div class="sub">0 challenges recorded</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">3 · RULES</div>
+              <div class="t">Must-stay-true rules</div>
+              <div class="sub">0 must-stay-true rules</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">4 · PREMORTEM</div>
+              <div class="t">Premortem / red team</div>
+              <div class="sub">0 risks in register</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">4.5 · STRESS-TEST</div>
+              <div class="t">Stress-test the rules</div>
+              <div class="sub">0 stress tests</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">5 · BRIEF</div>
+              <div class="t">Brief composition</div>
+              <div class="sub">No brief draft yet</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">6 · REVIEW</div>
+              <div class="t">Self-review</div>
+              <div class="sub">2 open questions after self-review</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">7 · READINESS</div>
+              <div class="t">Readiness decision</div>
+              <div class="sub">Readiness is red</div>
+              <div class="status">LOCKED</div>
+            </div>
+            <div class="bf-bead">
+              <div class="n">8 · DONE</div>
+              <div class="t">Handoff ready</div>
+              <div class="sub">Awaiting next-step capture</div>
+              <div class="status">LOCKED</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bf-accordion" style="margin-top: 18px;">
+          <div class="l">
+            <span class="circle">0</span>
+            <span>Ambiguity detection</span>
+          </div>
+          <div class="lock">^</div>
+        </div>
+        <div class="bf-accordion active" style="margin-top: 0;">
+          <div class="l">
+            <span class="circle">0.5</span>
+            <span>Outside-in lens (optional) <span style="color: #8a4ad9; font-weight: 700;">Active</span></span>
+          </div>
+          <div class="lock">^</div>
+        </div>
+        <div class="bf-inner">
+          <div class="hint">No lenses surfaced yet. Run this step to see unexpected angles on your idea.</div>
+          <div class="cta">Continue this step from the board focus dock to keep the canvas visible while the idea moves.</div>
+        </div>
+
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">1</span><span>Clarification questions</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">2</span><span>Approach synthesis</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">2.5</span><span>Devil's advocate (optional)</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">3</span><span>Must-stay-true rules</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">4</span><span>Premortem / red team</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+        <div class="bf-accordion">
+          <div class="l"><span class="circle" style="background:#ccc">4.5</span><span>Stress-test the rules (optional)</span></div>
+          <div class="lock">🔒 Locked</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- red annotations -->
+    <div class="anno" style="top: 42px; right: 14px;">
+      title shown<br>twice ↓
+      <svg width="40" height="60" viewBox="0 0 40 60"><path d="M30 8 Q 20 30 15 55" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M15 55 l 0 -6 l -5 3 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 140px; right: 8px; color: var(--accent-contradict);">
+      6 meta-chips +<br>mini pill + model<br>= tag soup
+      <svg width="50" height="30" viewBox="0 0 50 30"><path d="M10 8 Q 25 18 48 14" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M48 14 l -6 -2 l 2 6 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 250px; right: 6px;">
+      this is just<br>UI copy for<br>no one
+      <svg width="40" height="30" viewBox="0 0 40 30"><path d="M8 14 Q 20 8 38 20" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M38 20 l -6 -1 l 2 6 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 530px; right: 2px;">
+      12 beads as grid<br>kills the <i>flow</i> —<br>it's a journey,<br>not a dashboard
+    </div>
+    <div class="anno" style="top: 820px; right: 10px;">
+      empty counts for<br>every locked row<br>(dead weight)
+      <svg width="50" height="30" viewBox="0 0 50 30"><path d="M6 6 Q 20 14 44 8" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M44 8 l -5 -3 l 0 6 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 1060px; right: 6px;">
+      beads shown<br>AGAIN as<br>accordions below
+    </div>
+    <div class="anno" style="top: 1170px; left: 14px; color: var(--accent-contradict);">
+      ← meta-instructions<br>pretending to be<br>an affordance
+    </div>
+  </div>
+
+  <!-- ───────── AFTER ───────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="tag good">AFTER · brainstorm-in-the-room</span>
+      <h2>The AI is talking <i>about</i> this idea, with you</h2>
+      <span class="tag good">conversation · not config</span>
+    </div>
+
+    <div class="after-wrap">
+
+      <!-- left: canvas context showing what the inspector is ABOUT -->
+      <div class="after-board">
+        <!-- surrounding context -->
+        <div class="ctx-sticky c-pink" style="left: 32px; top: 46px;">Onboarding pain · new hires freeze day 1</div>
+        <div class="ctx-sticky c-peach" style="left: 330px; top: 240px;">Runbook automation · "if-X-then-Y"</div>
+        <div class="ctx-sticky" style="left: 46px; top: 420px;">Manager digest · weekly summary email</div>
+
+        <!-- focus idea being inspected -->
+        <div class="focus-idea">
+          <div class="sel-ring"></div>
+          <div class="tt">Outside-in lens</div>
+          <div>What would an ops lead from a competitor do on day 1?</div>
+          <div class="meta">ai · scout · 3 turns</div>
+        </div>
+
+        <!-- close-idea pulse rings on board (showing AI found neighbors) -->
+        <svg class="ink-tether" style="left: 320px; top: 220px; width: 80px; height: 80px;" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" stroke="#7a5cab" stroke-width="1.6" fill="none" stroke-dasharray="4 4" opacity="0.7"/>
+          <circle cx="40" cy="40" r="22" stroke="#7a5cab" stroke-width="1.4" fill="none" stroke-dasharray="3 3" opacity="0.4"/>
+        </svg>
+        <div class="margin-note info" style="left: 250px; top: 320px; max-width: 130px;">
+          AI sees this is<br><i>close to</i> Runbook
+          <svg width="40" height="24" viewBox="0 0 40 24"><path d="M30 18 Q 20 10 6 4" stroke="#7a5cab" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-dasharray="3 3"/><path d="M6 4 l 5 -1 l 0 6 z" fill="#7a5cab"/></svg>
+        </div>
+
+        <!-- ink tether from idea to inspector -->
+        <svg class="ink-tether" style="left: 290px; top: 100px; width: 260px; height: 80px;" viewBox="0 0 260 80">
+          <path d="M 10 50 Q 80 10 250 20"
+                stroke="#1a1814" stroke-width="1.8" fill="none"
+                stroke-linecap="round" opacity="0.55"/>
+          <circle cx="248" cy="20" r="3" fill="#1a1814" opacity="0.55"/>
+        </svg>
+
+        <div class="margin-note" style="left: 38px; bottom: 60px; max-width: 150px;">
+          board stays alive ·<br>4 voices speak<br>about this idea →
+        </div>
+      </div>
+
+      <!-- right: inspector -->
+      <div class="inspector">
+        <div class="v2-head">
+          <div style="flex: 1; min-width: 0;">
+            <div class="v2-eye"><span class="pulse"></span> Dev · in the room with you</div>
+            <h3 class="idea-title">Outside-in lens · day-1 freeze</h3>
+            <div class="v2-prov">
+              <span>Born from</span>
+              <span class="pchip">Scout</span>
+              <span class="pdot">·</span>
+              <span class="pmodel">gemini-2.5-pro</span>
+              <span class="pdot">·</span>
+              <span>14 min ago</span>
+              <span class="pdot">·</span>
+              <span class="pundo">↶ undo</span>
+            </div>
+          </div>
+          <button class="close" title="Close inspector (Esc)">×</button>
+        </div>
+
+        <!-- slim phase journey · click any bead to jump · active labeled inline -->
+        <div class="v2-phases">
+          <div class="v2-phases-label">Lifecycle ·<br><b>3 of 13 · jumpable</b></div>
+          <div class="v2-phase-track">
+            <div class="v2-phase-line"><div class="fill"></div></div>
+            <div class="v2-phase-row">
+              <div class="v2-ph done" title="Phase 0 · Ambiguities · done"><div class="ph-dot"><span class="num">0</span></div><div class="ph-tip">0 · ambig · done</div></div>
+              <div class="v2-ph done optional" title="0.5 lens · done"><div class="ph-dot"></div><div class="ph-tip">0.5 lens · done</div></div>
+              <div class="v2-ph active"><div class="ph-dot">·</div><div class="ph-tip">▸ outside-in · live</div></div>
+              <div class="v2-ph" title="Phase 1 · Clarify"><div class="ph-dot"><span class="num">1</span></div><div class="ph-tip">1 · clarify</div></div>
+              <div class="v2-ph" title="Phase 2 · Approach"><div class="ph-dot"><span class="num">2</span></div><div class="ph-tip">2 · approach</div></div>
+              <div class="v2-ph optional" title="2.5 Devil's"><div class="ph-dot"></div><div class="ph-tip">2.5 devil's</div></div>
+              <div class="v2-ph" title="Phase 3 · Rules"><div class="ph-dot"><span class="num">3</span></div><div class="ph-tip">3 · rules</div></div>
+              <div class="v2-ph" title="Phase 4 · Premortem"><div class="ph-dot"><span class="num">4</span></div><div class="ph-tip">4 · premortem</div></div>
+              <div class="v2-ph optional" title="4.5 stress"><div class="ph-dot"></div><div class="ph-tip">4.5 stress</div></div>
+              <div class="v2-ph" title="Phase 5 · Brief"><div class="ph-dot"><span class="num">5</span></div><div class="ph-tip">5 · brief</div></div>
+              <div class="v2-ph" title="Phase 6 · Review"><div class="ph-dot"><span class="num">6</span></div><div class="ph-tip">6 · review</div></div>
+              <div class="v2-ph" title="Phase 7 · Ready"><div class="ph-dot"><span class="num">7</span></div><div class="ph-tip">7 · ready</div></div>
+              <div class="v2-ph" title="Phase 8 · Handoff"><div class="ph-dot"><span class="num">8</span></div><div class="ph-tip">8 · handoff</div></div>
+            </div>
+          </div>
+          <span class="ph-rewind">↶ rewind to…</span>
+        </div>
+
+        <!-- THE ROOM: a real conversation about THIS idea -->
+        <div class="v2-room">
+          <div class="v2-room-label">
+            <span>Conversation · click any phase to revisit</span>
+            <span class="listening">Scout is listening</span>
+          </div>
+
+          <!-- ── PHASE 0: ambiguities (closed, collapsed by default — click to expand) ── -->
+          <details class="phase-block done">
+            <summary>
+              <span class="pb-pill">✓ 0 · ambiguities</span>
+              <span class="pb-summary"><b>5 of 6 resolved</b> · "freeze" → "can't act &gt;30min"; "new hires" → "weeks 0–2". 1 deferred.</span>
+              <span class="pb-when">4m</span>
+              <span class="pb-chev">›</span>
+            </summary>
+            <div class="pb-body">
+              <div class="turn histor">
+                <div class="av">H</div>
+                <div class="body">
+                  <div class="who"><span class="name">Historian</span><span class="role">flagged</span><span class="when">12m ago</span></div>
+                  <div class="said">Found 6 fuzzy phrases. Resolved 5 with you inline; 1 — <em>which team</em> — deferred to brief.</div>
+                  <div class="turn-actions">
+                    <button class="ta">↶ undo all</button>
+                    <button class="ta">jump to deferred</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- ── PHASE 0.5: outside-in lens (ACTIVE, fully open) ── -->
+          <details class="phase-block active" open>
+            <summary>
+              <span class="pb-pill">▸ 0.5 · outside-in lens · live</span>
+              <span class="pb-summary">Scout challenged framing · Synthesizer surfaced 3 neighbors · Devil's pushed back · waiting on your A/B/C.</span>
+              <span class="pb-when">live</span>
+              <span class="pb-chev">›</span>
+            </summary>
+            <div class="pb-body">
+
+              <!-- Scout opens the phase: a challenge -->
+              <div class="turn scout">
+                <div class="av">S</div>
+                <div class="body">
+                  <div class="who"><span class="name">Scout</span><span class="role">challenger</span><span class="when">2m ago</span></div>
+                  <div class="said">
+                    You're framing this as a <em>docs problem</em>. An ops lead at a 10× shop would say: "you have a <em>shadowing problem</em>." They solved day-1 freeze by pairing, not by writing more runbooks.
+                  </div>
+                  <div class="deltas">
+                    <span class="delta">↑ scope · "docs" → "first-day support"</span>
+                    <span class="delta warn">⚠ may invalidate Runbook idea</span>
+                  </div>
+                  <div class="turn-actions">
+                    <button class="ta">show reasoning</button>
+                    <button class="ta">↶ undo this nudge</button>
+                    <button class="ta">pin</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Synthesizer surfaces close ideas -->
+              <div class="turn synth">
+                <div class="av">∾</div>
+                <div class="body">
+                  <div class="who"><span class="name">Synthesizer</span><span class="role">connects</span><span class="when">2m ago</span></div>
+                  <div class="said">Three notes feel <em>close</em> to this. Two reinforce, one contradicts.</div>
+                  <div class="show">
+                    <div class="show-label">↗ nearby on the board · click to focus</div>
+                    <div class="neighbors">
+                      <div class="neighbor">
+                        <div class="nswatch peach"></div>
+                        <div class="nlbl">Runbook automation · "if-X-then-Y"<br><span class="nsim">overlaps · same trigger, different remedy</span></div>
+                        <span class="ngo">jump →</span>
+                      </div>
+                      <div class="neighbor">
+                        <div class="nswatch blue"></div>
+                        <div class="nlbl">Manager digest · weekly summary email<br><span class="nsim">shares · "day-1 surface" theme</span></div>
+                        <span class="ngo">jump →</span>
+                      </div>
+                      <div class="neighbor">
+                        <div class="nswatch pink"></div>
+                        <div class="nlbl">Onboarding pain · new hires freeze<br><span class="nsim">parent · this is its child</span></div>
+                        <span class="ngo">jump →</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="turn-actions">
+                    <button class="ta">draw connections on board</button>
+                    <button class="ta">merge with parent</button>
+                    <button class="ta">dismiss</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Devil's advocate -->
+              <div class="turn devil">
+                <div class="av">!</div>
+                <div class="body">
+                  <div class="who"><span class="name">Devil's advocate</span><span class="role">contradicts</span><span class="when">1m ago</span></div>
+                  <div class="said">Counter: <em>most</em> 10× shops also have onboarding doc systems Scout is dismissing. The fix wasn't shadowing — it was <em>shadowing on top of</em> a sturdy runbook.</div>
+                  <div class="deltas">
+                    <span class="delta bad">contradicts Scout's framing</span>
+                  </div>
+                  <div class="turn-actions">
+                    <button class="ta">keep this counter</button>
+                    <button class="ta">→ "must-stay-true" rule</button>
+                    <button class="ta">dismiss</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- You replied -->
+              <div class="turn user">
+                <div class="av">D</div>
+                <div class="body">
+                  <div class="who"><span class="name">You · Dev</span><span class="role">edit</span><span class="when">just now</span></div>
+                  <div class="said">Fair. Tightening: "new hires freeze" → "new hires freeze <em>on day 1</em>." Keep both leads alive — runbook + shadowing — let phase 2 pick.</div>
+                </div>
+              </div>
+
+              <!-- Scout asks the next question with options -->
+              <div class="turn scout">
+                <div class="av">S</div>
+                <div class="body">
+                  <div class="who"><span class="name">Scout</span><span class="role">asks</span><span class="when">just now</span></div>
+                  <div class="said">Good. Before we leave the lens phase — pick one to actually <em>borrow from</em>:</div>
+                  <div class="options">
+                    <div class="opt">
+                      <div class="opt-key">A</div>
+                      <div class="opt-text"><b>Stripe-style "buddy week"</b> — paired engineer for 5 days, no docs touched</div>
+                    </div>
+                    <div class="opt">
+                      <div class="opt-key">B</div>
+                      <div class="opt-text"><b>Shopify "first PR by Friday"</b> — make-something-tiny pressure beats reading</div>
+                    </div>
+                    <div class="opt">
+                      <div class="opt-key">C</div>
+                      <div class="opt-text"><b>None of these</b> — write your own outside-in framing</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- explicit confirm-to-advance bar — no auto-advance -->
+              <div class="confirm-bar">
+                <div class="cb-icon">▸</div>
+                <div class="cb-text">
+                  <span class="cb-q">Done with the lens? Move on to clarification?</span>
+                  <span><b>No auto-advance.</b> Phase only closes when you (or Scout) explicitly say so. Always reversible from the lifecycle bar above.</span>
+                </div>
+                <div class="cb-actions">
+                  <button class="cb-btn primary">✓ confirm · advance to 1 · clarify</button>
+                  <button class="cb-btn">stay · ask another lens</button>
+                  <button class="cb-btn ghost">skip phase</button>
+                </div>
+                <div class="cb-llm">
+                  Scout thinks done? <span class="yn">yes</span> <span class="yn no">no</span>
+                </div>
+              </div>
+
+            </div>
+          </details>
+
+          <!-- ── PHASE 1: clarify (locked, peek only) ── -->
+          <details class="phase-block">
+            <summary>
+              <span class="pb-pill">⋯ 1 · clarify</span>
+              <span class="pb-summary">Locked · waits on your confirm above. Peek to see what Scout is preparing.</span>
+              <span class="pb-when">next</span>
+              <span class="pb-chev">›</span>
+            </summary>
+            <div class="pb-body">
+              <div style="font-family: 'Kalam', cursive; font-size: 13px; color: var(--ink-soft); line-height: 1.5; padding: 8px 12px; background: var(--paper); border-radius: 5px;">
+                Scout has 4 clarifying questions queued: scope (one team or all?), success metric, time-to-value tolerance, who owns rollout. Confirm phase 0.5 to begin.
+              </div>
+            </div>
+          </details>
+
+        </div>
+
+        <!-- the live composer — what AI is asking right now -->
+        <div class="v2-composer">
+          <div class="cmp-prompt"><span class="blink"></span> Scout is waiting · A / B / C / type your own</div>
+          <div class="cmp-q">Which lens do you want to carry into clarification?</div>
+          <div class="cmp-input">
+            type your answer, or press <kbd style="font-family: 'JetBrains Mono'; font-size: 10px; background: #fffdf5; border: 1px solid var(--ink); padding: 1px 5px; border-radius: 3px;">A</kbd> · <kbd style="font-family: 'JetBrains Mono'; font-size: 10px; background: #fffdf5; border: 1px solid var(--ink); padding: 1px 5px; border-radius: 3px;">B</kbd> · <kbd style="font-family: 'JetBrains Mono'; font-size: 10px; background: #fffdf5; border: 1px solid var(--ink); padding: 1px 5px; border-radius: 3px;">C</kbd><span class="cursor"></span>
+          </div>
+          <div class="cmp-row">
+            <button class="cbtn primary">send →</button>
+            <button class="cbtn">skip the lens</button>
+            <button class="cbtn danger">undo whole phase</button>
+            <span class="cmp-meta">autonomy · active challenger</span>
+          </div>
+
+          <!-- attached strip — quietly there -->
+          <div class="v2-attached">
+            <div class="v2-att"><span class="icn">📎</span>ops-onboarding-2024.pdf</div>
+            <div class="v2-att"><span class="icn">🔗</span>competitor teardown</div>
+            <div class="v2-att"><span class="icn">✎</span>user notes (3)</div>
+            <div class="v2-att"><span class="icn">+</span>add</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Principles recap -->
+<div class="principles">
+  <h3>Five rules for an "AI brainstorming with you" inspector</h3>
+  <div class="grid5">
+    <div class="p">
+      <div class="n">01</div>
+      <div class="t">Voices, not sections</div>
+      <div class="d">Every phase opens with a <em>persona</em> who says something specific about <i>this</i> idea — Scout challenges, Synthesizer connects, Devil's contradicts. No "0 lenses surfaced yet."</div>
+    </div>
+    <div class="p">
+      <div class="n">02</div>
+      <div class="t">Ask, don't list</div>
+      <div class="d">Phase exits are <em>questions with options</em> (A/B/C, or type your own). The composer is always loaded with the next thing the AI is waiting on.</div>
+    </div>
+    <div class="p">
+      <div class="n">03</div>
+      <div class="t">Surface neighbors</div>
+      <div class="d">The AI calls out <em>close ideas</em> already on the board — overlaps, parents, contradictions — with one-tap jumps. Brainstorm beats blank canvas.</div>
+    </div>
+    <div class="p">
+      <div class="n">04</div>
+      <div class="t">Show the deltas</div>
+      <div class="d">When the AI suggests a reframe, it labels what changes: <em>↑ scope</em>, <em>⚠ may invalidate</em>, <em>contradicts</em>. The user sees the cost before accepting.</div>
+    </div>
+    <div class="p">
+      <div class="n">05</div>
+      <div class="t">Always reversible</div>
+      <div class="d">Every persona turn is dated, signed, and <em>↶ undoable</em>. Skip a phase, undo a nudge, dismiss a counter — the conversation re-routes. Trust comes from being able to back out.</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

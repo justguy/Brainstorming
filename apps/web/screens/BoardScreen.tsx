@@ -55,6 +55,7 @@ import {
 import { findLatestSafeAiUndoTarget } from '../../../src/storage/boardAiUndo';
 import DiscardPile from '../../../src/canvas/DiscardPile';
 import { usePromoteToPrinciple } from '../usePromoteToPrinciple';
+import { useIdeaOpenModes } from '../useIdeaOpenModes';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 const CAPTURE_CANVAS_SELECTOR = '.bo-canvas';
@@ -156,6 +157,10 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   // bo-162 — promote-to-principle is wired into the inspector's actions row.
   // The hook owns dedupe + the IDB write through useProjectSync.
   const { promoteToPrinciple } = usePromoteToPrinciple();
+  // Idea-focus / bloom WIP also exposes the persisted guidance-notes toggle
+  // that AppHeaderBar surfaces. We only consume the guidance bits here so the
+  // header has the props it expects; bloom/focus wiring lands separately.
+  const { guidanceVisible, toggleGuidance } = useIdeaOpenModes();
 
   // These derive from `ideas` and a few collections; without memoization a
   // 1-second clock tick from useCompanionAutomation re-creates every array
@@ -654,6 +659,8 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
         onToggleHistory: () => setHistoryOpen(value => !value),
         onSetBoardTheme: setBoardTheme,
         onOpenOptions: openOptions,
+        guidanceNotesEnabled: guidanceVisible,
+        onToggleGuidanceNotes: toggleGuidance,
       }}
       showApiKeyBanner={hasApiKey === false}
       onOpenOptions={openOptions}
@@ -839,32 +846,6 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
             refineDoc={refineSupportingDoc}
           />
         ),
-        selectedIdeaDockContent: selectedCanvasIdea ? (
-          usingDemoBoard
-            ? (
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-900">Demo note preview</p>
-                <p className="text-sm text-gray-600">
-                  This board is showing fallback demo notes. Selection is live, but editing and inspector actions stay disabled until real board data exists.
-                </p>
-              </div>
-            )
-            : (
-              <>
-                <IdeaAttentionPanel
-                  idea={selectedCanvasIdea}
-                  critiques={canvasCritiques}
-                  highlightedAttentionId={selectedAttentionItemId}
-                />
-                <WorkspacePhaseFlow
-                  idea={selectedCanvasIdea}
-                  onUpdate={handleIdeaUpdate}
-                  source="canvas"
-                  ambiguityPresentation="full"
-                />
-              </>
-            )
-        ) : null,
         inspectorContent: selectedSuggestion ? (
           <WorkspaceScoutInspector
             idea={selectedSuggestionIdea}
@@ -916,6 +897,32 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
           setSelectedId(null);
         },
       }}
+      selectedIdeaDockContent={selectedCanvasIdea ? (
+        usingDemoBoard
+          ? (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-gray-900">Demo note preview</p>
+              <p className="text-sm text-gray-600">
+                This board is showing fallback demo notes. Selection is live, but editing and inspector actions stay disabled until real board data exists.
+              </p>
+            </div>
+          )
+          : (
+            <>
+              <IdeaAttentionPanel
+                idea={selectedCanvasIdea}
+                critiques={canvasCritiques}
+                highlightedAttentionId={selectedAttentionItemId}
+              />
+              <WorkspacePhaseFlow
+                idea={selectedCanvasIdea}
+                onUpdate={handleIdeaUpdate}
+                source="canvas"
+                ambiguityPresentation="full"
+              />
+            </>
+          )
+      ) : null}
     />
   );
 }

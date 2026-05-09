@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clarifications — before / after</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@500;700&family=Patrick+Hand&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: 1600px 1200px; margin: 0; }
+  @media print {
+    html, body {
+      background: #e5e0d1 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body { padding: 40px 50px 60px !important; }
+    .panel, .principles, .page-head, .grid, .anno, .paper-anno, .qbubble, .persona, .qstrip, .beads, .sticky, .qpin, .modal, .q-card {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+    .grid { page-break-after: always; break-after: page; }
+    .principles { page-break-before: avoid; }
+    * {
+      animation: none !important;
+      transition: none !important;
+    }
+    .qpin.active {
+      box-shadow: 0 0 0 6px rgba(46,134,199,0.22), 0 3px 0 rgba(26,24,20,0.3) !important;
+    }
+  }
+</style>
+<style>
+  :root {
+    --paper: #f5efe1;
+    --paper-dark: #ebe4d3;
+    --ink: #1a1814;
+    --ink-soft: #4a443a;
+    --ink-faint: rgba(26,24,20,0.45);
+    --accent-contradicts: #c94a3a;
+    --accent-revives: #2a8a4a;
+    --accent-ai: #2e86c7;
+    --sticky-yellow: #f5e27a;
+    --sticky-pink: #f4b4b0;
+    --sticky-blue: #b4d4e8;
+    --sticky-peach: #f4c88c;
+    --sticky-green: #bcd9a8;
+    --sticky-lilac: #c9bde0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #e5e0d1; font-family: "Inter", system-ui, sans-serif; color: var(--ink); }
+  body {
+    background-color: #e5e0d1;
+    background-image:
+      radial-gradient(circle at 50% 50%, rgba(26,24,20,0.04) 1px, transparent 1.5px);
+    background-size: 28px 28px;
+    min-height: 100vh;
+    padding: 48px 60px 100px;
+  }
+  .page-head {
+    max-width: 1480px; margin: 0 auto 40px;
+    display: flex; align-items: end; gap: 24px; justify-content: space-between;
+  }
+  .page-head h1 {
+    font-family: "Caveat", cursive;
+    font-size: 44px; font-weight: 700; margin: 0;
+    letter-spacing: -0.5px;
+  }
+  .page-head .lede {
+    font-size: 14px; color: var(--ink-soft); max-width: 520px; line-height: 1.55;
+  }
+  .grid {
+    max-width: 1480px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 36px;
+  }
+  .panel {
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 4px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2), 0 12px 28px rgba(26,24,20,0.1);
+    position: relative;
+    min-height: 740px;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 22px; border-bottom: 1.4px solid var(--ink);
+    background: var(--paper);
+  }
+  .panel-header .tag {
+    font-family: "JetBrains Mono", monospace; font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .panel-header .tag.bad  { color: #c94a3a; }
+  .panel-header .tag.good { color: #2a8a4a; }
+  .panel-header h2 {
+    margin: 0;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 26px;
+  }
+
+  /* ───────── BEFORE ───────── */
+  .before-body {
+    padding: 24px;
+    background: repeating-linear-gradient(0deg, rgba(26,24,20,0.045) 0 1px, transparent 1px 28px),
+                repeating-linear-gradient(90deg, rgba(26,24,20,0.045) 0 1px, transparent 1px 28px),
+                var(--paper);
+    min-height: 680px;
+  }
+  .modal {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+    margin: 0 auto; width: 420px;
+    padding: 18px;
+  }
+  .modal .m-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 12px; border-bottom: 1px solid #eee; margin-bottom: 12px;
+  }
+  .modal .m-head strong { font-size: 14px; font-weight: 700; }
+  .modal .m-head .count { font-size: 11px; color: #888; font-weight: 600; letter-spacing: 0.08em; }
+  .q-card {
+    border: 1px solid #ececec; border-radius: 8px;
+    padding: 12px; margin-bottom: 10px;
+  }
+  .q-card .pills { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .pill {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+    padding: 3px 8px; border-radius: 999px;
+  }
+  .pill.open   { background: #111; color: white; }
+  .pill.high   { background: #f4a62f; color: #2a1a00; }
+  .pill.med    { background: #f4d068; color: #3a2a00; }
+  .pill.ask    { background: #c4e4d0; color: #0a3a1a; }
+  .pill.aud    { background: #e8d4c2; color: #3a2408; }
+  .pill.dp     { background: #d9d4c9; color: #2a2418; }
+  .pill.int    { background: #c8d9e8; color: #082a4a; }
+  .pill.ux     { background: #e4c8d9; color: #4a082a; }
+  .q-card .body { font-size: 12.5px; line-height: 1.4; color: #222; margin-bottom: 10px; }
+  .q-card .actions { display: flex; gap: 8px; align-items: center; }
+  .q-card .btn-purple {
+    background: #7a4ae0; color: white;
+    border: none; border-radius: 6px;
+    padding: 7px 12px; font-weight: 600; font-size: 12px; cursor: pointer;
+  }
+  .q-card .btn-link { color: #555; background: none; border: none; font-size: 12px; cursor: pointer; }
+  .modal-footer { margin-top: 14px; text-align: left; }
+  .modal-footer .gen {
+    background: #7a4ae0; color: white; border: none; border-radius: 6px;
+    padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+
+  /* Annotation callouts on BEFORE */
+  .anno {
+    position: absolute;
+    font-family: "Caveat", cursive;
+    font-size: 18px; font-weight: 700;
+    color: var(--accent-contradicts);
+    line-height: 1.15;
+    pointer-events: none;
+    max-width: 160px;
+  }
+  .anno .arrow {
+    display: block; width: 0; height: 0; margin-top: 4px;
+  }
+  .anno svg { display: block; }
+
+  /* ───────── AFTER ───────── */
+  .after-body {
+    padding: 0;
+    background:
+      repeating-linear-gradient(0deg, rgba(26,24,20,0.07) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, rgba(26,24,20,0.07) 0 1px, transparent 1px 28px),
+      var(--paper);
+    min-height: 680px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* canvas stickies */
+  .sticky {
+    position: absolute;
+    padding: 12px 14px;
+    font-family: "Kalam", cursive;
+    font-size: 14.5px; line-height: 1.35;
+    color: var(--ink);
+    background: var(--sticky-yellow);
+    box-shadow: 2px 3px 0 rgba(26,24,20,0.25), 4px 6px 14px rgba(26,24,20,0.15);
+    width: 180px; min-height: 70px;
+    clip-path: polygon(
+      0% 4%, 3% 1%, 10% 3%, 18% 0%, 28% 2%, 40% 1%, 55% 3%, 68% 0%, 80% 2%, 92% 1%, 100% 3%,
+      99% 15%, 100% 28%, 98% 42%, 100% 58%, 99% 74%, 100% 88%, 98% 100%,
+      88% 99%, 75% 100%, 62% 98%, 48% 100%, 34% 99%, 20% 100%, 8% 98%, 0% 100%,
+      1% 84%, 0% 70%, 2% 56%, 0% 42%, 1% 28%, 0% 14%);
+  }
+  .sticky.c-yellow { background: var(--sticky-yellow); }
+  .sticky.c-pink   { background: var(--sticky-pink); }
+  .sticky.c-blue   { background: var(--sticky-blue); }
+  .sticky.c-peach  { background: var(--sticky-peach); }
+  .sticky .st-title { font-weight: 700; font-size: 15.5px; margin-bottom: 4px; }
+  .sticky .st-meta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(26,24,20,0.55);
+    margin-top: 6px;
+  }
+
+  /* question mark pin */
+  .qpin {
+    position: absolute;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: #2a2520;
+    color: #ffe68a;
+    font-family: "Caveat", cursive; font-weight: 700;
+    font-size: 22px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.3), 0 4px 10px rgba(26,24,20,0.2);
+    border: 2px solid #ffe68a;
+    cursor: pointer;
+    z-index: 4;
+  }
+  .qpin.dim { opacity: 0.55; }
+  .qpin .num {
+    position: absolute; top: -6px; right: -6px;
+    width: 16px; height: 16px;
+    background: #c94a3a; color: white;
+    border-radius: 50%;
+    font-family: "JetBrains Mono", monospace; font-weight: 600;
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid #2a2520;
+  }
+  .qpin.active {
+    box-shadow: 0 0 0 6px rgba(46,134,199,0.22), 0 3px 0 rgba(26,24,20,0.3);
+    animation: pin-pulse 2s ease-in-out infinite;
+  }
+  @keyframes pin-pulse {
+    0%,100% { box-shadow: 0 0 0 6px rgba(46,134,199,0.22), 0 3px 0 rgba(26,24,20,0.3); }
+    50%     { box-shadow: 0 0 0 12px rgba(46,134,199,0), 0 3px 0 rgba(26,24,20,0.3); }
+  }
+
+  /* ink connecting question to sticky */
+  .ink-line { position: absolute; pointer-events: none; z-index: 2; }
+
+  /* persona bubble (the question itself) */
+  .qbubble {
+    position: absolute;
+    max-width: 320px;
+    background: #fffdf5;
+    border: 1.8px solid var(--ink);
+    border-radius: 14px;
+    padding: 14px 16px 12px;
+    font-family: "Kalam", cursive;
+    font-size: 14.5px;
+    line-height: 1.4;
+    box-shadow: 3px 3px 0 rgba(26,24,20,0.22), 6px 8px 18px rgba(26,24,20,0.14);
+    z-index: 5;
+  }
+  .qbubble::before {
+    content: "";
+    position: absolute;
+    width: 18px; height: 18px;
+    background: #fffdf5;
+    border-left: 1.8px solid var(--ink);
+    border-bottom: 1.8px solid var(--ink);
+    transform: rotate(45deg);
+    left: -10px; top: 28px;
+  }
+  .qbubble .qb-who {
+    display: flex; align-items: center; gap: 8px;
+    font-family: "Inter", sans-serif;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent-ai);
+    margin-bottom: 8px;
+  }
+  .qbubble .qb-who .avatar {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: linear-gradient(180deg, #4ba9e6, #1f6aa8);
+    border: 1.4px solid #0d2238;
+    position: relative;
+  }
+  .qbubble .qb-who .avatar::before,
+  .qbubble .qb-who .avatar::after {
+    content: ""; position: absolute; width: 4px; height: 4px; border-radius: 50%;
+    background: #d6f5ff; top: 7px;
+  }
+  .qbubble .qb-who .avatar::before { left: 4px; }
+  .qbubble .qb-who .avatar::after  { right: 4px; }
+  .qbubble .qb-q { font-size: 15px; line-height: 1.45; color: var(--ink); }
+  .qbubble .qb-q em {
+    background: rgba(46,134,199,0.15);
+    padding: 1px 4px; border-radius: 3px; font-style: normal;
+  }
+  .qbubble .qb-why {
+    font-family: "Inter", sans-serif;
+    font-size: 11.5px; color: var(--ink-soft); line-height: 1.45;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed rgba(26,24,20,0.2);
+  }
+  .qbubble .qb-actions {
+    display: flex; gap: 8px; align-items: center;
+    margin-top: 12px;
+  }
+  .qbubble .btn {
+    font-family: "Inter", sans-serif;
+    font-size: 12px; font-weight: 600;
+    padding: 7px 11px;
+    border: 1.5px solid var(--ink);
+    border-radius: 5px;
+    background: #fffdf5; color: var(--ink);
+    cursor: pointer;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.22);
+  }
+  .qbubble .btn.primary { background: var(--ink); color: #fffdf5; }
+  .qbubble .btn.ghost   { border-color: rgba(26,24,20,0.25); box-shadow: none; background: transparent; }
+  .qbubble .qb-foot {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px dashed rgba(26,24,20,0.15);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .qbubble .qb-foot .nav { display: flex; gap: 6px; }
+  .qbubble .qb-foot .nav button {
+    border: 1.4px solid rgba(26,24,20,0.25);
+    background: #fffdf5;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; padding: 3px 7px; border-radius: 3px; cursor: pointer;
+  }
+
+  /* bottom bead strip */
+  .beads {
+    position: absolute;
+    left: 50%; transform: translateX(-50%);
+    bottom: 14px;
+    display: flex; gap: 6px; align-items: center;
+    padding: 8px 14px;
+    background: rgba(255,253,245,0.9);
+    border: 1.4px solid var(--ink);
+    border-radius: 999px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.18);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .beads .bead {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(26,24,20,0.18);
+    border: 1.2px solid rgba(26,24,20,0.35);
+  }
+  .beads .bead.done   { background: #2a8a4a; border-color: #1a5a2a; }
+  .beads .bead.active { background: #ffe68a; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(255,230,138,0.5); }
+  .beads .label { margin-right: 6px; color: var(--ink); font-weight: 600; }
+
+  /* persona dock in corner */
+  .persona {
+    position: absolute; right: 18px; bottom: 80px;
+    background: rgba(255,253,245,0.95);
+    border: 1.6px solid var(--ink);
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.2);
+    max-width: 280px;
+  }
+  .persona .avbig {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(180deg, #4ba9e6, #1f6aa8);
+    border: 1.5px solid #0d2238;
+    position: relative; flex-shrink: 0;
+  }
+  .persona .avbig::before,
+  .persona .avbig::after {
+    content: ""; position: absolute; width: 6px; height: 6px; border-radius: 50%;
+    background: #d6f5ff; top: 10px;
+  }
+  .persona .avbig::before { left: 6px; }
+  .persona .avbig::after  { right: 6px; }
+  .persona .ptxt { font-family: "Kalam", cursive; font-size: 13px; line-height: 1.35; }
+  .persona .ptxt b { display: block; font-family: "Inter"; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent-ai); margin-bottom: 2px; }
+
+  /* queue strip top */
+  .qstrip {
+    position: absolute; top: 14px; left: 18px;
+    background: #fffdf5; border: 1.4px solid var(--ink);
+    border-radius: 8px; padding: 8px 12px;
+    display: flex; align-items: center; gap: 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    box-shadow: 0 2px 0 rgba(26,24,20,0.2);
+  }
+  .qstrip .qbar { display: flex; gap: 3px; }
+  .qstrip .qbar span {
+    width: 14px; height: 4px; background: rgba(26,24,20,0.2); border-radius: 2px;
+  }
+  .qstrip .qbar span.done   { background: #2a8a4a; }
+  .qstrip .qbar span.active { background: #ffe68a; border: 1px solid var(--ink); height: 6px; margin-top: -1px; }
+
+  /* margin-note ink annotations */
+  .paper-anno {
+    position: absolute;
+    font-family: "Caveat", cursive; font-weight: 700;
+    color: #1f6aa8;
+    font-size: 16px;
+    line-height: 1.1;
+    max-width: 160px;
+    pointer-events: none;
+  }
+  .paper-anno.good { color: #2a8a4a; }
+  .paper-anno svg { display: block; margin-top: 2px; }
+
+  /* principles footer */
+  .principles {
+    max-width: 1480px; margin: 40px auto 0;
+    background: #fffdf5;
+    border: 1.6px solid var(--ink);
+    border-radius: 6px;
+    padding: 22px 28px;
+    box-shadow: 0 3px 0 rgba(26,24,20,0.18);
+  }
+  .principles h3 {
+    font-family: "Caveat", cursive;
+    font-size: 26px; margin: 0 0 14px;
+  }
+  .principles .grid3 {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px;
+  }
+  .principles .p {
+    border-left: 3px solid var(--ink);
+    padding-left: 14px;
+  }
+  .principles .p .n {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em;
+    color: var(--ink-faint);
+  }
+  .principles .p .t {
+    font-family: "Caveat", cursive;
+    font-size: 20px; font-weight: 700;
+    margin: 2px 0 6px;
+  }
+  .principles .p .d {
+    font-size: 13px; color: var(--ink-soft); line-height: 1.5;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px;">
+      AI clarifications · UX alignment
+    </div>
+    <h1>Questions belong on the board, not in a form.</h1>
+  </div>
+  <div class="lede">
+    The current "Resolve ambiguities before synthesis" modal reads like a Jira form dropped onto a hand-drawn canvas. Below: what breaks, and an aligned version that keeps the sketch language, anchors each question to the idea it's asking about, and asks <b>one thing at a time</b>.
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- ───────── BEFORE ───────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="tag bad">BEFORE · what the LLM produced</span>
+      <h2>"Resolve ambiguities" modal</h2>
+      <span class="tag bad">6 open questions</span>
+    </div>
+    <div class="before-body">
+      <div class="modal" style="margin-top: 12px;">
+        <div class="m-head">
+          <strong>Resolve ambiguities before synthesis</strong>
+          <span class="count">6 ITEMS</span>
+        </div>
+
+        <div class="q-card">
+          <div class="pills">
+            <span class="pill open">OPEN</span>
+            <span class="pill high">HIGH</span>
+            <span class="pill ask">ASK</span>
+            <span class="pill aud">AUDIENCE</span>
+          </div>
+          <div class="body">Who is the 'manager' this robot is for, and what specific domain are the 'actions' in (e.g., project management, HR, finance)?</div>
+          <div class="actions">
+            <button class="btn-purple">Suggest resolution</button>
+            <button class="btn-link">Write my own</button>
+            <button class="btn-link">Dismiss</button>
+          </div>
+        </div>
+
+        <div class="q-card">
+          <div class="pills">
+            <span class="pill open">OPEN</span>
+            <span class="pill high">HIGH</span>
+            <span class="pill ask">ASK</span>
+            <span class="pill dp">DATA_PROCESS</span>
+          </div>
+          <div class="body">How do we generate the 'Why it matters' explanation? Is it based on fixed business rules or dynamic model insights?</div>
+          <div class="actions">
+            <button class="btn-purple">Suggest resolution</button>
+            <button class="btn-link">Write my own</button>
+            <button class="btn-link">Dismiss</button>
+          </div>
+        </div>
+
+        <div class="q-card">
+          <div class="pills">
+            <span class="pill open">OPEN</span>
+            <span class="pill med">MEDIUM</span>
+            <span class="pill ask">ASK</span>
+            <span class="pill int">INTEGRATION</span>
+          </div>
+          <div class="body">What happens technically when a manager 'accepts' a recommendation? Does it trigger an automated workflow, or just log the decision?</div>
+          <div class="actions">
+            <button class="btn-purple">Suggest resolution</button>
+            <button class="btn-link">Write my own</button>
+            <button class="btn-link">Dismiss</button>
+          </div>
+        </div>
+
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #888; text-align: center; margin: 8px 0;">
+          · · · 3 more · · ·
+        </div>
+
+        <div class="modal-footer">
+          <button class="gen">Generate clarification questions</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Red annotations overlaid -->
+    <div class="anno" style="top: 90px; right: 14px;">
+      covers the board ↴<br>
+      no link to what's<br>being asked about
+      <svg width="60" height="40" viewBox="0 0 60 40"><path d="M58 5 Q 30 10 10 35" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M10 35 l 6 -2 l -2 -6 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="top: 280px; left: 8px; color: #c94a3a; font-size: 16px;">
+      4 pills per row<br>= tag soup
+      <svg width="60" height="30" viewBox="0 0 60 30"><path d="M8 10 Q 30 18 55 6" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M55 6 l -6 0 l 2 5 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="bottom: 170px; left: 6px; font-size: 16px;">
+      primary CTA =<br>"let AI decide"<br>(laziest path)
+      <svg width="70" height="34" viewBox="0 0 70 34"><path d="M8 28 Q 30 10 65 16" stroke="#c94a3a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M65 16 l -5 3 l 5 3 z" fill="#c94a3a"/></svg>
+    </div>
+    <div class="anno" style="bottom: 20px; right: 18px; font-size: 16px;">
+      ↓ AI action buried<br>as footer button
+    </div>
+  </div>
+
+  <!-- ───────── AFTER ───────── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="tag good">AFTER · aligned to sketch system</span>
+      <h2>One question, anchored to its idea</h2>
+      <span class="tag good">Q 2 of 6 · in-context</span>
+    </div>
+    <div class="after-body">
+
+      <!-- queue strip -->
+      <div class="qstrip">
+        <span class="clar">Clarifications</span>
+        <div class="qbar">
+          <span class="done"></span>
+          <span class="active"></span>
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <span style="color: var(--ink-faint)">2 / 6</span>
+      </div>
+
+      <!-- stickies on board -->
+      <div class="sticky c-yellow" style="left: 60px; top: 90px; transform: rotate(-2.4deg);">
+        <div class="st-title">Manager-facing robot</div>
+        <div>Suggests actions that save time</div>
+        <div class="st-meta">core · 4 turns</div>
+      </div>
+
+      <div class="sticky c-pink" style="left: 280px; top: 130px; transform: rotate(1.6deg);">
+        <div class="st-title">"Why it matters" panel</div>
+        <div>Explains each recommendation</div>
+        <div class="st-meta">ai · 2 turns</div>
+      </div>
+
+      <div class="sticky c-blue" style="left: 80px; top: 310px; transform: rotate(-1deg);">
+        <div class="st-title">Accept → workflow</div>
+        <div>What actually runs?</div>
+        <div class="st-meta">core · 1 turn</div>
+      </div>
+
+      <div class="sticky c-peach" style="left: 300px; top: 360px; transform: rotate(2.2deg);">
+        <div class="st-title">Recommendation UI</div>
+        <div>Dashboard? email? chat?</div>
+        <div class="st-meta">ux · 1 turn</div>
+      </div>
+
+      <!-- question pins dimmed (queued) -->
+      <div class="qpin dim" style="left: 165px; top: 105px;">?<span class="num">1</span></div>
+      <div class="qpin dim" style="left: 145px; top: 330px;">?<span class="num">3</span></div>
+      <div class="qpin dim" style="left: 430px; top: 375px;">?<span class="num">4</span></div>
+      <div class="qpin dim" style="left: 540px; top: 220px;">?<span class="num">5</span></div>
+      <div class="qpin dim" style="left: 220px; top: 250px;">?<span class="num">6</span></div>
+
+      <!-- active pin -->
+      <div class="qpin active" style="left: 395px; top: 155px;">?<span class="num" style="background: #ffe68a; color: #2a2520; border-color: #2a2520;">2</span></div>
+
+      <!-- ink line from pin to bubble -->
+      <svg class="ink-line" style="left: 405px; top: 90px; width: 220px; height: 200px;" viewBox="0 0 220 200">
+        <path d="M 20 95 Q 60 40 160 30"
+              stroke="#1a1814" stroke-width="1.8" fill="none"
+              stroke-linecap="round" stroke-dasharray="0" opacity="0.65"/>
+        <!-- wobble effect -->
+      </svg>
+
+      <!-- active question bubble -->
+      <div class="qbubble" style="left: 535px; top: 70px;">
+        <div class="qb-who">
+          <div class="avatar"></div>
+          Dev · asks about "Why it matters" panel
+        </div>
+        <div class="qb-q">
+          Is the explanation from <em>fixed business rules</em> or <em>dynamic model insights</em>?
+        </div>
+        <div class="qb-why">
+          <b>Why I'm asking:</b> the answer changes which artifacts we need downstream (rule catalog vs. model inspection). Can't synthesize until we pick.
+        </div>
+        <div class="qb-actions">
+          <button class="btn primary">answer →</button>
+          <button class="btn">let me draft both</button>
+          <button class="btn ghost">skip for now</button>
+        </div>
+        <div class="qb-foot">
+          <span>high priority · blocks synthesis</span>
+          <div class="nav">
+            <button>← prev</button>
+            <button>next →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- margin note annotations (sketch-style callouts) -->
+      <div class="paper-anno good" style="left: 600px; top: 300px;">
+        one at a time ·<br>
+        can park or skip ·<br>
+        nothing is "dismissed"<br>without a trace
+        <svg width="60" height="30" viewBox="0 0 60 30"><path d="M6 6 Q 30 14 55 10" stroke="#2a8a4a" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-dasharray="3 3"/></svg>
+      </div>
+      <div class="paper-anno" style="left: 20px; top: 500px;">
+        queued questions<br>show as dim pins —<br>user sees what's<br>coming, can re-order
+      </div>
+
+      <!-- persona dock -->
+      <div class="persona">
+        <div class="avbig"></div>
+        <div class="ptxt">
+          <b>DEV · drafting</b>
+          I've got 6 things I'm unsure about. Walking through them one idea at a time — skip any that feel premature.
+        </div>
+      </div>
+
+      <!-- bottom bead strip (lifecycle) -->
+      <div class="beads">
+        <span class="label">Lifecycle</span>
+        <div class="bead done"></div>
+        <div class="bead done"></div>
+        <div class="bead done"></div>
+        <div class="bead active"></div>
+        <div class="bead"></div>
+        <div class="bead"></div>
+        <div class="bead"></div>
+        <div class="bead"></div>
+        <div class="bead"></div>
+        <div class="bead"></div>
+        <div class="bead"></div>
+        <div class="bead"></div>
+        <span style="margin-left: 8px; color: var(--ink-faint);">4 / 12 · clarify</span>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Principles recap -->
+<div class="principles">
+  <h3>Five rules for any "AI needs input from user" surface</h3>
+  <div class="grid3" style="grid-template-columns: repeat(5, 1fr); gap: 22px;">
+    <div class="p">
+      <div class="n">01</div>
+      <div class="t">Anchor, don't stack</div>
+      <div class="d">Each question attaches to the idea it's about. A standalone list is a form — users resent forms. Pins + ink lines show <i>where</i> uncertainty lives.</div>
+    </div>
+    <div class="p">
+      <div class="n">02</div>
+      <div class="t">One at a time</div>
+      <div class="d">Show the active question in full; queue the rest as dim pins. Batching 6 together tells the user "sit down and do homework."</div>
+    </div>
+    <div class="p">
+      <div class="n">03</div>
+      <div class="t">Always show the <i>why</i></div>
+      <div class="d">Every question includes what the answer unlocks ("blocks synthesis"). Makes skipping a deliberate choice, not a lazy one.</div>
+    </div>
+    <div class="p">
+      <div class="n">04</div>
+      <div class="t">Three honest actions</div>
+      <div class="d"><b>answer</b> · <b>let AI draft both & flag</b> · <b>skip</b>. No "dismiss" — skipped questions stay as dim pins and come back when relevant.</div>
+    </div>
+    <div class="p">
+      <div class="n">05</div>
+      <div class="t">Speak as the persona</div>
+      <div class="d">Questions come from Dev, the named EM — not from a generic "System." Voice + avatar everywhere the AI asks for input, never anonymous copy.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(async () => {
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch {}
+  await new Promise(r => setTimeout(r, 500));
+  window.print();
+})();
+</script>
+</body>
+</html>

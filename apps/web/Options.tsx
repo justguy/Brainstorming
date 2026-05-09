@@ -49,6 +49,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
   // poorly with React's controlled-input synchronization. Refs sidestep the
   // issue: the browser owns the field, we read the value at save time. We
   // still track validation state so the marker (✓/✗) renders.
+  const [proactiveEnabled, setProactiveEnabled] = useState<boolean>(true);
   const [providerKeys, setProviderKeys] = useState<Record<ProviderId, ProviderKeyState>>({
     gemini: { key: '', validation: 'idle' },
     openai: { key: '', validation: 'idle' },
@@ -90,6 +91,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
       setActiveProvider(s.activeProvider);
       setActiveModel(s.activeModel);
       setDensity(s.density);
+      setProactiveEnabled(s.proactiveSuggestionsEnabled);
       setProviderKeys(prev => {
         const next = { ...prev };
         for (const id of ['gemini', 'openai', 'anthropic'] as ProviderId[]) {
@@ -154,7 +156,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
         const k = readKey(id).trim();
         if (k) await setCredential(id, k);
       }
-      await setSettings({ activeProvider, activeModel, density });
+      await setSettings({ activeProvider, activeModel, density, proactiveSuggestionsEnabled: proactiveEnabled });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
@@ -338,6 +340,36 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
               </label>
             ))}
           </div>
+        </section>
+
+        {/* Proactive coach */}
+        <section className="mb-6" aria-labelledby="proactive-heading">
+          <h2 id="proactive-heading" className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Proactive coach
+          </h2>
+          <label
+            className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+              proactiveEnabled
+                ? 'border-violet-500 bg-violet-50'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={proactiveEnabled}
+              onChange={e => setProactiveEnabled(e.target.checked)}
+              className="mt-0.5 accent-violet-600"
+              aria-label="Enable proactive coach suggestions"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-900">
+                Surface gentle suggestions when I pause
+              </span>
+              <p className="text-xs text-gray-500 mt-0.5">
+                During idle moments or when the board stops moving, the coach drops 2-3 dismissable cards onto the canvas. Off keeps the LLM silent until you ask.
+              </p>
+            </div>
+          </label>
         </section>
 
         {/* Save */}

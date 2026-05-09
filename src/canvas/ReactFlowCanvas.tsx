@@ -60,6 +60,7 @@ type LinkDraft = {
 };
 
 type SuggestionBusy = Record<string, 'admit' | 'elaborate' | 'dismiss' | null>;
+type SuggestionError = Record<string, string | null>;
 
 export interface CanvasProps {
   boardTheme: BoardThemeMode;
@@ -96,6 +97,7 @@ export interface CanvasProps {
   }) => Promise<Connection>;
   suggestions?: ScoutSuggestion[];
   suggestionBusy?: SuggestionBusy;
+  suggestionError?: SuggestionError;
   onMoveSuggestion?: (suggestionId: string, x: number, y: number) => Promise<void> | void;
   onAdmitSuggestion?: (id: string) => void;
   onElaborateSuggestion?: (id: string) => void;
@@ -192,6 +194,7 @@ export default function ReactFlowCanvas({
   onCreateConnection,
   suggestions,
   suggestionBusy,
+  suggestionError,
   onMoveSuggestion,
   onAdmitSuggestion,
   onElaborateSuggestion,
@@ -239,7 +242,10 @@ export default function ReactFlowCanvas({
     [flowNodes, suggestions],
   );
   const connectionList = useMemo(() => connections ?? [], [connections]);
-  const activeIdeaId = liveDrag?.id ?? hoveredIdeaId ?? flashState.activeIdeaId;
+  // Drive the focus tone (active / related / muted) only from explicit signals:
+  // an in-flight drag, or a board-level highlight flash. Hovering a card no
+  // longer mutes the rest of the board — it caused too much visual churn.
+  const activeIdeaId = liveDrag?.id ?? flashState.activeIdeaId;
   const ideaIds = useMemo(() => ideas.map(idea => idea.id), [ideas]);
   const focus = useMemo(
     () => deriveCanvasFocus(ideaIds, connectionList, activeIdeaId, flashState.ideaIds),
@@ -389,9 +395,11 @@ export default function ReactFlowCanvas({
   const projectedSuggestionNodes = useMemo(
     () => projectSuggestionNodes({
       suggestions: effectiveSuggestions,
+      boardTheme,
       selectedFlowNodeIds,
       animatedSuggestionIds,
       suggestionBusy,
+      suggestionError,
       suggestionOverflowCount,
       suggestionsExpanded,
       onAdmitSuggestion: stableSuggestionCallbacks.onAdmitSuggestion,
@@ -402,10 +410,12 @@ export default function ReactFlowCanvas({
     }),
     [
       animatedSuggestionIds,
+      boardTheme,
       effectiveSuggestions,
       selectedFlowNodeIds,
       stableSuggestionCallbacks,
       suggestionBusy,
+      suggestionError,
       suggestionOverflowCount,
       suggestionsExpanded,
     ],

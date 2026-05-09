@@ -132,8 +132,12 @@ export const geminiProvider: BaseProvider = {
     }
 
     if (!raw.trim() && parsedJson === undefined) {
+      const thoughtsTokens = thoughtsTokenCount;
+      const hint = finishReason === 'MAX_TOKENS'
+        ? ' Thinking burned the output budget — lower thinkingConfig.thinkingBudget or raise maxOutputTokens.'
+        : '';
       throw new Error(
-        `Gemini API returned no usable content (finishReason=${finishReason}${blockReason ? `, blockReason=${blockReason}` : ''}).`,
+        `Gemini API returned no usable content (finishReason=${finishReason}${blockReason ? `, blockReason=${blockReason}` : ''}${thoughtsTokens !== undefined ? `, thoughtsTokenCount=${thoughtsTokens}` : ''}).${hint}`,
       );
     }
 

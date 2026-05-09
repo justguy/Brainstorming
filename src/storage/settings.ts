@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS: Settings = {
   activeModel: 'gemini-2.5-pro',
   density: 'standard',
   boardTheme: 'whiteboard',
+  proactiveSuggestionsEnabled: true,
+  guidanceNotesEnabled: true,
 };
 
 function mergeSettings(stored?: Partial<Settings>): Settings {
