@@ -10,7 +10,15 @@ import {
 
 export interface ConnectionEdgeData extends ConnectionEdgeRenderState, Record<string, unknown> {
   connection: Connection;
-  onSelect?: (connectionId: string, ideaIds: string[]) => void;
+  // The optional third argument carries the click's viewport coordinates so
+  // the canvas host can anchor a popover near the user's pointer (Screen 05
+  // — connection inspector). Older callers that only need the connection /
+  // idea ids can ignore it.
+  onSelect?: (
+    connectionId: string,
+    ideaIds: string[],
+    clientPosition?: { x: number; y: number },
+  ) => void;
   labelX?: number;
   labelY?: number;
 }
@@ -207,7 +215,15 @@ export function ConnectionEdge({
           stroke="transparent"
           strokeWidth={14}
           className="pointer-events-auto cursor-pointer"
-          onClick={() => data.onSelect?.(connection.id, connection.ideaIds)}
+          onClick={event => {
+            // Forward the viewport-relative click point so the host can
+            // anchor a popover (Screen 05 — connection inspector) right
+            // beside the user's pointer rather than at the edge midpoint.
+            data.onSelect?.(connection.id, connection.ideaIds, {
+              x: event.clientX,
+              y: event.clientY,
+            });
+          }}
         >
           <title>{`${title.title}; ${title.meta}; ${title.rationale}`}</title>
         </path>

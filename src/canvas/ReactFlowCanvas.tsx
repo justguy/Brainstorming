@@ -76,7 +76,18 @@ export interface CanvasProps {
   suppressAnimations?: boolean;
   suggestionOverflowCount?: number;
   suggestionsExpanded?: boolean;
-  onConnectionClick?: (ideaIds: string[]) => void;
+  /**
+   * Click handler for an edge in the canvas. Called with the connection id
+   * (when known), the idea endpoints, and a viewport-relative click point
+   * for popover positioning. The connection id and position are optional so
+   * legacy callers that only need the highlighted endpoints don't have to
+   * destructure the extras.
+   */
+  onConnectionClick?: (
+    ideaIds: string[],
+    connectionId?: string,
+    clientPosition?: { x: number; y: number },
+  ) => void;
   onFocusIdeaChange?: (ideaId: string | null) => void;
   onDragStateChange?: (dragging: boolean) => void;
   onMove: (ideaId: string, x: number, y: number) => Promise<void> | void;
@@ -422,10 +433,17 @@ export default function ReactFlowCanvas({
   );
   const onConnectionClickRef = useRef(onConnectionClick);
   useEffect(() => { onConnectionClickRef.current = onConnectionClick; }, [onConnectionClick]);
-  const stableOnEdgeSelect = useCallback((_: unknown, ideaIds: string[]) => {
-    triggerFlash(ideaIds);
-    onConnectionClickRef.current?.(ideaIds);
-  }, []);
+  const stableOnEdgeSelect = useCallback(
+    (
+      connectionId: string,
+      ideaIds: string[],
+      clientPosition?: { x: number; y: number },
+    ) => {
+      triggerFlash(ideaIds);
+      onConnectionClickRef.current?.(ideaIds, connectionId, clientPosition);
+    },
+    [],
+  );
   const projectedEdges = useMemo(
     () => projectConnectionEdges({
       ideas: effectiveIdeas,

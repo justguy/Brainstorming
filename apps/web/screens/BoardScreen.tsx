@@ -15,7 +15,13 @@
  * dispatcher in App.tsx no longer carries board state.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { Connection, LlmMessage, Panel } from '../../../src/types';
+import type {
+  Connection,
+  ConnectionKind,
+  ConnectionStrength,
+  LlmMessage,
+  Panel,
+} from '../../../src/types';
 import { useBrainstormingTools, dispatchAndWait } from '../webmcp-tools';
 import Workspace, { WorkspacePhaseFlow } from '../../../src/workspace/Workspace';
 import { IdeaAttentionPanel } from '../../../src/workspace/IdeaAttentionPanel';
@@ -56,6 +62,10 @@ import { findLatestSafeAiUndoTarget } from '../../../src/storage/boardAiUndo';
 import DiscardPile from '../../../src/canvas/DiscardPile';
 import { usePromoteToPrinciple } from '../usePromoteToPrinciple';
 import { useIdeaOpenModes } from '../useIdeaOpenModes';
+import {
+  ConnectionInspectorPopover,
+  type ConnectionInspectorAnchor,
+} from '../ConnectionInspectorPopover';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 const CAPTURE_CANVAS_SELECTOR = '.bo-canvas';
@@ -150,6 +160,14 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
   const [dismissedDemoSuggestionIds, setDismissedDemoSuggestionIds] = useState<string[]>([]);
   const [dismissedDemoCritiqueIds, setDismissedDemoCritiqueIds] = useState<string[]>([]);
+  // Screen 05 — connection inspector. The popover is opened by clicking a
+  // connection edge; the canvas hands us the connection id + a viewport
+  // anchor point so we can position the popover near the click.
+  const [connectionInspectorId, setConnectionInspectorId] = useState<string | null>(null);
+  const [connectionInspectorAnchor, setConnectionInspectorAnchor] =
+    useState<ConnectionInspectorAnchor | null>(null);
+  const [connectionInspectorBusy, setConnectionInspectorBusy] = useState(false);
+  const [connectionInspectorError, setConnectionInspectorError] = useState<string | null>(null);
   const lastSharedBoardMutationIdRef = useRef<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
@@ -613,6 +631,84 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
     }
   };
 
+  // Screen 05 — connection inspector handlers. Click on a connection edge
+  // opens a small popover anchored at the click point; the user can edit
+  // the connection's kind/strength/rationale and we persist via the same
+  // `replaceConnections` mutation that the rest of the board uses.
+  const inspectorConnection = connectionInspectorId
+    ? connections.find(connection => connection.id === connectionInspectorId) ?? null
+    : null;
+
+  function handleConnectionClick(
+    ideaIds: string[],
+    connectionId?: string,
+    clientPosition?: { x: number; y: number },
+  ): void {
+    // Always preserve the existing highlight-on-click behaviour so the
+    // canvas's idea path lights up regardless of whether the inspector
+    // opens. Demo boards skip the inspector — their connections aren't
+    // backed by real changeSets.
+    handleHighlight(ideaIds);
+    if (usingDemoBoard) return;
+    if (!connectionId) return;
+    setConnectionInspectorError(null);
+    setConnectionInspectorId(connectionId);
+    setConnectionInspectorAnchor(clientPosition ?? null);
+  }
+
+  function closeConnectionInspector(): void {
+    setConnectionInspectorId(null);
+    setConnectionInspectorAnchor(null);
+    setConnectionInspectorError(null);
+    setConnectionInspectorBusy(false);
+  }
+
+  async function handleConnectionInspectorSave(input: {
+    connectionId: string;
+    kind: ConnectionKind;
+    strength: ConnectionStrength;
+    rationale: string;
+  }): Promise<void> {
+    const target = connections.find(connection => connection.id === input.connectionId);
+    if (!target) {
+      setConnectionInspectorError('Connection no longer exists.');
+      return;
+    }
+    setConnectionInspectorBusy(true);
+    setConnectionInspectorError(null);
+    try {
+      const nextConnections: Connection[] = connections.map(connection =>
+        connection.id === input.connectionId
+          ? {
+              ...connection,
+              kind: input.kind,
+              strength: input.strength,
+              rationale: input.rationale,
+            }
+          : connection,
+      );
+      const result = await boardController.replaceConnections({
+        connections: nextConnections,
+        actor: { type: 'user', source: 'canvas', label: 'connectionInspector' },
+        summary: `Edited connection ${input.connectionId}`,
+      });
+      applyCommittedBoard(result.document, result.history);
+      closeConnectionInspector();
+    } catch (err) {
+      console.error('[BoardScreen] save connection edit failed:', err);
+      setConnectionInspectorError(err instanceof Error ? err.message : 'Could not save changes.');
+      setConnectionInspectorBusy(false);
+    }
+  }
+
+  // If the underlying connection disappears (e.g. removed by another peer
+  // or by an undo) close the inspector so we never render a stale view.
+  useEffect(() => {
+    if (!connectionInspectorId) return;
+    if (connections.some(connection => connection.id === connectionInspectorId)) return;
+    closeConnectionInspector();
+  }, [connectionInspectorId, connections]);
+
   return (
     <BoardAppView
       header={{
@@ -794,7 +890,7 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
         onAcceptCritique: usingDemoBoard
           ? critiqueId => setDismissedDemoCritiqueIds(current => (current.includes(critiqueId) ? current : [...current, critiqueId]))
           : handleAcceptCritique,
-        onConnectionClick: handleHighlight, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
+        onConnectionClick: handleConnectionClick, onFocusIdeaChange: setHoverIdeaId, onDragStateChange: setDragActive, onMove: handleMove,
         linkModeEnabled,
         onOpen: id => {
           setSelectedSuggestionId(null);
@@ -923,6 +1019,18 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
             </>
           )
       ) : null}
+      extraOverlays={
+        <ConnectionInspectorPopover
+          open={Boolean(inspectorConnection)}
+          connection={inspectorConnection}
+          ideas={ideas}
+          anchor={connectionInspectorAnchor}
+          onSave={handleConnectionInspectorSave}
+          onClose={closeConnectionInspector}
+          busy={connectionInspectorBusy}
+          error={connectionInspectorError}
+        />
+      }
     />
   );
 }
