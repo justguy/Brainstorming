@@ -50,6 +50,11 @@
         "label": "Design Implementation",
         "description": "Inline companion, beat review UX, undo/history, layout cutover, and guide-fidelity interaction work.",
         "collapsed": false
+      },
+      {
+        "id": "screens-v2",
+        "label": "8-Screen Buildout",
+        "description": "Multi-board home, cluster view, cross-board map, brief, connection inspector, log/scrubber, handoff, persona panel. Plan: Design/IMPLEMENTATION_PLAN.md. Built in milestones M0-M5."
       }
     ],
     "priorities": [
@@ -71,8 +76,8 @@
       }
     ],
     "scratchpad": "The four 2026-04-19 reference screenshots are now the canonical UI target for both sketch and whiteboard. Prior close-out on the shell/design tranche overstated progress: the current branch has partial infrastructure, but it does not yet match the screenshot composition, surface language, or turn-log presentation. Reopening the screenshot-parity rows and deferring the generic readiness audit because the immediate job is direct convergence to the provided images.",
-    "rev": 116,
-    "updatedAt": "2026-04-20T13:17:33.194Z"
+    "rev": 138,
+    "updatedAt": "2026-05-09T14:33:36.405Z"
   },
   "tasks": [
     {
@@ -3553,6 +3558,887 @@
       ],
       "context": {
         "notes": "Documents the residual gap surfaced while landing bo-044: provenance works today, but not from authoritative stored fields."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-100",
+      "title": "M0 · Route parser + RouteState union",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M0",
+        "files": [
+          "apps/web/routing/parseRoute.ts",
+          "apps/web/routing/useRoute.ts"
+        ],
+        "notes": "Discriminated union: home | board | brief | handoff | log | map | options | unknown. ~30 lines of regex. Hash-based; no router library. App.tsx switches on route.kind."
+      },
+      "assignee": "agent-routing-shell",
+      "blocker_reason": null,
+      "comment": "Added apps/web/routing/{parseRoute.ts, useRoute.ts, parseRoute.test.ts}. RouteState 8-variant union + parseRoute + formatRoute; hook layered on useHashRoute returning [RouteState, navigate(RouteState|string)]. 26 vitest tests pass; tsc --noEmit clean. Added vitest@^4.1.5 devDep + 'test':'vitest run'. NOT migrated: raw-hash consumers (App.tsx, AppLlmErrorBanner.tsx, chrome-shim.ts) -- recommend separate task before bo-130. bo-130 blocked by bo-103."
+    },
+    {
+      "dependencies": [],
+      "id": "bo-101",
+      "title": "M0 · Project entity types + storage module",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M0",
+        "files": [
+          "src/types.ts",
+          "src/storage/projects.ts"
+        ],
+        "notes": "Project: id, title, owner, members[], autonomyDial, personaRoster, principles, createdAt, updatedAt. Module exposes getProject/ensureProject/listProjects/updateProject."
+      },
+      "assignee": "agent-data-layer",
+      "blocker_reason": null,
+      "comment": "Added Project + AutonomyLevel + ProjectId types; added projects to Schema; src/storage/projects.ts with CRUD. DB v11 migration runs in bo-102. tsc clean."
+    },
+    {
+      "dependencies": [
+        "bo-101"
+      ],
+      "id": "bo-102",
+      "title": "M0 · DB v11 migration + default project back-fill + tests",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M0",
+        "files": [
+          "src/storage/db.ts"
+        ],
+        "notes": "Bump DB_VERSION 10→11. Create projects/personas/briefs stores. Insert default 'local-project'. Patch every BoardRecord with projectId='local-project', status='active', currentPhase=1, lastActivityAt=updatedAt. Existing 'local-board' id stays stable. Test: seed v10 DB, open at v11, assert board visible under default project."
+      },
+      "assignee": "agent-data-layer",
+      "blocker_reason": null,
+      "comment": "DB_VERSION 10->11. Added projects/personas/briefs stores. v11 upgrade inserts default project and back-fills projectId on existing boards (atomic, inside the upgrade tx). BoardRecord widened with optional projectId. Persona/Brief/MarginNote/BriefVersion types added. devDeps: vitest + fake-indexeddb; npm test. src/storage/projects.test.ts: 3 tests pass. tsc clean."
+    },
+    {
+      "dependencies": [
+        "bo-101",
+        "bo-102"
+      ],
+      "id": "bo-103",
+      "title": "M0 · useProjectSync hook",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M0",
+        "files": [
+          "apps/web/useProjectSync.ts"
+        ],
+        "notes": "Project-scope state: project record, board roster, persona roster, autonomyDial. useBoardSync becomes board-scoped only (mounted by BoardScreen)."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-100",
+        "bo-103"
+      ],
+      "id": "bo-104",
+      "title": "M0 · HomeScreen shim",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M0",
+        "files": [
+          "apps/web/screens/HomeScreen.tsx"
+        ],
+        "notes": "Trivial board list at empty hash. Click → navigate('#/b/:boardId'). No design polish — that lands in M4."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-101"
+      ],
+      "id": "bo-110",
+      "title": "M1 · Extend Idea/Board types with new fields",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "src/types.ts",
+          "src/board/types.ts"
+        ],
+        "notes": "Idea: pinnedToBoardIds, parentIdeaId, contradictions, state ('draft|live|settled|muted'), authorRef, color: StickyColor. Board: projectId, summary, status, currentPhase, activePersonas, lastActivityAt, openedBy. IdeaGroup: source, confidence, haloColor, state."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-110"
+      ],
+      "id": "bo-111",
+      "title": "M1 · Connection 6th-kind extension + kindMapping adapter",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "src/types.ts",
+          "src/connections/kindMapping.ts"
+        ],
+        "notes": "Keep all 6 kinds: builds_on, contradicts, revives_killed, shared_theme, depends_on, evidence_for. Add Connection.from/to, type-derived from kind, authorRef, confidence, reasoning, supersededBy. kindMapping bridges legacy ideaIds[] ↔ from/to."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-110"
+      ],
+      "id": "bo-112",
+      "title": "M1 · Sticky primitive (extract, modes card/chip/thumbnail)",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "apps/web/primitives/Sticky.tsx"
+        ],
+        "notes": "Extract from src/canvas/reactflow/IdeaNoteNode.tsx + apps/web/IdeaFocusSlot.tsx. Pure props: idea, color, author, phase, mode. 'chip' is the 22×16 cluster-zoom variant."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-111"
+      ],
+      "id": "bo-113",
+      "title": "M1 · ConnectionLine primitive (6-kind grammar)",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "apps/web/primitives/ConnectionLine.tsx"
+        ],
+        "notes": "Build Spec §02 visual grammar: parent-of=ink/solid 2.5px, shares-theme=blue/solid 2px, contradicts=red/dashed 2.5px, depends-on=green/solid arrow, evidence-for=green/dotted, revives_killed=legacy fallback. Hoverable."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-114",
+      "title": "M1 · PhaseStrip primitive",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "apps/web/primitives/PhaseStrip.tsx"
+        ],
+        "notes": "Per-board / per-brief 1–8 phase bar with click-to-jump. Modeled on apps/web/BoardBeadStrip.tsx (per-idea variant) but takes arbitrary currentPhase + onJump."
+      },
+      "assignee": "agent-primitives",
+      "blocker_reason": null,
+      "comment": "Added apps/web/primitives/PhaseStrip.tsx (125 lines). Generalised over arbitrary currentPhase with optional status overrides; reads SUB_PHASES; reuses bo-lifecycle-strip CSS. tsc --noEmit clean."
+    },
+    {
+      "dependencies": [
+        "bo-120"
+      ],
+      "id": "bo-115",
+      "title": "M1 · PersonaChip primitive",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "apps/web/primitives/PersonaChip.tsx"
+        ],
+        "notes": "Avatar + name + role glyph. Hover→bio, click→toggle. Style template: apps/web/PeerPresenceStrip.tsx. Persona color must be consistent across surfaces."
+      }
+    },
+    {
+      "dependencies": [],
+      "id": "bo-116",
+      "title": "M1 · NudgeCard primitive (accept/preview/dismiss)",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "apps/web/primitives/NudgeCard.tsx"
+        ],
+        "notes": "Canonical AI-suggestion card. Three actions always present. Never auto-applies (Build Spec §02). Existing AppCompanionRail/RobotNotesSummary patterns inform the visual; later tasks migrate them to consume this."
+      },
+      "assignee": "agent-primitives",
+      "blocker_reason": null,
+      "comment": "Added apps/web/primitives/NudgeCard.tsx (120 lines). Canonical [accept] [preview] [dismiss] triple; preview optional. tsc --noEmit clean. Tests skipped — vitest not installed."
+    },
+    {
+      "dependencies": [],
+      "id": "bo-117",
+      "title": "M1 · ConfirmBar primitive (phase-advance gate)",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "apps/web/primitives/ConfirmBar.tsx"
+        ],
+        "notes": "Bottom sticky bar gating ALL phase advances. Title + diff summary + [advance] [stay]. BEHAVIOR CHANGE: phase advances today happen via inspector with no global gate."
+      },
+      "assignee": "agent-primitives",
+      "blocker_reason": null,
+      "comment": "Added apps/web/primitives/ConfirmBar.tsx (87 lines). Primitive only — message + confirm/cancel pair, default + danger tone, busy disable. No phase-advance rewiring yet (separate follow-up). tsc --noEmit clean."
+    },
+    {
+      "dependencies": [],
+      "id": "bo-118",
+      "title": "M1 · BoardThumbnail primitive",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "apps/web/primitives/BoardThumbnail.tsx"
+        ],
+        "notes": "4–6 colored chips from idea sample + status + activity badge. Used on Screens 01, 03, 06."
+      },
+      "assignee": "agent-primitives",
+      "blocker_reason": null,
+      "comment": "Added apps/web/primitives/BoardThumbnail.tsx (121 lines). Accepts BoardRecord or minimal {id,title,ideaCount?,lastTouchedAt?}; optional onSelect; active state; relative timestamp helper. tsc --noEmit clean."
+    },
+    {
+      "dependencies": [
+        "bo-110"
+      ],
+      "id": "bo-119",
+      "title": "M1 · LogEvent projection over changeSets/beatRuns",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "src/storage/logEventProjection.ts"
+        ],
+        "notes": "READ-ONLY projection — do NOT create a parallel events store. Takes (boardId, sinceTs?), merges changeSets/beatRuns/beatReviewSessions, returns LogEvent[] with kind derived from ChangeSetKind plus author resolution. Powers Screen 06."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-102"
+      ],
+      "id": "bo-120",
+      "title": "M1/M3-pre · Persona entity + registry + IDB seed of built-ins",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M1",
+        "files": [
+          "src/types.ts",
+          "src/personas/registry.ts",
+          "src/storage/personas.ts"
+        ],
+        "notes": "Built-ins: Scout (challenger), Synthesizer, Devil's Advocate, Historian. Registry maps persona id → role function in src/orchestrator/roles/. Persona is a thin facade — cost caps deferred per decision #3. Seeded by DB v11 migration."
+      },
+      "assignee": "agent-data-layer",
+      "blocker_reason": null,
+      "comment": "src/personas/registry.ts with 4 built-ins (Scout/Synthesizer/Devil/Historian) mapping to existing role files. src/storage/personas.ts with full CRUD + idempotent seedBuiltInPersonas using deterministic ids. Wired seed into getDefaultProject(). personas.test.ts: 2 tests pass (4 built-ins, idempotent). tsc clean."
+    },
+    {
+      "dependencies": [
+        "bo-100",
+        "bo-103"
+      ],
+      "id": "bo-130",
+      "title": "M2 · BoardScreen refactor (App.tsx body → BoardScreen.tsx)",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M2",
+        "files": [
+          "apps/web/screens/BoardScreen.tsx",
+          "apps/web/App.tsx"
+        ],
+        "notes": "Move current single-board canvas behavior into BoardScreen mounted at #/b/:boardId. App.tsx becomes route switcher. Behavior identical — only routing/state ownership move."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-111",
+        "bo-113",
+        "bo-130"
+      ],
+      "id": "bo-131",
+      "title": "M2 · Screen 05 — Connection inspector popover",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M2",
+        "files": [
+          "apps/web/screens/board/ConnectionInspectorPopover.tsx",
+          "apps/web/screens/board/useConnectionInspector.ts"
+        ],
+        "notes": "Click line → popover. Header: type pill + from→to. Body: reasoning + confidence + mini map. Author row + actions [flip type] [show reasoning] [delete]. Flip creates new Connection with supersededBy. Soft-delete with 5s undo. Board dims to 30% while open."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-119"
+      ],
+      "id": "bo-132",
+      "title": "M2 · Screen 06 v0 — refactor BoardHistoryPanel → LogEventList",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M2",
+        "files": [
+          "apps/web/screens/log/LogEventList.tsx",
+          "apps/web/BoardHistoryPanel.tsx"
+        ],
+        "notes": "Refactor existing BoardHistoryPanel to consume the LogEvent projection. Filter pills (all/AI/my edits/connections/contradictions). Vertical timeline, dot color by author kind. No scrubber yet."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-111",
+        "bo-130"
+      ],
+      "id": "bo-133",
+      "title": "M2 · Adopt new Connection fields across canvas",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p2"
+      },
+      "context": {
+        "milestone": "M2",
+        "files": [
+          "src/canvas/reactflow/*",
+          "src/canvas/ConnectionOverlay.tsx"
+        ],
+        "notes": "Replace ad-hoc Connection.ideaIds[] reads with from/to via kindMapping adapter. Render type/confidence on the canvas via the ConnectionLine primitive."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-120",
+        "bo-115"
+      ],
+      "id": "bo-140",
+      "title": "M3 · Screen 08 — Persona panel + autonomy dial",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M3",
+        "files": [
+          "apps/web/screens/personas/PersonaPanel.tsx",
+          "personas/AutonomyDial.tsx",
+          "personas/PersonaDetailDrawer.tsx",
+          "personas/CustomPersonaForm.tsx"
+        ],
+        "notes": "4-stop dial: silent / suggestive / active / takes-pen. Persona toggles + bio + roles. Custom form deferred to bo-169. Extends useFacilitatorSync.ts boolean → 4-stop."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-140"
+      ],
+      "id": "bo-141",
+      "title": "M3 · Wire autonomy dial through to existing role gating",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M3",
+        "files": [
+          "src/orchestrator/roles/*",
+          "src/orchestrator/readinessGate.ts"
+        ],
+        "notes": "silent → personas only on @-summon. suggestive → nudges in queue, never auto-apply. active → Devil's auto-spawns counters, Synthesizer auto-clusters, user confirms. takes-pen → some moves auto-apply with toast+undo (clusters, lines). Phase advances ALWAYS gated by ConfirmBar regardless. Cost caps deferred."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-110",
+        "bo-112",
+        "bo-130"
+      ],
+      "id": "bo-142",
+      "title": "M3 · Screen 02 — cluster halo layer + zoom toggle",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M3",
+        "files": [
+          "apps/web/screens/board/ClusterHaloLayer.tsx",
+          "apps/web/screens/board/ZoomViewToggle.tsx"
+        ],
+        "notes": "Zoom > 50% = sticky-level. Zoom ≤ 50% = cluster-level (chips + bold halos). Use CSS transform: scale() over React Flow viewport — DO NOT render two canvases. View toggle: stickies / clusters / map."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-116",
+        "bo-141",
+        "bo-142"
+      ],
+      "id": "bo-143",
+      "title": "M3 · Synthesizer cluster proposals via NudgeCard",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M3",
+        "files": [
+          "src/orchestrator/roles/synthesizer.ts"
+        ],
+        "notes": "Synthesizer proposes new clusters / merges / splits. Accept writes Cluster (extended IdeaGroup); preview shows ghost halos non-destructive. Obeys Build Spec §04 Nudge Protocol."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-116"
+      ],
+      "id": "bo-144",
+      "title": "M3 · Migrate AppCompanionRail/RobotNotesSummary to NudgeCard",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p2"
+      },
+      "context": {
+        "milestone": "M3",
+        "files": [
+          "apps/web/AppCompanionRail.tsx",
+          "apps/web/RobotNotesSummary.tsx"
+        ],
+        "notes": "Replace ad-hoc nudge styling with the canonical primitive. Lower risk than greenfielding."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-104",
+        "bo-118",
+        "bo-119"
+      ],
+      "id": "bo-150",
+      "title": "M4 · Screen 01 — Multi-board home polish",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "apps/web/screens/HomeScreen.tsx",
+          "home/BoardTile.tsx",
+          "home/CrossBoardSearchOverlay.tsx",
+          "home/NewBoardPrompt.tsx"
+        ],
+        "notes": "Header pill + active row (last-7d activity) + archive drawer (collapsed) + cross-board search overlay (queries idea titles/tags/brief sections). Per-board NudgeCard digest of changes since last visit. Empty-state = new-board prompt full canvas."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-102"
+      ],
+      "id": "bo-151",
+      "title": "M4 · Brief entity + briefs IDB store + storage module",
+      "status": "complete",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "src/types.ts",
+          "src/storage/briefs.ts"
+        ],
+        "notes": "DECISION #1: Idea.briefState stays for live derivation. New Brief entity holds versions[] + marginNotes[] + status. Brief.sections derived (problem/approach/mustStayTrue/risks/openQuestions). No back-fill — briefs come into existence on graduation."
+      },
+      "assignee": "agent-data-layer",
+      "blocker_reason": null,
+      "comment": "src/storage/briefs.ts: getBrief, getBriefForIdea, listBriefs(boardId), createBrief, appendBriefVersion (auto-incrementing seq), addMarginNote, resolveMarginNote, setShipStatus. Brief/MarginNote/BriefVersion types and the briefs IDB store w/ byBoardId+byIdeaId+byUpdatedAt indexes were created in bo-102; this fills in the storage module on top. tsc clean. 5/5 tests pass."
+    },
+    {
+      "dependencies": [
+        "bo-151",
+        "bo-114",
+        "bo-115",
+        "bo-153"
+      ],
+      "id": "bo-152",
+      "title": "M4 · Screen 04 — The Brief",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "apps/web/screens/BriefScreen.tsx",
+          "brief/BriefSection.tsx",
+          "brief/MarginNoteList.tsx"
+        ],
+        "notes": "Header (title + PhaseStrip + version pill). Sections: problem/approach/mustStayTrue/risks/openQuestions. Right rail margin notes. Footer: send to handoff / back to board / version dropdown. Edits write back to source sticky."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-151"
+      ],
+      "id": "bo-153",
+      "title": "M4 · useBriefSync hook",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p0"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "apps/web/useBriefSync.ts"
+        ],
+        "notes": "Derives Brief.sections from idea + connected children + log. Subscribes to underlying mutations. Emits margin-note add/edit, ⌘S snapshot."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-152",
+        "bo-141"
+      ],
+      "id": "bo-154",
+      "title": "M4 · Brief margin notes (persona-attributed)",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "apps/web/screens/brief/MarginNoteList.tsx"
+        ],
+        "notes": "On brief open, run all active personas with brief-aware prompts. New notes append to right rail with persona color. Click margin note → jump to source sticky. Scout asks for citations; Historian flags ambiguity."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-152"
+      ],
+      "id": "bo-155",
+      "title": "M4 · Brief versioning (⌘S) + version picker",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "apps/web/screens/brief/BriefVersionPicker.tsx"
+        ],
+        "notes": "Snapshot only on ⌘S — auto-versioning would explode the store. Editing an old version forks a new one."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-132"
+      ],
+      "id": "bo-156",
+      "title": "M4 · Screen 06 — log scrubber + peek render",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "apps/web/screens/log/TimelineScrubber.tsx",
+          "apps/web/useBoardLogReplay.ts"
+        ],
+        "notes": "Drag knob → board peek-renders by truncating fold at ts. Release knob → snap back to live OR fork. New peekTs state in useBoardLogReplay overrides live fold visually."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-156"
+      ],
+      "id": "bo-157",
+      "title": "M4 · forkBoardAtSeq mutation + Fork-from-here action",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p2"
+      },
+      "context": {
+        "milestone": "M4",
+        "files": [
+          "src/board/forkController.ts"
+        ],
+        "notes": "Copy board with truncated log (events up to seq), fresh AI conversations. Forking from history doesn't fork live AI."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-118"
+      ],
+      "id": "bo-160",
+      "title": "M5 · Screen 03 — Cross-board map",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "apps/web/screens/MapScreen.tsx",
+          "map/BoardPlanet.tsx",
+          "map/PrinciplesDrawer.tsx"
+        ],
+        "notes": "Galaxy view: BoardThumbnail as planets sized by activity. Edges: solid purple = explicit pin (Idea.pinnedToBoardIds.length > 1), dashed green = AI theme overlap with confidence. Manual gravity layout — no d3-force. Click planet → BoardScreen. Click edge → popover lists shared ideas."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-160"
+      ],
+      "id": "bo-161",
+      "title": "M5 · themeOverlapDetector role + cross-board edges",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "src/orchestrator/roles/themeOverlapDetector.ts"
+        ],
+        "notes": "Background job recomputes theme overlaps after any board update. Stores edges keyed by board pair with confidence. Triggers nudge if an idea (or paraphrase) appears on ≥3 boards."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-160",
+        "bo-161"
+      ],
+      "id": "bo-162",
+      "title": "M5 · Promote-to-principle flow + principles drawer",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p2"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "apps/web/screens/map/PrinciplesDrawer.tsx"
+        ],
+        "notes": "On accept, idea moves to project-level Project.principles[] and gains ★ badge wherever it appears. Click principle → opens as inspector overlay over Home."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-152"
+      ],
+      "id": "bo-163",
+      "title": "M5 · Screen 07 — Handoff screen + channel cards",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "apps/web/screens/HandoffScreen.tsx",
+          "handoff/ChannelCard.tsx"
+        ],
+        "notes": "Channels: GitHub / Slack / Linear / Notion. Each shows formatted preview. Multiple destinations per session. Ship is idempotent (re-shipping updates existing destination)."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-163",
+        "bo-141"
+      ],
+      "id": "bo-164",
+      "title": "M5 · Pre-ship LLM interrogator (active personas re-critique)",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "apps/web/screens/handoff/PreShipInterrogator.tsx"
+        ],
+        "notes": "DECISION #4: real LLM-driven handoff. Active personas re-read brief, post final critique nudges (missing owner, weak evidence, ambiguous claims). User must address or dismiss before ship enables."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-163"
+      ],
+      "id": "bo-165",
+      "title": "M5 · GitHub channel — formatter + integration adapter",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p1"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "handoff/formatters/githubIssue.ts",
+          "handoff/integrations/githubAdapter.ts"
+        ],
+        "notes": "Title = brief title. Body = sections as Markdown headings; 'Must stay true' → checkboxes. Real OAuth + GitHub Issues API. Auth setup in Options. Idempotent ship via stored issueRef."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-163"
+      ],
+      "id": "bo-166",
+      "title": "M5 · Notion channel — formatter + integration adapter",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p2"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "handoff/formatters/notionDoc.ts",
+          "handoff/integrations/notionAdapter.ts"
+        ],
+        "notes": "Full brief preserved including margin notes as Notion comments. Real Notion API + OAuth."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-163"
+      ],
+      "id": "bo-167",
+      "title": "M5 · Linear channel — formatter + integration adapter",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p2"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "handoff/formatters/linearTicket.ts",
+          "handoff/integrations/linearAdapter.ts"
+        ],
+        "notes": "Brief mapped to ticket fields. Risks → labels. Pre-flight warns if owner/estimate missing. Real Linear API + OAuth."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-163"
+      ],
+      "id": "bo-168",
+      "title": "M5 · Slack channel — formatter + integration adapter",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p2"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "handoff/formatters/slackPost.ts",
+          "handoff/integrations/slackAdapter.ts"
+        ],
+        "notes": "TL;DR (≤3 sentences) + link back to brief. Channel selection per ship. Real Slack API + OAuth."
+      }
+    },
+    {
+      "dependencies": [
+        "bo-140"
+      ],
+      "id": "bo-169",
+      "title": "M5 · Custom personas (form + scope=board)",
+      "status": "not_started",
+      "placement": {
+        "swimlaneId": "screens-v2",
+        "priorityId": "p3"
+      },
+      "context": {
+        "milestone": "M5",
+        "files": [
+          "apps/web/screens/personas/CustomPersonaForm.tsx"
+        ],
+        "notes": "Form: name, one-sentence bio, tone, scope (this board / project). AI suggests system prompt; user edits; persona joins active roster. Board-scoped customs don't survive board archive."
       }
     }
   ]
