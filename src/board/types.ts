@@ -6,6 +6,7 @@ import type {
   IdeaCritique,
   IdeaGroup,
   LlmMessage,
+  ProjectId,
   ScoutSuggestion,
   Settings,
   SupportingDoc,
@@ -31,6 +32,11 @@ export interface BoardRecord {
   dataVersion: number;
   changeCursor: number;
   nextChangeSeq: number;
+  // M0 / bo-102: introduce a Project layer above Board. The default workspace
+  // back-fills `projectId: 'local-project'`; the full M1 widening (status,
+  // currentPhase, activePersonas, lastActivityAt, openedBy) is handled by
+  // bo-110 — only `projectId` is required to keep this migration safe.
+  projectId?: ProjectId;
 }
 
 export interface IdeaTurnRecord {

@@ -1,6 +1,6 @@
 import '@xyflow/react/dist/style.css';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -78,7 +78,7 @@ export interface CanvasProps {
   onConnectionClick?: (ideaIds: string[]) => void;
   onFocusIdeaChange?: (ideaId: string | null) => void;
   onDragStateChange?: (dragging: boolean) => void;
-  onMove: (ideaId: string, x: number, y: number) => void;
+  onMove: (ideaId: string, x: number, y: number) => Promise<void> | void;
   onOpen: (ideaId: string) => void;
   onOpenSuggestion?: (suggestionId: string) => void;
   onOpenDocs?: (ideaId: string) => void;
@@ -96,7 +96,7 @@ export interface CanvasProps {
   }) => Promise<Connection>;
   suggestions?: ScoutSuggestion[];
   suggestionBusy?: SuggestionBusy;
-  onMoveSuggestion?: (suggestionId: string, x: number, y: number) => void;
+  onMoveSuggestion?: (suggestionId: string, x: number, y: number) => Promise<void> | void;
   onAdmitSuggestion?: (id: string) => void;
   onElaborateSuggestion?: (id: string) => void;
   onDismissSuggestion?: (id: string) => void;
@@ -126,16 +126,40 @@ function reconcileNodes(
   draggingNodeId: string | null,
 ): BoardNode[] {
   const currentById = new Map(current.map(node => [node.id, node] as const));
+  let changed = current.length !== projected.length;
 
-  return projected.map(node => {
+  const result = projected.map(node => {
     const existing = currentById.get(node.id);
-    if (!existing) return node;
+    if (!existing) {
+      changed = true;
+      return node;
+    }
+    const desiredPosition = draggingNodeId === node.id ? existing.position : node.position;
+    const desiredSelected = existing.selected ?? node.selected;
+    // Reuse the existing node object when every observable field matches.
+    // Without this, every projection cycle creates fresh node references,
+    // which feeds back through effectiveSuggestions/projectedSuggestionNodes
+    // and re-fires the projection useEffect — a self-sustaining render loop
+    // that re-applies inline styles to every DOM node every render.
+    if (
+      existing.data === node.data &&
+      existing.position.x === desiredPosition.x &&
+      existing.position.y === desiredPosition.y &&
+      existing.selected === desiredSelected &&
+      existing.type === node.type &&
+      existing.zIndex === node.zIndex
+    ) {
+      return existing;
+    }
+    changed = true;
     return {
       ...node,
-      position: draggingNodeId === node.id ? existing.position : node.position,
-      selected: existing.selected ?? node.selected,
+      position: desiredPosition,
+      selected: desiredSelected,
     };
   });
+
+  return changed ? result : current;
 }
 
 export default function ReactFlowCanvas({
@@ -182,7 +206,6 @@ export default function ReactFlowCanvas({
   const [hoveredIdeaId, setHoveredIdeaId] = useState<string | null>(null);
   const [liveDrag, setLiveDrag] = useState<LiveDragState | null>(null);
   const [mergeCandidateId, setMergeCandidateId] = useState<string | null>(null);
-  const [mergeProgress, setMergeProgress] = useState(0);
   const [flashState, setFlashState] = useState<{ activeIdeaId: string | null; ideaIds: string[] }>({
     activeIdeaId: null,
     ideaIds: [],
@@ -194,7 +217,6 @@ export default function ReactFlowCanvas({
   const [groupSelectionBusy, setGroupSelectionBusy] = useState(false);
   const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const mergeStartRef = useRef<number | null>(null);
   const mergeTimerRef = useRef<number | null>(null);
   const flashTimerRef = useRef<number | null>(null);
   const draggingNodeIdRef = useRef<string | null>(null);
@@ -216,11 +238,12 @@ export default function ReactFlowCanvas({
     () => applyFlowPositionsToSuggestions(suggestions ?? [], flowNodes),
     [flowNodes, suggestions],
   );
-  const connectionList = connections ?? [];
+  const connectionList = useMemo(() => connections ?? [], [connections]);
   const activeIdeaId = liveDrag?.id ?? hoveredIdeaId ?? flashState.activeIdeaId;
+  const ideaIds = useMemo(() => ideas.map(idea => idea.id), [ideas]);
   const focus = useMemo(
-    () => deriveCanvasFocus(effectiveIdeas.map(idea => idea.id), connectionList, activeIdeaId, flashState.ideaIds),
-    [effectiveIdeas, connectionList, activeIdeaId, flashState],
+    () => deriveCanvasFocus(ideaIds, connectionList, activeIdeaId, flashState.ideaIds),
+    [ideaIds, connectionList, activeIdeaId, flashState.ideaIds],
   );
   const selectedIdeaIds = useMemo(
     () => flowNodes.flatMap(node => {
@@ -230,75 +253,138 @@ export default function ReactFlowCanvas({
     [flowNodes],
   );
 
-  const ideaCallbacks: IdeaFlowNodeCallbacks & { onDiscardIdea?: (ideaId: string) => void } = {
-    onOpenIdea: onOpen,
-    onOpenDocs,
-    onDiscardIdea: onDiscard,
-    onStartLink: ideaId => {
-      if (!onCreateConnection) return;
-      clearFlowSelection();
-      setLinkDraft(null);
-      setLinkError(null);
-      setLinkAnchorId(prev => (prev === ideaId ? null : ideaId));
-    },
-    onCompleteLink: ideaId => {
-      if (!onCreateConnection) return;
-      setLinkError(null);
-      if (!linkAnchorId) {
-        setLinkAnchorId(ideaId);
-        return;
-      }
-      if (linkAnchorId === ideaId) {
-        setLinkAnchorId(null);
-        return;
-      }
-      const nextDraft = {
-        fromIdeaId: linkAnchorId,
-        toIdeaId: ideaId,
-        kind: 'builds_on' as const,
-        rationale: linkModeEnabled ? '' : 'Connected on canvas.',
-      };
-      setLinkAnchorId(null);
-      if (!linkModeEnabled) {
-        void saveQuickLink(nextDraft);
-        return;
-      }
-      setLinkDraft(nextDraft);
-    },
-  };
+  const linkAnchorIdRef = useRef<string | null>(null);
+  const linkModeEnabledRef = useRef(linkModeEnabled);
+  const onCreateConnectionRef = useRef(onCreateConnection);
+  useEffect(() => { linkAnchorIdRef.current = linkAnchorId; }, [linkAnchorId]);
+  useEffect(() => { linkModeEnabledRef.current = linkModeEnabled; }, [linkModeEnabled]);
+  useEffect(() => { onCreateConnectionRef.current = onCreateConnection; }, [onCreateConnection]);
 
+  const handleStartLink = useCallback((ideaId: string) => {
+    if (!onCreateConnectionRef.current) return;
+    clearFlowSelection();
+    setLinkDraft(null);
+    setLinkError(null);
+    setLinkAnchorId(prev => (prev === ideaId ? null : ideaId));
+  }, []);
+  const handleCompleteLink = useCallback((ideaId: string) => {
+    if (!onCreateConnectionRef.current) return;
+    setLinkError(null);
+    const anchor = linkAnchorIdRef.current;
+    if (!anchor) {
+      setLinkAnchorId(ideaId);
+      return;
+    }
+    if (anchor === ideaId) {
+      setLinkAnchorId(null);
+      return;
+    }
+    const nextDraft = {
+      fromIdeaId: anchor,
+      toIdeaId: ideaId,
+      kind: 'builds_on' as const,
+      rationale: linkModeEnabledRef.current ? '' : 'Connected on canvas.',
+    };
+    setLinkAnchorId(null);
+    if (!linkModeEnabledRef.current) {
+      void saveQuickLink(nextDraft);
+      return;
+    }
+    setLinkDraft(nextDraft);
+  }, []);
+
+  // Parent components routinely pass inline arrow functions for onOpen,
+  // onOpenDocs, etc. Memoizing on those identities means a 1-second clock tick
+  // upstream re-creates `ideaCallbacks`, which invalidates `projectedIdeaNodes`
+  // and forces React Flow to restyle every node. Instead, latch the latest
+  // callbacks in a ref and expose stable wrapper functions whose identity
+  // never changes.
+  const ideaCallbacksRef = useRef({
+    onOpen,
+    onOpenDocs,
+    onDiscard,
+    handleStartLink,
+    handleCompleteLink,
+  });
+  useEffect(() => {
+    ideaCallbacksRef.current = {
+      onOpen,
+      onOpenDocs,
+      onDiscard,
+      handleStartLink,
+      handleCompleteLink,
+    };
+  }, [onOpen, onOpenDocs, onDiscard, handleStartLink, handleCompleteLink]);
+  const ideaCallbacks = useMemo<IdeaFlowNodeCallbacks & { onDiscardIdea?: (ideaId: string) => void }>(() => ({
+    onOpenIdea: (ideaId: string) => ideaCallbacksRef.current.onOpen?.(ideaId),
+    onOpenDocs: (ideaId: string) => ideaCallbacksRef.current.onOpenDocs?.(ideaId),
+    onDiscardIdea: (ideaId: string) => ideaCallbacksRef.current.onDiscard?.(ideaId),
+    onStartLink: (ideaId: string) => ideaCallbacksRef.current.handleStartLink(ideaId),
+    onCompleteLink: (ideaId: string) => ideaCallbacksRef.current.handleCompleteLink(ideaId),
+  }), []);
+
+  const linkDraftActive = linkDraft !== null;
+  const projectedLinkModeEnabled =
+    linkModeEnabled || linkAnchorId !== null || linkDraftActive || linkBusy;
+  const liveMergeIdeaId = liveDrag?.id ?? null;
   const projectedIdeaNodes = useMemo(
     () => projectIdeaNodes({
-      ideas: effectiveIdeas,
+      ideas,
       boardTheme,
       selectedIdeaId,
       selectedFlowNodeIds,
       highlightIds: flashState.ideaIds,
       toneByIdeaId: focus.toneByIdeaId,
       docCounts,
-      liveMergeIdeaId: liveDrag?.id ?? null,
-      mergeProgress,
+      liveMergeIdeaId,
       mergeCandidateId,
-      linkModeEnabled: linkModeEnabled || linkAnchorId !== null || linkDraft !== null || linkBusy,
+      linkModeEnabled: projectedLinkModeEnabled,
       linkAnchorId,
       callbacks: ideaCallbacks,
     }),
     [
+      ideas,
       boardTheme,
       docCounts,
-      effectiveIdeas,
       flashState.ideaIds,
       focus.toneByIdeaId,
+      ideaCallbacks,
       linkAnchorId,
-      linkBusy,
-      linkDraft,
-      linkModeEnabled,
-      liveDrag?.id,
+      projectedLinkModeEnabled,
+      liveMergeIdeaId,
       mergeCandidateId,
-      mergeProgress,
       selectedFlowNodeIds,
       selectedIdeaId,
     ],
+  );
+  // Same inline-callback hazard as the idea callbacks above. Latch the
+  // latest references in a ref so projectedSuggestionNodes only re-runs when
+  // its data changes, not when the parent re-renders.
+  const suggestionCallbacksRef = useRef({
+    onAdmitSuggestion,
+    onElaborateSuggestion,
+    onDismissSuggestion,
+    onExpandSuggestions,
+    onCollapseSuggestions,
+  });
+  useEffect(() => {
+    suggestionCallbacksRef.current = {
+      onAdmitSuggestion,
+      onElaborateSuggestion,
+      onDismissSuggestion,
+      onExpandSuggestions,
+      onCollapseSuggestions,
+    };
+  }, [onAdmitSuggestion, onElaborateSuggestion, onDismissSuggestion, onExpandSuggestions, onCollapseSuggestions]);
+  const stableSuggestionCallbacks = useMemo(
+    () => ({
+      onAdmitSuggestion: (id: string) => suggestionCallbacksRef.current.onAdmitSuggestion?.(id),
+      onElaborateSuggestion: (id: string) => suggestionCallbacksRef.current.onElaborateSuggestion?.(id),
+      onDismissSuggestion: (id: string) => suggestionCallbacksRef.current.onDismissSuggestion?.(id),
+      onExpandSuggestions: () => suggestionCallbacksRef.current.onExpandSuggestions?.(),
+      onCollapseSuggestions: () => suggestionCallbacksRef.current.onCollapseSuggestions?.(),
+    }),
+    [],
   );
   const projectedSuggestionNodes = useMemo(
     () => projectSuggestionNodes({
@@ -308,26 +394,28 @@ export default function ReactFlowCanvas({
       suggestionBusy,
       suggestionOverflowCount,
       suggestionsExpanded,
-      onAdmitSuggestion,
-      onElaborateSuggestion,
-      onDismissSuggestion,
-      onExpandSuggestions,
-      onCollapseSuggestions,
+      onAdmitSuggestion: stableSuggestionCallbacks.onAdmitSuggestion,
+      onElaborateSuggestion: stableSuggestionCallbacks.onElaborateSuggestion,
+      onDismissSuggestion: stableSuggestionCallbacks.onDismissSuggestion,
+      onExpandSuggestions: stableSuggestionCallbacks.onExpandSuggestions,
+      onCollapseSuggestions: stableSuggestionCallbacks.onCollapseSuggestions,
     }),
     [
       animatedSuggestionIds,
       effectiveSuggestions,
-      onAdmitSuggestion,
-      onCollapseSuggestions,
-      onDismissSuggestion,
-      onElaborateSuggestion,
-      onExpandSuggestions,
       selectedFlowNodeIds,
+      stableSuggestionCallbacks,
       suggestionBusy,
       suggestionOverflowCount,
       suggestionsExpanded,
     ],
   );
+  const onConnectionClickRef = useRef(onConnectionClick);
+  useEffect(() => { onConnectionClickRef.current = onConnectionClick; }, [onConnectionClick]);
+  const stableOnEdgeSelect = useCallback((_: unknown, ideaIds: string[]) => {
+    triggerFlash(ideaIds);
+    onConnectionClickRef.current?.(ideaIds);
+  }, []);
   const projectedEdges = useMemo(
     () => projectConnectionEdges({
       ideas: effectiveIdeas,
@@ -337,12 +425,9 @@ export default function ReactFlowCanvas({
       activePathIdeaIds: [...focus.activePathIdeaIds],
       animatedConnectionIds,
       suppressAnimations,
-      onSelect: (_, ideaIds) => {
-        triggerFlash(ideaIds);
-        onConnectionClick?.(ideaIds);
-      },
+      onSelect: stableOnEdgeSelect,
     }),
-    [animatedConnectionIds, connectionList, effectiveIdeas, focus.activeIdeaId, focus.activePathIdeaIds, liveDrag, onConnectionClick, suppressAnimations],
+    [animatedConnectionIds, connectionList, effectiveIdeas, focus.activeIdeaId, focus.activePathIdeaIds, liveDrag, stableOnEdgeSelect, suppressAnimations],
   );
 
   useEffect(() => {
@@ -356,9 +441,7 @@ export default function ReactFlowCanvas({
   useEffect(() => {
     return () => {
       clearTimer(flashTimerRef);
-      if (mergeTimerRef.current !== null) {
-        window.clearInterval(mergeTimerRef.current);
-      }
+      clearTimer(mergeTimerRef);
       onDragStateChange?.(false);
       onFocusIdeaChange?.(null);
     };
@@ -371,12 +454,10 @@ export default function ReactFlowCanvas({
 
   function clearMergeHold(): void {
     if (mergeTimerRef.current !== null) {
-      window.clearInterval(mergeTimerRef.current);
+      window.clearTimeout(mergeTimerRef.current);
       mergeTimerRef.current = null;
     }
-    mergeStartRef.current = null;
     setMergeCandidateId(null);
-    setMergeProgress(0);
   }
 
   function triggerFlash(ideaIds: string[]): void {
@@ -399,6 +480,12 @@ export default function ReactFlowCanvas({
       ...node,
       selected: selection.has(node.id),
     })));
+  }
+
+  function clearPendingNodePosition(nodeId: string): void {
+    if (draggingNodeIdRef.current === nodeId) {
+      draggingNodeIdRef.current = null;
+    }
   }
 
   function pointFromClient(clientX: number, clientY: number): {
@@ -468,7 +555,8 @@ export default function ReactFlowCanvas({
   const linkSourceIdea = linkDraft ? effectiveIdeas.find(idea => idea.id === linkDraft.fromIdeaId) ?? null : null;
   const linkTargetIdea = linkDraft ? effectiveIdeas.find(idea => idea.id === linkDraft.toIdeaId) ?? null : null;
   const linkingActive = linkModeEnabled || linkAnchorId !== null || linkDraft !== null || linkBusy;
-  const showConnectionHint = Boolean(onCreateConnection && connectionList.length === 0 && ideas.length >= 2 && !linkingActive);
+  // Kill the default-canvas first-time hint; it reads as a SaaS toast. Only show contextual hint while link mode is actively engaged.
+  const showConnectionHint = false;
   const overlayViewportStyle = {
     transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
     transformOrigin: '0 0',
@@ -476,63 +564,10 @@ export default function ReactFlowCanvas({
     height: `${boardBounds.height}px`,
   } as const;
 
+  const effectiveIdeasRef = useRef(effectiveIdeas);
   useEffect(() => {
-    if (!marqueeStartRef.current) return undefined;
-
-    function finishMarquee(event: PointerEvent): void {
-      if (marqueeStartRef.current?.pointerId !== event.pointerId) return;
-      const start = marqueeStartRef.current;
-      marqueeStartRef.current = null;
-      const end = pointFromClient(event.clientX, event.clientY);
-      setMarqueeRect(null);
-      if (!start || !end) return;
-
-      const dragDistance = Math.hypot(end.screenX - start.screenX, end.screenY - start.screenY);
-      if (dragDistance < 6) return;
-
-      const left = Math.min(start.boardX, end.boardX);
-      const right = Math.max(start.boardX, end.boardX);
-      const top = Math.min(start.boardY, end.boardY);
-      const bottom = Math.max(start.boardY, end.boardY);
-      const selectedIds = effectiveIdeas
-        .filter(idea => {
-          const panel = idea.panel;
-          if (!panel) return false;
-          return (
-            panel.x >= left &&
-            panel.y >= top &&
-            panel.x + panel.width <= right &&
-            panel.y + panel.height <= bottom
-          );
-        })
-        .map(idea => ideaNodeId(idea.id));
-
-      selectFlowNodes(selectedIds);
-    }
-
-    function updateMarquee(event: PointerEvent): void {
-      if (marqueeStartRef.current?.pointerId !== event.pointerId) return;
-      const start = marqueeStartRef.current;
-      const point = pointFromClient(event.clientX, event.clientY);
-      if (!start || !point) return;
-      setMarqueeRect({
-        left: Math.min(start.screenX, point.screenX),
-        top: Math.min(start.screenY, point.screenY),
-        width: Math.abs(point.screenX - start.screenX),
-        height: Math.abs(point.screenY - start.screenY),
-      });
-    }
-
-    window.addEventListener('pointermove', updateMarquee);
-    window.addEventListener('pointerup', finishMarquee);
-    window.addEventListener('pointercancel', finishMarquee);
-
-    return () => {
-      window.removeEventListener('pointermove', updateMarquee);
-      window.removeEventListener('pointerup', finishMarquee);
-      window.removeEventListener('pointercancel', finishMarquee);
-    };
-  }, [effectiveIdeas, viewport]);
+    effectiveIdeasRef.current = effectiveIdeas;
+  }, [effectiveIdeas]);
 
   return (
     <div className="bo-canvas relative h-full w-full overflow-auto" aria-label="Idea canvas">
@@ -541,11 +576,16 @@ export default function ReactFlowCanvas({
         className="relative"
         onPointerDownCapture={event => {
           if (event.button !== 0) return;
+          // Marquee-select is an opt-in gesture (shift-drag). Everything else — plain
+          // drag on empty canvas, drag on a sticky, click on a sticky — falls through
+          // to React Flow. Prevents the marquee from firing during a node drag.
+          if (!event.shiftKey) return;
           const target = event.target as HTMLElement | null;
           if (!target) return;
           if (
             target.closest('.react-flow__node') ||
             target.closest('.react-flow__edge') ||
+            target.closest('.bo-note-artifact') ||
             target.closest('.bo-critique-artifact') ||
             target.closest('.bo-connection-composer') ||
             target.closest('.bo-shell-action') ||
@@ -559,14 +599,65 @@ export default function ReactFlowCanvas({
           }
           const point = pointFromClient(event.clientX, event.clientY);
           if (!point) return;
-          marqueeStartRef.current = {
-            pointerId: event.pointerId,
+          const pointerId = event.pointerId;
+          const startPoint = {
+            pointerId,
             screenX: point.screenX,
             screenY: point.screenY,
             boardX: point.boardX,
             boardY: point.boardY,
           };
+          marqueeStartRef.current = startPoint;
           setMarqueeRect({ left: point.screenX, top: point.screenY, width: 0, height: 0 });
+
+          function updateMarquee(moveEvent: PointerEvent): void {
+            if (moveEvent.pointerId !== pointerId) return;
+            const next = pointFromClient(moveEvent.clientX, moveEvent.clientY);
+            if (!next) return;
+            setMarqueeRect({
+              left: Math.min(startPoint.screenX, next.screenX),
+              top: Math.min(startPoint.screenY, next.screenY),
+              width: Math.abs(next.screenX - startPoint.screenX),
+              height: Math.abs(next.screenY - startPoint.screenY),
+            });
+          }
+
+          function finishMarquee(upEvent: PointerEvent): void {
+            if (upEvent.pointerId !== pointerId) return;
+            window.removeEventListener('pointermove', updateMarquee);
+            window.removeEventListener('pointerup', finishMarquee);
+            window.removeEventListener('pointercancel', finishMarquee);
+
+            const end = pointFromClient(upEvent.clientX, upEvent.clientY);
+            marqueeStartRef.current = null;
+            setMarqueeRect(null);
+            if (!end) return;
+
+            const dragDistance = Math.hypot(end.screenX - startPoint.screenX, end.screenY - startPoint.screenY);
+            if (dragDistance < 6) return;
+
+            const left = Math.min(startPoint.boardX, end.boardX);
+            const right = Math.max(startPoint.boardX, end.boardX);
+            const top = Math.min(startPoint.boardY, end.boardY);
+            const bottom = Math.max(startPoint.boardY, end.boardY);
+            const selectedIds = effectiveIdeasRef.current
+              .filter(idea => {
+                const panel = idea.panel;
+                if (!panel) return false;
+                return (
+                  panel.x >= left &&
+                  panel.y >= top &&
+                  panel.x + panel.width <= right &&
+                  panel.y + panel.height <= bottom
+                );
+              })
+              .map(idea => ideaNodeId(idea.id));
+            selectFlowNodes(selectedIds);
+          }
+
+          window.addEventListener('pointermove', updateMarquee);
+          window.addEventListener('pointerup', finishMarquee);
+          window.addEventListener('pointercancel', finishMarquee);
         }}
         style={{
           width: `${boardBounds.width}px`,
@@ -642,32 +733,32 @@ export default function ReactFlowCanvas({
               if (hovering && hovering.id !== mergeCandidateId) {
                 clearMergeHold();
                 setMergeCandidateId(hovering.id);
-                mergeStartRef.current = Date.now();
-                mergeTimerRef.current = window.setInterval(() => {
-                  const startedAt = mergeStartRef.current;
-                  if (startedAt == null) return;
-                  const progress = Math.min(1, (Date.now() - startedAt) / MERGE_HOLD_MS);
-                  setMergeProgress(progress);
-                  if (progress >= 1) {
-                    clearMergeHold();
-                    onMerge(ideaId, hovering.id);
-                  }
-                }, 50);
+                mergeTimerRef.current = window.setTimeout(() => {
+                  mergeTimerRef.current = null;
+                  clearMergeHold();
+                  onMerge(ideaId, hovering.id);
+                }, MERGE_HOLD_MS);
               } else if (!hovering && mergeCandidateId) {
                 clearMergeHold();
               }
             }}
             onNodeDragStop={(_, node) => {
-              draggingNodeIdRef.current = null;
               onDragStateChange?.(false);
               const ideaId = parseIdeaId(node.id);
               const suggestionId = parseSuggestionId(node.id);
               const wasHovering = mergeCandidateId;
               clearMergeHold();
-              setLiveDrag(null);
 
               if (ideaId) {
-                onMove(ideaId, node.position.x, node.position.y);
+                draggingNodeIdRef.current = node.id;
+                void Promise.resolve(onMove(ideaId, node.position.x, node.position.y))
+                  .catch(err => {
+                    console.error('[ReactFlowCanvas] move persistence failed:', err);
+                  })
+                  .finally(() => {
+                    clearPendingNodePosition(node.id);
+                    setLiveDrag(current => (current?.id === ideaId ? null : current));
+                  });
                 if (wasHovering) return;
                 const dropped = effectiveIdeas.find(idea => idea.id === ideaId);
                 if (!dropped) return;
@@ -683,8 +774,17 @@ export default function ReactFlowCanvas({
               }
 
               if (suggestionId) {
-                onMoveSuggestion?.(suggestionId, node.position.x, node.position.y);
+                draggingNodeIdRef.current = node.id;
+                void Promise.resolve(onMoveSuggestion?.(suggestionId, node.position.x, node.position.y))
+                  .catch(err => {
+                    console.error('[ReactFlowCanvas] suggestion move persistence failed:', err);
+                  })
+                  .finally(() => clearPendingNodePosition(node.id));
+                return;
               }
+
+              draggingNodeIdRef.current = null;
+              setLiveDrag(null);
             }}
             nodesDraggable
             nodesConnectable={false}
@@ -767,21 +867,34 @@ export default function ReactFlowCanvas({
         )}
 
         {linkingActive && onCreateConnection && (
-          <div className="pointer-events-none absolute right-4 top-[6.25rem] z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">Link mode</p>
-            <p className="mt-1 text-xs font-semibold text-slate-900">
-              Pick a source note, then a target note. Toggle link mode when you want to set the reason and relation type before saving.
+          <div
+            className="pointer-events-none absolute right-4 top-[5rem] z-20 max-w-[18rem] px-3 py-2"
+            style={{
+              background: '#fffdf5',
+              border: '1.5px solid rgba(26, 24, 20, 0.6)',
+              borderRadius: 4,
+              boxShadow: '3px 3px 0 rgba(26, 24, 20, 0.18)',
+              fontFamily: '"Kalam", "Patrick Hand", cursive',
+            }}
+          >
+            <p
+              className="text-[10px] uppercase"
+              style={{
+                fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+                letterSpacing: '0.14em',
+                color: 'rgba(26, 24, 20, 0.72)',
+              }}
+            >
+              link mode
+            </p>
+            <p className="mt-1 text-[13px] leading-snug" style={{ color: '#1a1814' }}>
+              pick a source, then a target. toggle link mode to add a reason before saving.
             </p>
           </div>
         )}
 
         {showConnectionHint && (
-          <div className="pointer-events-none absolute right-4 top-[6.25rem] z-20 max-w-[18rem] rounded-[22px] border border-sky-200/90 bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">Connections</p>
-            <p className="mt-1 text-xs font-semibold text-slate-900">
-              Use the note arrows to connect fast, or toggle link mode to add a reason and relation type before saving.
-            </p>
-          </div>
+          <div />
         )}
 
         {selectionBounds && selectedIdeaIds.length > 1 && onGroupSelection && (
@@ -823,36 +936,62 @@ export default function ReactFlowCanvas({
           </div>
         )}
 
-        <div className="absolute bottom-16 right-4 z-[32] flex items-center gap-2 rounded-[18px] border border-slate-300/80 bg-white/92 px-3 py-2 shadow-[3px_4px_0_rgba(26,24,20,0.14)] backdrop-blur">
-          <button type="button" className="bo-shell-action" onClick={() => { void flowInstanceRef.current?.zoomOut(); }}>
-            -
+        <div
+          className="bo-viewport-controls absolute bottom-16 right-4 z-[32] flex items-center gap-2 px-2.5 py-1.5"
+          style={{
+            background: '#fffdf5',
+            border: '1.5px solid rgba(26, 24, 20, 0.55)',
+            borderRadius: 4,
+            boxShadow: '3px 3px 0 rgba(26, 24, 20, 0.18)',
+            fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+          }}
+        >
+          <button
+            type="button"
+            className="bo-viewport-btn"
+            onClick={() => { void flowInstanceRef.current?.zoomOut(); }}
+            aria-label="Zoom out"
+          >
+            −
           </button>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+          <span
+            className="text-[10px] uppercase"
+            style={{ letterSpacing: '0.12em', color: 'rgba(26, 24, 20, 0.72)' }}
+          >
             {Math.round(viewport.zoom * 100)}%
           </span>
-          <button type="button" className="bo-shell-action" onClick={() => { void flowInstanceRef.current?.zoomIn(); }}>
+          <button
+            type="button"
+            className="bo-viewport-btn"
+            onClick={() => { void flowInstanceRef.current?.zoomIn(); }}
+            aria-label="Zoom in"
+          >
             +
           </button>
           <button
             type="button"
-            className="bo-shell-action"
+            className="bo-viewport-btn bo-viewport-btn--text"
             onClick={() => {
               void flowInstanceRef.current?.fitView({ duration: 280, padding: 0.18 });
             }}
           >
-            Fit
+            fit
           </button>
         </div>
 
         {ideas.length === 0 && effectiveSuggestions.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center p-6">
-            <div className="bo-empty-state max-w-md rounded-[28px] border px-6 py-6 text-center shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Empty board</p>
-              <h2 className="mt-3 text-lg font-semibold text-slate-900">Add the first note.</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Use <span className="font-semibold text-slate-800">New note</span> to place a card on the canvas. Then use <span className="font-semibold text-slate-800">Link mode</span> to connect notes and the <span className="font-semibold text-slate-800">role dock</span> to scout or challenge the board.
-              </p>
-            </div>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+            <p
+              className="max-w-sm text-center"
+              style={{
+                fontFamily: '"Caveat", "Kalam", cursive',
+                fontSize: '1.9rem',
+                color: 'rgba(26, 24, 20, 0.55)',
+                lineHeight: 1.15,
+              }}
+            >
+              blank page. drop a note to start.
+            </p>
           </div>
         )}
       </div>

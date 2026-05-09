@@ -56,13 +56,15 @@ export function AppHeaderBar({
   onToggleHistory,
   onSetBoardTheme,
   onOpenOptions,
-  boardTitle = 'AI Brainstorming',
+  boardTitle,
 }: AppHeaderBarProps): React.ReactElement {
-  const normalizedTitle = boardTitle.trim();
-  const visibleBoardTitle = !normalizedTitle || normalizedTitle === 'Main Board'
-    ? 'AI Brainstorming'
-    : normalizedTitle;
-  const visibleBoardSubtitle = boardSubtitle?.trim() || `${boardTheme} mode`;
+  const normalizedTitle = boardTitle?.trim() ?? '';
+  const hasRealBoardTitle =
+    normalizedTitle.length > 0 &&
+    normalizedTitle !== 'Main Board' &&
+    normalizedTitle !== 'AI Brainstorming';
+  const visibleBoardTitle = hasRealBoardTitle ? normalizedTitle : null;
+  const visibleBoardSubtitle = boardSubtitle?.trim() || null;
   const nextTheme = boardTheme === 'whiteboard' ? 'sketch' : 'whiteboard';
   const totalChanges = Math.max(0, historyState.nextSeq - 1);
   const statusTone = captureFeedback?.tone
@@ -108,10 +110,14 @@ export function AppHeaderBar({
       </div>
 
       <div className="bo-topbar-center">
-        <div className="bo-title-plaque" title={visibleBoardTitle}>
-          <span className="bo-title-main">{visibleBoardTitle}</span>
-          <span className="bo-title-subtitle">{visibleBoardSubtitle}</span>
-        </div>
+        {visibleBoardTitle && (
+          <div className="bo-title-plaque" title={visibleBoardTitle}>
+            <span className="bo-title-main">{visibleBoardTitle}</span>
+            {visibleBoardSubtitle && (
+              <span className="bo-title-subtitle">{visibleBoardSubtitle}</span>
+            )}
+          </div>
+        )}
 
         {statusMessage && (
           <div className={`bo-topbar-status ${statusTone === 'error' ? 'is-error' : 'is-success'}`} role="status">
@@ -182,13 +188,28 @@ export function AppHeaderBar({
           onClick={() => {
             void onSetBoardTheme(nextTheme);
           }}
-          className="bo-topbar-theme-pill"
+          className="bo-topbar-icon-button"
           aria-label={`Switch to ${nextTheme} theme`}
+          title={`Switch to ${nextTheme} theme`}
         >
-          {boardTheme}
+          <ThemeIcon whiteboard={boardTheme === 'whiteboard'} />
         </button>
       </div>
     </header>
+  );
+}
+
+function ThemeIcon({ whiteboard }: { whiteboard: boolean }): React.ReactElement {
+  return whiteboard ? (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="3" y="4.5" width="14" height="9" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M7.5 13.5v2M12.5 13.5v2M6.2 7.6h4.6M6.2 10.5h7.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M4.2 14.4c1.1-2.6 2-4.6 2.8-5.9 1.2-2 2.5-3.4 3.7-4.3.4-.3.8 0 1 .3l.6 1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M11.9 6.7c.6 2.7 2 4.9 3.7 6.5.4.4 0 .9-.5 1l-8 1.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

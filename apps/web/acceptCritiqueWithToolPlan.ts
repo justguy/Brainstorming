@@ -23,7 +23,7 @@ export async function acceptCritiqueWithToolPlan({
   const { result } = await runAdhocRole<CritiqueAcceptancePlannerOutput>(
     critiqueAcceptancePlanner,
     task,
-    { maxTokens: 700 },
+    { maxTokens: 1200 },
   );
 
   if (!result) {

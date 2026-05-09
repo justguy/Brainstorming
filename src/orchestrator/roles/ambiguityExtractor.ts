@@ -29,9 +29,9 @@ Your job: read the idea and find all unclear, missing, or conflicting details th
 
 For each ambiguity:
 - Write plainLanguage as a simple question or gap statement (no jargon).
-- Assign type from the allowed list.
-- Rate severity: high = blocks decisions, medium = matters soon, low = can wait.
-- Suggest resolutionMode: ask user, assume + state assumption, prototype to learn, research, or defer.
+- Assign type — must be exactly one of: terminology, goal, scope, audience, ux, data_process, integration, operational, policy_legal_security, ownership.
+- Rate severity — must be exactly one of: high, medium, low. (high = blocks decisions, medium = matters soon, low = can wait.)
+- Suggest resolutionMode — must be exactly one of: ask, assume, prototype, research, defer.
 
 Aim for 3–8 ambiguities. Prioritize high-severity ones. Be concise.`,
 

@@ -9,3 +9,17 @@ dist-web/
 .llm-tracker/.snapshots/
 .llm-tracker/patches/
 .llm-tracker/trackers/*.errors.json
+
+# Local scratch / archives — keep stray drops out of the repo
+*.zip
+*.webp
+Brainstorm/uploads/
+Screenshot*.png
+# Ad-hoc prompt drafts: name them prompt-*.md or put them in /docs/drafts/
+/# Prompt*
+/Align the Whiteboard UI*.md
+
+# Env files (project is BYOK; never commit keys)
+.env
+.env.*
+!.env.example

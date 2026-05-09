@@ -7,8 +7,97 @@ export type IdeaStatus = 'captured' | 'in_progress' | 'blocked' | 'ready_for_han
 // The canonical sub-phase registry lives in src/orchestrator/subPhases.ts.
 export type Phase = number;
 export type BoardId = string;
+export type ProjectId = string;
 export type Density = 'simple' | 'standard' | 'expert';
 export type ProviderId = 'gemini' | 'openai' | 'anthropic';
+
+// --- Project entity (M0) ---
+// A Project sits above one or more Boards. The default workspace ships with a
+// single project (`local-project`) so existing single-board users see no change.
+// `autonomyDial` controls how proactive the LLM personas are; UI dial wires
+// through to existing role-gating in src/orchestrator/.
+export type AutonomyLevel = 'silent' | 'whispers' | 'active' | 'takes-pen';
+
+export interface Project {
+  id: ProjectId;
+  title: string;
+  autonomyDial: AutonomyLevel;
+  summary?: string;
+  principles?: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+// --- Persona entity (M1/M3-pre, bo-120) ---
+// A Persona is a thin facade over one or more orchestrator role files. Built-in
+// kinds map to a fixed roster (see src/personas/registry.ts); 'custom' personas
+// are user-created with a free-form roleIds list. Scope determines whether the
+// persona is roster-wide (project) or board-only.
+export type PersonaKind = 'scout' | 'synthesizer' | 'devil' | 'historian' | 'custom';
+export type PersonaScope = 'project' | 'board';
+
+export interface Persona {
+  id: string;
+  name: string;
+  kind: PersonaKind;
+  roleIds: string[];
+  scope: PersonaScope;
+  active: boolean;
+  projectId?: ProjectId;
+  boardId?: BoardId;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// --- Brief entity (M4, bo-151) ---
+// `BriefState` (defined further down on `Idea`) stays embedded for live
+// derivation. `Brief` is a top-level entity holding explicit version snapshots
+// + persona-attributed margin notes + ship status. Briefs come into existence
+// only when an idea graduates (no back-fill on existing data).
+export type BriefShipStatus = 'draft' | 'ready' | 'shipped' | 'archived';
+export type MarginNoteStatus = 'open' | 'resolved' | 'dismissed';
+
+export interface MarginNote {
+  id: string;
+  briefId: string;
+  authorPersonaId?: string;          // resolves to Persona.id; undefined => user
+  authorLabel?: string;              // denormalised display label, e.g. "Devil's Advocate"
+  text: string;
+  anchorSection?: string;            // optional: which brief section this annotates
+  anchorVersionId?: string;          // optional: pin to a specific version
+  status: MarginNoteStatus;
+  createdAt: number;
+  updatedAt: number;
+  resolvedAt?: number;
+  resolvedBy?: string;               // 'user' | personaId | role string
+  resolutionNote?: string;
+}
+
+export interface BriefVersion {
+  id: string;
+  briefId: string;
+  seq: number;
+  // Snapshot of the BriefState that produced this version, plus a rendered
+  // markdown projection so historical versions are stable across schema drift.
+  briefState: BriefState;
+  artifactMd?: string;
+  authoredBy?: string;               // 'user' | personaId | role
+  note?: string;                     // user-supplied label for the snapshot
+  createdAt: number;
+}
+
+export interface Brief {
+  id: string;
+  boardId: BoardId;
+  ideaId: string;
+  projectId?: ProjectId;
+  shipStatus: BriefShipStatus;
+  versions: BriefVersion[];          // append-only; latest is versions[length-1]
+  marginNotes: MarginNote[];
+  createdAt: number;
+  updatedAt: number;
+  shippedAt?: number;
+}
 
 // --- Provider-agnostic message format (like OpenAI chat schema) ---
 export interface LlmMessageMeta {

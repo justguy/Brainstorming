@@ -23,7 +23,8 @@ export function IdeaAttentionLayer({
     <>
       {ideas.map(idea => {
         if (!idea.panel) return null;
-        const item = collectIdeaAttentionItems({ idea, critiques, maxItems: 1 })[0];
+        const item = collectIdeaAttentionItems({ idea, critiques })
+          .find(candidate => candidate.kind !== 'critique');
         if (!item) return null;
         const slotIndex = positionSlotIndex(idea.id);
         const position = annotationPosition(idea, item, slotIndex);

@@ -3,6 +3,24 @@ import type { CSSProperties, KeyboardEvent, ReactElement } from 'react';
 
 import type { IdeaFlowNodeData, IdeaFlowNodeMap, IdeaFlowNodeProps } from './ideaFlowTypes';
 
+// Forks: change this to point at your own repository.
+const ISSUE_REPO_URL = 'https://github.com/justguy/Brainstorming';
+
+function buildIssueUrl(idea: IdeaFlowNodeData['idea']): string {
+  const lines = idea.rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const title = lines[0] ?? 'Idea from brainstorming board';
+  const body = lines.slice(1).join('\n\n');
+  const tagLine = idea.tags && idea.tags.length > 0 ? `\n\nTags: ${idea.tags.join(', ')}` : '';
+  const fullBody =
+    `${body}${tagLine}\n\n---\n_Filed from a Brainstorming Orchestrator board card._`;
+  const params = new URLSearchParams({
+    title,
+    body: fullBody,
+    labels: 'enhancement',
+  });
+  return `${ISSUE_REPO_URL}/issues/new?${params.toString()}`;
+}
+
 type NotePalette = {
   borderColor: string;
   backgroundColor: string;
@@ -105,7 +123,7 @@ const SKETCH_NOTE_PALETTES: Record<string, NotePalette> = {
     inkColor: '#1a1814',
     bodyColor: '#4a4740',
     metaColor: '#7c7667',
-    shadow: '2px 3px 0 rgba(26, 24, 20, 0.12), 5px 8px 20px rgba(26, 24, 20, 0.08)',
+    shadow: '2px 3px 0 rgba(26, 24, 20, 0.25), 4px 6px 14px rgba(26, 24, 20, 0.15)',
     docChipBackground: 'rgba(246, 251, 255, 0.84)',
     docChipBorder: 'rgba(86, 120, 134, 0.32)',
     docChipText: '#516978',
@@ -117,7 +135,7 @@ const SKETCH_NOTE_PALETTES: Record<string, NotePalette> = {
     inkColor: '#1a1814',
     bodyColor: '#4a4740',
     metaColor: '#7d7254',
-    shadow: '2px 3px 0 rgba(26, 24, 20, 0.12), 5px 8px 20px rgba(26, 24, 20, 0.08)',
+    shadow: '2px 3px 0 rgba(26, 24, 20, 0.25), 4px 6px 14px rgba(26, 24, 20, 0.15)',
     docChipBackground: 'rgba(255, 251, 236, 0.84)',
     docChipBorder: 'rgba(137, 116, 44, 0.3)',
     docChipText: '#6e5b1f',
@@ -129,7 +147,7 @@ const SKETCH_NOTE_PALETTES: Record<string, NotePalette> = {
     inkColor: '#1a1814',
     bodyColor: '#4a4740',
     metaColor: '#7f6970',
-    shadow: '2px 3px 0 rgba(26, 24, 20, 0.12), 5px 8px 20px rgba(26, 24, 20, 0.08)',
+    shadow: '2px 3px 0 rgba(26, 24, 20, 0.25), 4px 6px 14px rgba(26, 24, 20, 0.15)',
     docChipBackground: 'rgba(255, 247, 250, 0.84)',
     docChipBorder: 'rgba(149, 91, 108, 0.3)',
     docChipText: '#7d5665',
@@ -141,7 +159,7 @@ const SKETCH_NOTE_PALETTES: Record<string, NotePalette> = {
     inkColor: '#1a1814',
     bodyColor: '#4a4740',
     metaColor: '#7c705f',
-    shadow: '2px 3px 0 rgba(26, 24, 20, 0.12), 5px 8px 20px rgba(26, 24, 20, 0.08)',
+    shadow: '2px 3px 0 rgba(26, 24, 20, 0.25), 4px 6px 14px rgba(26, 24, 20, 0.15)',
     docChipBackground: 'rgba(255, 248, 242, 0.84)',
     docChipBorder: 'rgba(149, 104, 72, 0.3)',
     docChipText: '#7f6248',
@@ -153,7 +171,7 @@ const SKETCH_NOTE_PALETTES: Record<string, NotePalette> = {
     inkColor: '#1a1814',
     bodyColor: '#4a4740',
     metaColor: '#756f83',
-    shadow: '2px 3px 0 rgba(26, 24, 20, 0.12), 5px 8px 20px rgba(26, 24, 20, 0.08)',
+    shadow: '2px 3px 0 rgba(26, 24, 20, 0.25), 4px 6px 14px rgba(26, 24, 20, 0.15)',
     docChipBackground: 'rgba(251, 249, 255, 0.84)',
     docChipBorder: 'rgba(110, 98, 140, 0.3)',
     docChipText: '#645b79',
@@ -165,7 +183,7 @@ const SKETCH_NOTE_PALETTES: Record<string, NotePalette> = {
     inkColor: '#1a1814',
     bodyColor: '#4a4740',
     metaColor: '#6e7963',
-    shadow: '2px 3px 0 rgba(26, 24, 20, 0.12), 5px 8px 20px rgba(26, 24, 20, 0.08)',
+    shadow: '2px 3px 0 rgba(26, 24, 20, 0.25), 4px 6px 14px rgba(26, 24, 20, 0.15)',
     docChipBackground: 'rgba(247, 252, 243, 0.84)',
     docChipBorder: 'rgba(89, 117, 67, 0.3)',
     docChipText: '#587342',
@@ -183,7 +201,15 @@ function hashSeed(value: string): number {
 }
 
 function paperRotationDeg(id: string): number {
-  return (((hashSeed(id) % 7) - 3) * 0.6);
+  // ±1.5° deterministic; never re-random on re-render.
+  const bucket = hashSeed(id) % 7;
+  return (bucket - 3) * 0.5;
+}
+
+const AI_ORIGIN_TAGS = ['from-scout', 'ai-takeaway', 'ai-draft', 'ai-authored'];
+
+function isAiAuthored(tags: string[]): boolean {
+  return tags.some(tag => AI_ORIGIN_TAGS.includes(tag));
 }
 
 function paletteSet(boardTheme: IdeaFlowNodeData['boardTheme']): Record<string, NotePalette> {
@@ -248,10 +274,18 @@ function tonePresentation(tone: NonNullable<IdeaFlowNodeData['tone']>): { opacit
   }
 }
 
-function visibleTags(tags: string[]): string[] {
-  return tags
-    .filter(tag => !tag.startsWith('paper-') && !tag.startsWith('demo-seed') && tag !== 'idea')
-    .slice(0, 2);
+const HIDDEN_TAG_PREFIXES = ['paper-', 'demo-seed', 'demo-', '__'];
+const HIDDEN_TAGS = new Set(['idea', 'scout', 'from-scout', 'ai-takeaway', 'ai-draft', 'ai-authored']);
+
+function visibleTags(tags: string[]): { shown: string[]; overflow: number } {
+  const surfaced = tags.filter(tag => {
+    if (HIDDEN_TAGS.has(tag)) return false;
+    return !HIDDEN_TAG_PREFIXES.some(prefix => tag.startsWith(prefix));
+  });
+  return {
+    shown: surfaced.slice(0, 2),
+    overflow: Math.max(0, surfaced.length - 2),
+  };
 }
 
 function FlowHandle({
@@ -277,12 +311,12 @@ function FlowHandle({
         e.stopPropagation();
         onActivate?.();
       }}
-      className={`nodrag nopan absolute inset-y-0 my-auto z-10 flex h-7 w-4 items-center justify-center rounded-full border text-[8px] font-semibold uppercase tracking-[0.18em] transition-all duration-150 ${
+      className={`nodrag nopan absolute inset-y-0 my-auto z-10 flex h-7 w-4 items-center justify-center rounded-full border text-[8px] font-semibold uppercase tracking-[0.18em] ${
         side === 'left' ? '-left-2' : '-right-2'
       } ${
         visible
           ? 'pointer-events-auto opacity-100'
-          : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
+          : 'pointer-events-none opacity-0'
       } ${enabled ? 'cursor-pointer' : 'opacity-55'}`}
       style={{
         borderColor: active ? '#ce7657' : 'rgba(93, 82, 69, 0.16)',
@@ -299,6 +333,37 @@ function FlowHandle({
   );
 }
 
+function ideaNodePropsEqual(prev: IdeaFlowNodeProps, next: IdeaFlowNodeProps): boolean {
+  if (prev.id !== next.id) return false;
+  if (prev.selected !== next.selected) return false;
+  if (prev.dragging !== next.dragging) return false;
+  if (prev.zIndex !== next.zIndex) return false;
+  if (prev.isConnectable !== next.isConnectable) return false;
+  const a = prev.data;
+  const b = next.data;
+  if (a === b) return true;
+  return (
+    a.idea === b.idea &&
+    a.boardTheme === b.boardTheme &&
+    a.selected === b.selected &&
+    a.tone === b.tone &&
+    a.docCount === b.docCount &&
+    a.displayHeight === b.displayHeight &&
+    a.groupColor === b.groupColor &&
+    a.highlight === b.highlight &&
+    a.merging === b.merging &&
+    a.beingMergedInto === b.beingMergedInto &&
+    a.linkModeEnabled === b.linkModeEnabled &&
+    a.linkModeAnchor === b.linkModeAnchor &&
+    a.linkModePending === b.linkModePending &&
+    a.onOpenIdea === b.onOpenIdea &&
+    a.onOpenDocs === b.onOpenDocs &&
+    a.onDiscardIdea === b.onDiscardIdea &&
+    a.onStartLink === b.onStartLink &&
+    a.onCompleteLink === b.onCompleteLink
+  );
+}
+
 export const IdeaNoteNode = memo(function IdeaNoteNode({
   id,
   data,
@@ -312,9 +377,10 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
     selected: selectedFromData = false,
     tone = 'idle',
     docCount = 0,
+    displayHeight,
     groupColor,
     highlight = false,
-    mergeProgress = 0,
+    merging = false,
     beingMergedInto = false,
     linkModeEnabled = true,
     linkModeAnchor = false,
@@ -328,36 +394,55 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
 
   const panel = idea.panel ?? { x: 0, y: 0, width: 260, height: 180 };
   const isSelected = selectedProp || selectedFromData;
+  const noteHeight = displayHeight ?? panel.height;
   const { title, body } = splitIdeaText(idea.rawText);
   const insightCount = idea.insights?.length ?? 0;
   const notePalette = notePaletteFromTags(idea.tags, boardTheme) ?? defaultNotePalette(idea.id, boardTheme);
-  const noteTags = visibleTags(idea.tags);
+  const { shown: noteTags, overflow: tagOverflow } = visibleTags(idea.tags);
+  const aiAuthored = isAiAuthored(idea.tags);
   const isSketch = boardTheme === 'sketch';
   const paperSeed = `${idea.id}:${idea.panel?.x ?? ''}:${idea.panel?.y ?? ''}:${panel.height}`;
   const paperRotation = paperRotationDeg(paperSeed);
-  const scale = dragging ? 1.02 : tone === 'active' ? 1.02 : tone === 'related' ? 1.005 : 1;
+  const scale = dragging ? 1.02 : 1;
   const noteTone = tonePresentation(tone);
-  const noteBorderColor = isSelected ? '#1a1814' : (isSketch ? 'rgba(0, 0, 0, 0)' : (groupColor ?? notePalette.borderColor));
-  const noteBorderWidth = isSelected ? 2.4 : (isSketch ? 0 : 2.5);
+  // Sketch: torn-paper silhouette with offset ink shadow; whiteboard: translucent marker with colored outline.
+  const noteBorderColor = isSelected
+    ? '#1a1814'
+    : (isSketch ? 'rgba(0, 0, 0, 0)' : (groupColor ?? notePalette.borderColor));
+  const noteBorderWidth = isSelected ? (isSketch ? 2 : 2.4) : (isSketch ? 0 : 2.5);
+  const sketchSelectedShadow = '3px 4px 0 rgba(26, 24, 20, 0.32), 5px 8px 18px rgba(26, 24, 20, 0.18)';
+  const whiteboardSelectedShadow = `0 0 0 1px rgba(255, 255, 255, 0.92), 0 16px 32px -20px rgba(26, 24, 20, 0.34), ${notePalette.shadow}`;
   const noteShadow = isSelected
-    ? `0 0 0 1px rgba(255, 255, 255, 0.92), 0 16px 32px -20px rgba(26, 24, 20, 0.34), ${notePalette.shadow}`
-    : (isSketch ? '0 12px 24px -20px rgba(26, 24, 20, 0.2)' : notePalette.shadow);
+    ? (isSketch ? sketchSelectedShadow : whiteboardSelectedShadow)
+    : notePalette.shadow;
   const noteRotation = dragging ? paperRotation + 0.35 : paperRotation;
-  const noteZIndex = zIndex ?? (dragging ? 50 : beingMergedInto ? 40 : isSelected ? 28 : tone === 'active' ? 20 : tone === 'related' ? 10 : 8);
+  const noteZIndex = zIndex ?? (dragging ? 50 : beingMergedInto ? 40 : isSelected ? 28 : 8);
   const showLinkAffordance = typeof onStartLink === 'function' || typeof onCompleteLink === 'function';
-  const persistHandles = linkModeEnabled || isSelected || dragging || linkModeAnchor || linkModePending;
+  // Handles only appear once a card is in focus (selected, being dragged, or
+  // actively part of a link gesture). Hovering must not trigger them — the
+  // card's resting state should be visually static.
+  void linkModeEnabled;
+  const persistHandles = isSelected || dragging || linkModeAnchor || linkModePending;
   const showDocChip = Boolean(onOpenDocs) && (docCount > 0 || isSelected);
   const docPillLabel = docCount > 0 ? `${docCount}` : '0';
   const docPillAria = docCount > 0 ? `${docCount} supporting docs` : 'Open supporting docs';
-  const titleFont = '"Caveat", "Gloria Hallelujah", cursive';
+  // Sketch = paper+pen (Kalam hand). Whiteboard retains its previous marker-display look; it will get its own pass.
+  const titleFont = isSketch
+    ? '"Kalam", "Patrick Hand", "Caveat", cursive'
+    : '"Caveat", "Gloria Hallelujah", cursive';
   const bodyFont = '"Kalam", "Patrick Hand", cursive';
+  const longBodyFont = '"Inter", system-ui, sans-serif';
   const metaFont = '"JetBrains Mono", ui-monospace, monospace';
-  const subtleStroke = isSketch ? 'rgba(93, 82, 69, 0.16)' : 'rgba(26, 24, 20, 0.18)';
-  const subtleTagBackground = isSketch ? 'rgba(255, 255, 255, 0.26)' : notePalette.tagBackground;
-  const showProgressMeta = isSelected || dragging || idea.readiness !== 'red' || Math.abs(idea.phase) > 1e-9 || insightCount > 0;
+  const isLongBody = body.length > 140;
+  const bodyLineCount = body.split(/\r?\n/).length;
+  // Only the sketch theme enforces the "long paragraphs fall back to Inter" rule per DESIGN_PROMPT §TYPOGRAPHY.
+  const useLongBodyFont = isSketch && (isLongBody || bodyLineCount > 2);
+  const inkHairline = isSketch ? 'rgba(26, 24, 20, 0.32)' : 'rgba(26, 24, 20, 0.28)';
+  const chipTagBackground = 'transparent';
+  const chipTagInk = isSketch ? 'rgba(26, 24, 20, 0.78)' : notePalette.metaColor;
   const rootStyle: CSSProperties = {
     width: panel.width,
-    height: panel.height,
+    height: noteHeight,
     zIndex: noteZIndex,
     opacity: noteTone.opacity,
     filter: noteTone.filter,
@@ -382,7 +467,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
       data-artifact-tone={tone}
       data-selected={isSelected ? 'true' : 'false'}
       data-node-id={id}
-      className={`bo-note-artifact group relative h-full overflow-hidden select-none border transition-[transform,box-shadow,filter] duration-200 ${dragging ? 'cursor-grabbing' : 'cursor-grab'} ${highlight ? 'bo-highlight-flash ring-2 ring-sky-300' : ''} ${beingMergedInto ? 'ring-4 ring-sky-400' : ''}`}
+      className={`bo-note-artifact group relative h-full ${isSelected ? 'overflow-visible' : 'overflow-hidden'} select-none border cursor-grab ${highlight ? 'bo-highlight-flash ring-2 ring-sky-300' : ''} ${beingMergedInto ? 'ring-4 ring-sky-400' : ''}`}
       style={rootStyle}
       onClick={() => onOpenIdea?.(idea.id)}
       onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
@@ -427,7 +512,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             e.stopPropagation();
             onOpenDocs?.(idea.id);
           }}
-          className={`bo-note-doc-chip nodrag nopan absolute right-[68px] top-2 z-10 flex items-center gap-1 border px-1.5 py-0.5 text-[10px] font-medium transition-opacity focus:outline-none focus:ring-2 focus:ring-sky-400 ${docCount > 0 || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+          className={`bo-note-doc-chip nodrag nopan absolute right-2 top-2 z-10 flex items-center gap-1 border px-1.5 py-0.5 text-[10px] font-medium focus:outline-none focus:ring-2 focus:ring-sky-400 ${docCount > 0 || isSelected ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
           style={{
             background: notePalette.docChipBackground,
             borderColor: notePalette.docChipBorder,
@@ -444,53 +529,47 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
         </button>
       )}
 
-      <div className="flex h-full flex-col overflow-hidden px-4 pb-4 pt-3.5">
+      {aiAuthored && (
+        <span
+          className="bo-note-ai-stamp pointer-events-none absolute right-3 top-3 z-[9]"
+          aria-label="Authored by Dev"
+          title="Dev drafted this note"
+          style={{
+            fontFamily: metaFont,
+          }}
+        >
+          ai
+        </span>
+      )}
+
+      <div className={`flex h-full flex-col px-4 pb-9 pt-3.5 ${isSelected ? 'overflow-visible' : 'overflow-hidden'}`}>
         <p
-          className="bo-note-title line-clamp-3 pr-20"
+          className={`bo-note-title ${isSelected ? '' : 'line-clamp-3'} ${aiAuthored ? 'pr-10' : 'pr-6'}`}
           style={{
             color: notePalette.inkColor,
             fontFamily: titleFont,
-            fontSize: boardTheme === 'whiteboard' ? '1.28rem' : '1.46rem',
-            lineHeight: isSketch ? 1.08 : 1.05,
-            fontWeight: 700,
+            fontSize: boardTheme === 'whiteboard' ? '1.18rem' : '1.32rem',
+            lineHeight: 1.1,
+            // Sketch fonts (Kalam, Marker Felt, Bradley Hand) already render
+            // visually bold at weight 400. Forcing 700 makes the whole board
+            // look shouty.
+            fontWeight: isSketch ? 400 : 700,
+            letterSpacing: '-0.005em',
+            wordBreak: 'break-word',
+            overflowWrap: 'anywhere',
           }}
         >
           {title}
         </p>
 
-        {showProgressMeta && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${readinessBadgeClass(idea.readiness)}`}>
-              {idea.readiness}
-            </span>
-            <span
-              className="text-[10.5px] uppercase tracking-[0.08em]"
-              style={{ color: notePalette.metaColor, fontFamily: metaFont }}
-            >
-              Step {idea.phase}/8
-            </span>
-            {insightCount > 0 && (
-              <span
-                className="rounded-sm border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em]"
-                style={{
-                  color: notePalette.metaColor,
-                  borderColor: subtleStroke,
-                  background: subtleTagBackground,
-                  fontFamily: metaFont,
-                }}
-              >
-                {insightCount} insight{insightCount === 1 ? '' : 's'}
-              </span>
-            )}
-          </div>
-        )}
-
         {body && (
           <p
-            className="mt-2.5 line-clamp-4 text-[0.95rem] leading-[1.3]"
+            className={`mt-2 ${isSelected ? (useLongBodyFont ? 'text-[0.82rem]' : 'text-[0.92rem]') : (useLongBodyFont ? 'line-clamp-5 text-[0.82rem]' : 'line-clamp-4 text-[0.92rem]')} leading-[1.34]`}
             style={{
               color: notePalette.bodyColor,
-              fontFamily: bodyFont,
+              fontFamily: useLongBodyFont ? longBodyFont : bodyFont,
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
             }}
           >
             {body}
@@ -498,49 +577,77 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
         )}
 
         <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-3">
-          <span
-            className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em]"
-            style={{
-              color: notePalette.metaColor,
-              borderColor: subtleStroke,
-              background: subtleTagBackground,
-              fontFamily: metaFont,
-            }}
-          >
-            idea
-          </span>
           {noteTags.map(tag => (
             <span
               key={tag}
-              className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em]"
+              className="bo-note-tag inline-flex items-center px-1.5 py-[1px] text-[9.5px] uppercase tracking-[0.1em]"
               style={{
-                color: notePalette.metaColor,
-                borderColor: subtleStroke,
-                background: subtleTagBackground,
+                color: chipTagInk,
+                borderColor: inkHairline,
+                background: chipTagBackground,
                 fontFamily: metaFont,
+                borderWidth: 1,
+                borderStyle: 'solid',
+                borderRadius: 2,
               }}
             >
               {tag}
             </span>
           ))}
-          {idea.mergedFrom?.length ? (
+          {tagOverflow > 0 && (
             <span
-              className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em]"
+              className="bo-note-tag inline-flex items-center px-1.5 py-[1px] text-[9.5px] uppercase tracking-[0.1em]"
               style={{
-                color: '#6f42c1',
-                borderColor: 'rgba(111, 66, 193, 0.26)',
-                background: isSketch ? 'rgba(245, 239, 255, 0.42)' : 'rgba(245, 239, 255, 0.72)',
+                color: chipTagInk,
+                borderColor: inkHairline,
+                background: chipTagBackground,
                 fontFamily: metaFont,
+                borderWidth: 1,
+                borderStyle: 'solid',
+                borderRadius: 2,
+              }}
+              aria-label={`${tagOverflow} more tags`}
+            >
+              +{tagOverflow}
+            </span>
+          )}
+          {insightCount > 0 && (
+            <span
+              className="bo-note-tag inline-flex items-center px-1.5 py-[1px] text-[9.5px] uppercase tracking-[0.1em]"
+              style={{
+                color: chipTagInk,
+                borderColor: inkHairline,
+                background: chipTagBackground,
+                fontFamily: metaFont,
+                borderWidth: 1,
+                borderStyle: 'solid',
+                borderRadius: 2,
               }}
             >
-              merged from {idea.mergedFrom.length}
+              {insightCount} insight{insightCount === 1 ? '' : 's'}
+            </span>
+          )}
+          {idea.mergedFrom?.length ? (
+            <span
+              className="bo-note-tag bo-note-tag--semantic inline-flex items-center px-1.5 py-[1px] text-[9.5px] uppercase tracking-[0.1em]"
+              style={{
+                color: 'rgba(101, 56, 180, 0.9)',
+                borderColor: 'rgba(101, 56, 180, 0.45)',
+                background: 'transparent',
+                fontFamily: metaFont,
+                borderWidth: 1,
+                borderStyle: 'solid',
+                borderRadius: 2,
+              }}
+            >
+              merged×{idea.mergedFrom.length}
             </span>
           ) : null}
         </div>
 
-        {mergeProgress > 0 && !beingMergedInto && (
+        {merging && !beingMergedInto && (
           <div className="absolute inset-x-3 bottom-3 h-1 overflow-hidden rounded bg-[#cad9e7]/70">
-            <div className="h-full bg-[#4f93d1] transition-all" style={{ width: `${mergeProgress * 100}%` }} />
+            <div className="bo-merge-progress-fill h-full bg-[#4f93d1]" />
           </div>
         )}
 
@@ -553,54 +660,86 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
         )}
 
         {linkModeAnchor && (
-          <div className="pointer-events-none absolute bottom-3 left-3 rounded-full border border-[#b49352]/70 bg-[#fff4d8]/92 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#6d5431]">
-            Link start
+          <div
+            className="pointer-events-none absolute bottom-3 left-3 px-2 py-[2px] text-[9px] uppercase tracking-[0.18em]"
+            style={{
+              fontFamily: metaFont,
+              color: '#6d5431',
+              borderColor: 'rgba(109, 84, 49, 0.7)',
+              borderStyle: 'solid',
+              borderWidth: 1,
+              borderRadius: 2,
+              background: 'transparent',
+            }}
+          >
+            link start
           </div>
         )}
       </div>
 
-      {onOpenIdea && (
-        <button
-          type="button"
+      <div
+        className={`pointer-events-none absolute inset-x-3 bottom-2 z-10 flex items-center justify-between gap-2 ${
+          isSelected ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <a
+          href={buildIssueUrl(idea)}
+          target="_blank"
+          rel="noopener noreferrer"
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => {
-            e.stopPropagation();
-            onOpenIdea(idea.id);
-          }}
-          className="nodrag nopan absolute right-2 top-2 z-10 rounded-full border px-2 py-1 text-[10px] font-semibold text-gray-800 shadow-sm transition-opacity hover:bg-[#edf5fb] focus:outline-none focus:ring-2 focus:ring-sky-400"
+          onClick={e => e.stopPropagation()}
+          className={`bo-note-issue nodrag nopan inline-flex items-center gap-1 px-2 py-[2px] text-[9.5px] uppercase tracking-[0.12em] focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+            isSelected ? 'pointer-events-auto' : 'pointer-events-none'
+          }`}
           style={{
-            borderColor: subtleStroke,
-            background: isSketch ? 'rgba(255, 255, 255, 0.6)' : '#fbfdffeb',
+            fontFamily: metaFont,
+            color: isSketch ? 'rgba(26, 24, 20, 0.78)' : notePalette.metaColor,
+            borderColor: inkHairline,
+            borderStyle: 'solid',
+            borderWidth: 1,
+            borderRadius: 2,
+            background: 'rgba(255, 255, 255, 0.78)',
+            textDecoration: 'none',
           }}
-          aria-label="Open selected note"
-          title="Open selected note"
+          aria-label="Open this idea as a GitHub issue in a new tab"
+          title="Open this idea as a GitHub issue (new tab)"
         >
-          Open
-        </button>
-      )}
+          <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
+            <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm0 11.7a5.2 5.2 0 1 1 0-10.4 5.2 5.2 0 0 1 0 10.4Zm0-9.1a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8Zm0 6.5a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z" />
+          </svg>
+          <span>issue</span>
+        </a>
 
-      {onDiscardIdea && (
-        <button
-          type="button"
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => {
-            e.stopPropagation();
-            onDiscardIdea(idea.id);
-          }}
-          className={`nodrag nopan absolute bottom-2 right-2 z-10 rounded-full border px-2 py-1 text-[10px] text-gray-700 shadow-sm transition-opacity hover:bg-[#edf5fb] focus:outline-none focus:ring-2 focus:ring-sky-400 ${isSelected ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'}`}
-          style={{
-            borderColor: subtleStroke,
-            background: isSketch ? 'rgba(255, 255, 255, 0.4)' : '#fbfdffeb',
-          }}
-          aria-label="Discard idea"
-          title="Discard idea"
-        >
-          Discard
-        </button>
-      )}
+        {onDiscardIdea && (
+          <button
+            type="button"
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => {
+              e.stopPropagation();
+              onDiscardIdea(idea.id);
+            }}
+            className={`bo-note-discard nodrag nopan px-2 py-[2px] text-[9.5px] uppercase tracking-[0.12em] focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+              isSelected ? 'pointer-events-auto' : 'pointer-events-none'
+            }`}
+            style={{
+              fontFamily: metaFont,
+              color: isSketch ? 'rgba(26, 24, 20, 0.78)' : notePalette.metaColor,
+              borderColor: inkHairline,
+              borderStyle: 'solid',
+              borderWidth: 1,
+              borderRadius: 2,
+              background: 'rgba(255, 255, 255, 0.78)',
+            }}
+            aria-label="Discard idea"
+            title="Discard idea"
+          >
+            discard
+          </button>
+        )}
+      </div>
     </div>
   );
-});
+}, ideaNodePropsEqual);
 
 IdeaNoteNode.displayName = 'IdeaNoteNode';
 

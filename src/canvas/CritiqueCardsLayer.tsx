@@ -124,8 +124,8 @@ export interface CritiqueCardsLayerProps {
   editingIdeaId?: string | null;
   animatedCritiqueIds?: string[];
   suppressAnimations?: boolean;
-  onAccept?: (critiqueId: string) => void;
-  onDismiss?: (critiqueId: string) => void;
+  onAccept?: (critiqueId: string) => Promise<void> | void;
+  onDismiss?: (critiqueId: string) => Promise<void> | void;
   boardTheme: BoardThemeMode;
 }
 
@@ -273,7 +273,7 @@ export function CritiqueCardsLayer({
               Math.max(EDGE_MARGIN, viewportWidth - collapsedWidth - EDGE_MARGIN),
             ),
             top: clamp(
-              panel.y - Math.round(collapsedHeight * 0.58) - 3 - index * COLLAPSED_STACK_STEP,
+              panel.y - collapsedHeight - 8 - index * COLLAPSED_STACK_STEP,
               EDGE_MARGIN,
               Math.max(EDGE_MARGIN, viewportHeight - collapsedHeight - EDGE_MARGIN),
             ),
@@ -322,7 +322,10 @@ export function CritiqueCardsLayer({
                 boxShadow: tone.shadow,
                 backgroundImage: tone.paper,
               }}
+              onPointerDownCapture={event => event.stopPropagation()}
               onPointerDown={event => event.stopPropagation()}
+              onMouseDownCapture={event => event.stopPropagation()}
+              onTouchStartCapture={event => event.stopPropagation()}
               onClick={event => {
                 event.stopPropagation();
                 setExpandedCritiqueId(current => (current === critique.id ? null : critique.id));
@@ -333,7 +336,7 @@ export function CritiqueCardsLayer({
                 event.stopPropagation();
                 setExpandedCritiqueId(current => (current === critique.id ? null : critique.id));
               }}
-              className={`bo-critique-artifact pointer-events-auto relative overflow-hidden rounded-[19px_16px_14px_15px] border cursor-pointer transition-[opacity,transform,box-shadow,border-color,left,top,width,height] duration-300 ${animateIn ? 'bo-critique-enter' : ''}`}
+              className={`bo-critique-artifact nodrag nopan nowheel pointer-events-auto relative overflow-hidden rounded-[19px_16px_14px_15px] border cursor-pointer select-none transition-[opacity,transform,box-shadow,border-color,left,top,width,height] duration-300 ${animateIn ? 'bo-critique-enter' : ''}`}
               aria-live={animateIn ? 'polite' : undefined}
               aria-label={`${isExpanded ? 'Expanded' : 'Collapsed'} critique for ${idea.rawText}`}
             >
@@ -365,14 +368,17 @@ export function CritiqueCardsLayer({
                         onPointerDown={event => event.stopPropagation()}
                         onClick={event => {
                           event.stopPropagation();
-                          onAccept?.(critique.id);
-                          setExpandedCritiqueId(null);
+                          const acceptResult = onAccept?.(critique.id);
+                          void Promise.resolve(acceptResult).then(() => {
+                            setExpandedCritiqueId(current => (current === critique.id ? null : current));
+                          }).catch(() => {});
                         }}
-                        className="pointer-events-auto rounded-md border border-emerald-200 bg-emerald-50/90 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        disabled={busy.has(ideaId)}
+                        className="pointer-events-auto rounded-md border border-emerald-200 bg-emerald-50/90 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:cursor-wait disabled:opacity-60"
                         aria-label="Accept critique"
                         title="Accept critique"
                       >
-                        Accept
+                        {busy.has(ideaId) ? 'Applying…' : 'Accept'}
                       </button>
                       {onDismiss && (
                         <button
@@ -380,9 +386,10 @@ export function CritiqueCardsLayer({
                           onPointerDown={event => event.stopPropagation()}
                           onClick={event => {
                             event.stopPropagation();
-                            onDismiss(critique.id);
+                            void onDismiss(critique.id);
                           }}
-                          className="pointer-events-auto rounded-md border border-slate-200 bg-white/80 px-2 py-1 text-[11px] font-semibold text-[#5f7387] hover:bg-[#edf5fb] focus:outline-none focus:ring-2 focus:ring-sky-400"
+                          disabled={busy.has(ideaId)}
+                          className="pointer-events-auto rounded-md border border-slate-200 bg-white/80 px-2 py-1 text-[11px] font-semibold text-[#5f7387] hover:bg-[#edf5fb] focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:cursor-wait disabled:opacity-60"
                           aria-label="Dismiss critique"
                           title="Dismiss critique"
                         >

@@ -4,8 +4,8 @@ import type { RoleSpec } from '../ctmcp';
 import type { Idea, SupportingDoc } from '../../types';
 
 const suggestionSchema = z.object({
-  rawText: z.string().min(20).max(400),
-  rationale: z.string().min(20).max(400),
+  rawText: z.string().min(8).max(400),
+  rationale: z.string().min(8).max(400),
   source: z.string().min(3).max(80),
   relatedIdeaIds: z.array(z.string()).max(5).optional(),
 });

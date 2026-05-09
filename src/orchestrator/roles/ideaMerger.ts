@@ -4,9 +4,9 @@ import type { RoleSpec } from '../ctmcp';
 import type { Idea } from '../../types';
 
 const schema = z.object({
-  mergedRawText: z.string().min(20).max(1000),
+  mergedRawText: z.string().min(8).max(1000),
   mergedTags: z.array(z.string()).max(10),
-  synthesisNotes: z.string().min(20).max(500),
+  synthesisNotes: z.string().min(8).max(500),
   tensions: z.array(z.string()).max(5),
 });
 

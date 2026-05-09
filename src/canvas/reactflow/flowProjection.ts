@@ -44,6 +44,19 @@ export function parseSuggestionId(nodeId: string): string | null {
   return nodeId.startsWith('suggestion:') ? nodeId.slice(11) : null;
 }
 
+function estimateSelectedIdeaNodeHeight(idea: Idea, panelHeight: number): number {
+  const [title = '', ...bodyLines] = idea.rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const bodyLength = bodyLines.join(' ').length;
+  const titleRows = Math.max(1, Math.ceil(title.length / 24));
+  const bodyRows = bodyLength > 0 ? Math.ceil(bodyLength / 36) : 0;
+  const metadataRows = idea.tags.length > 0 || (idea.insights?.length ?? 0) > 0 ? 1 : 0;
+  const estimatedHeight = 58 + titleRows * 28 + bodyRows * 20 + metadataRows * 28;
+  return Math.max(panelHeight, Math.min(460, estimatedHeight));
+}
+
 export function colorForGroup(groupId: string): string {
   let hash = 0;
   for (let i = 0; i < groupId.length; i += 1) {
@@ -156,7 +169,6 @@ export function projectIdeaNodes(input: {
   toneByIdeaId?: Map<string, IdeaTone>;
   docCounts?: Record<string, number>;
   liveMergeIdeaId?: string | null;
-  mergeProgress?: number;
   mergeCandidateId?: string | null;
   linkModeEnabled?: boolean;
   linkAnchorId?: string | null;
@@ -171,6 +183,9 @@ export function projectIdeaNodes(input: {
     const panel = idea.panel ?? { x: 0, y: 0, width: 260, height: 180 };
     const groupColor = idea.panel?.groupId ? colorForGroup(idea.panel.groupId) : undefined;
 
+    const selected = selectedSet.has(ideaNodeId(idea.id)) || input.selectedIdeaId === idea.id;
+    const displayHeight = selected ? estimateSelectedIdeaNodeHeight(idea, panel.height) : panel.height;
+
     return {
       id: ideaNodeId(idea.id),
       type: IDEA_FLOW_NODE_TYPE,
@@ -183,12 +198,13 @@ export function projectIdeaNodes(input: {
       data: {
         idea,
         boardTheme: input.boardTheme,
-        selected: selectedSet.has(ideaNodeId(idea.id)) || input.selectedIdeaId === idea.id,
+        selected,
         tone: input.toneByIdeaId?.get(idea.id) ?? 'idle',
         docCount: input.docCounts?.[idea.id] ?? 0,
+        displayHeight,
         groupColor,
         highlight: highlightSet.has(idea.id),
-        mergeProgress: input.liveMergeIdeaId === idea.id ? input.mergeProgress ?? 0 : 0,
+        merging: input.liveMergeIdeaId === idea.id && input.mergeCandidateId !== null,
         beingMergedInto: input.mergeCandidateId === idea.id,
         linkModeEnabled: input.linkModeEnabled,
         linkModeAnchor: input.linkAnchorId === idea.id,
@@ -201,7 +217,7 @@ export function projectIdeaNodes(input: {
       },
       style: {
         width: panel.width,
-        height: panel.height,
+        height: displayHeight,
       },
     };
   });

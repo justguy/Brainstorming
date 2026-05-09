@@ -2,17 +2,18 @@ import { z } from 'zod';
 import { zodToJsonSchema } from '../ctmcp';
 import type { RoleSpec } from '../ctmcp';
 import type { Idea, ScoutSuggestion } from '../../types';
+import { nullableOf } from './schemaHelpers';
 
 const proposalSchema = z.object({
-  rawText: z.string().min(20).max(400),
-  rationale: z.string().min(20).max(500),
+  rawText: z.string().min(8).max(400),
+  rationale: z.string().min(8).max(500),
   sourceIdeaIds: z.tuple([z.string(), z.string()]),
   sourceLabel: z.string().min(3).max(80).optional(),
   tensions: z.array(z.string().min(3).max(160)).max(3).optional(),
 });
 
 const schema = z.object({
-  proposal: proposalSchema.nullable(),
+  proposal: nullableOf(proposalSchema),
   skipReason: z.string().min(3).max(240).optional(),
 });
 

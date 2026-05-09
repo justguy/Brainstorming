@@ -86,7 +86,7 @@ export function useAmbiguityResolutionFlow({
       const { result, providerId, model } = await runAdhocRole<AmbiguityResolutionSuggestionOutput>(
         ambiguityResolutionSuggester,
         task,
-        { maxTokens: 700 },
+        { maxTokens: 1200 },
       );
       if (!result) {
         throw new Error('No suggested ambiguity resolution came back from the model.');
@@ -173,7 +173,7 @@ export function useAmbiguityResolutionFlow({
       const { result, providerId, model } = await runAdhocRole<AmbiguityResolutionApplyOutput>(
         ambiguityResolutionApplier,
         task,
-        { maxTokens: 800 },
+        { maxTokens: 1500 },
       );
       if (!result) {
         throw new Error('No usable apply result came back from the model.');
