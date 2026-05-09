@@ -45,6 +45,7 @@ import { PeerPresenceStrip } from '../PeerPresenceStrip';
 import { runManualBoardBeat, selectBoardBeatReviewSurface } from '../boardBeatReviewSurface';
 import { useBoardTheme } from '../useBoardTheme';
 import { useFacilitatorSync } from '../useFacilitatorSync';
+import { useProjectSync } from '../useProjectSync';
 import { WorkspaceScoutInspector } from '../../../src/workspace/WorkspaceScoutInspector';
 import {
   DEMO_FALLBACK_CONNECTIONS,
@@ -185,6 +186,13 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   const selectedLegacyToolIdea = createLegacyToolIdea(selectedBoardIdea);
   const activeCritiques = critiques.filter(critique => critique.status === 'active');
   const facilitatorSync = useFacilitatorSync(boardId, persistedFacilitatorPaused);
+  // bo-141 — read the 4-stop autonomy dial from the active project so the
+  // automation policy + proactive coach honour the user's persona setting.
+  // `useProjectSync` resolves on mount; until it does the dial defaults to the
+  // legacy `'active'` behaviour inside the gate, so there's no flicker window
+  // where personas misbehave.
+  const projectSync = useProjectSync();
+  const autonomyDial = projectSync.project?.autonomyDial;
   const boardSubtitle = boardReady
     ? `${canvasIdeas.length} ideas · ${canvasConnections.length} connections`
     : 'Loading board…';
@@ -364,6 +372,7 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
     setAutonomyBackoffState: facilitatorSync.setAutonomyBackoffState,
     recordRecoverySignal: facilitatorSync.recordRecoverySignal,
     addStagedInsight: facilitatorSync.addStagedInsight,
+    autonomyDial,
   });
 
   const critiqueFocusIdeaId = hoverIdeaId ?? selectedId ?? null;

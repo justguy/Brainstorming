@@ -12,7 +12,10 @@ import type {
   FacilitatorInterventionStrength,
   FacilitatorRoleId,
 } from '../../src/storage/facilitatorSyncEvents';
-import type { Connection, Idea, IdeaCritique } from '../../src/types';
+import type { AutonomyLevel, Connection, Idea, IdeaCritique } from '../../src/types';
+import {
+  autonomyGateVerdict,
+} from '../../src/orchestrator/readinessGate';
 import {
   actionLabelFor,
   applySharedAiAction,
@@ -37,6 +40,9 @@ import {
   buildFacilitatorControlPlaneContext,
   decideCompanionAutomationAction,
 } from './facilitatorPolicy';
+// Default idle gap before the policy layer treats a board change as "settled".
+// Scaled per autonomy dial (`takes-pen` reacts faster, `whispers` waits longer)
+// via `autonomyGateVerdict(...).idleScale`.
 export const AUTO_IDLE_MS = 1_500;
 type RevealOrigin = 'manual' | 'ai';
 type AutomatedRunOptions = {
@@ -126,6 +132,13 @@ interface UseCompanionAutomationArgs {
     payload?: Record<string, unknown>;
     status?: 'pending' | 'accepted' | 'rejected';
   }) => void;
+  /**
+   * 4-stop autonomy dial from `Project.autonomyDial`. Optional — when omitted
+   * the gate falls back to today's `'active'` behaviour so the hook remains
+   * backwards-compatible with callers that have not yet been wired through
+   * `useProjectSync` (bo-141 / IMPLEMENTATION_PLAN §6 M3).
+   */
+  autonomyDial?: AutonomyLevel;
 }
 
 export function useCompanionAutomation({
@@ -162,7 +175,15 @@ export function useCompanionAutomation({
   setAutonomyBackoffState,
   recordRecoverySignal,
   addStagedInsight,
+  autonomyDial,
 }: UseCompanionAutomationArgs) {
+  // bo-141 — derive once per render so the idle threshold and gating verdicts
+  // stay aligned. Falls back to today's `'active'` behaviour when no dial is
+  // supplied, which keeps existing call-sites working unchanged.
+  const dialVerdict = autonomyGateVerdict(autonomyDial);
+  const autoIdleMs = dialVerdict.idleScale > 0
+    ? Math.max(0, Math.round(AUTO_IDLE_MS * dialVerdict.idleScale))
+    : Number.POSITIVE_INFINITY;
   const [clockMs, setClockMs] = useState(() => Date.now());
   const [facilitatorPaused, setFacilitatorPaused] = useState(persistedFacilitatorPaused);
   const [aiActions, setAiActions] = useState<RecentAiAction[]>([]);
@@ -196,7 +217,11 @@ export function useCompanionAutomation({
   const interactionSuppressed = dragActive || textEntryActive;
   const softModeBusy = scouting || findingConnections || Object.values(critiqueBusyByIdea).some(Boolean);
   const pendingBoardChange = latestSyncedBoardChangeAt > autoCooldownRef.current.lastObservedBoardChangeAt;
-  const autoRunReady = pendingBoardChange && idleSinceBoardChangeMs >= AUTO_IDLE_MS;
+  // `autoIdleMs` swaps in the autonomy-dial-scaled threshold so `takes-pen`
+  // reacts faster and `silent` (idleScale === 0) never trips ready.
+  const autoRunReady = pendingBoardChange
+    && Number.isFinite(autoIdleMs)
+    && idleSinceBoardChangeMs >= autoIdleMs;
   const showSoftModeHint = shouldShowSoftModeHint({
     assessment: softModeAssessment,
     idleMs,
@@ -227,6 +252,7 @@ export function useCompanionAutomation({
       recentSessionEvents,
       autonomyState,
       recentAiActionOutcomes,
+      autonomyDial,
     });
   }
 
@@ -582,7 +608,11 @@ export function useCompanionAutomation({
     lastMeaningfulActivity,
     pendingBoardChange,
     autoRunReady,
-    autoRunCountdownMs: pendingBoardChange ? Math.max(0, AUTO_IDLE_MS - idleSinceBoardChangeMs) : AUTO_IDLE_MS,
+    autoRunCountdownMs: Number.isFinite(autoIdleMs)
+      ? (pendingBoardChange ? Math.max(0, autoIdleMs - idleSinceBoardChangeMs) : autoIdleMs)
+      // `silent` disables the countdown — surface the canonical fallback so
+      // existing UI bindings keep rendering a finite number.
+      : AUTO_IDLE_MS,
     showSoftModeHint,
     companionActionLabel,
     policyDecision,
