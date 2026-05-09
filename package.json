@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build:web": "vite build --config vite.config.web.ts",
     "dev:web": "vite --config vite.config.web.ts",
-    "preview:web": "vite preview --config vite.config.web.ts"
+    "preview:web": "vite preview --config vite.config.web.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.2",
