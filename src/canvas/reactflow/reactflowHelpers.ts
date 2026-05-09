@@ -68,8 +68,10 @@ export function connectionKindLabel(kind: Connection['kind']): string {
       return 'Revives killed';
     case 'shared_theme':
       return 'Shared theme';
-    default:
-      return kind;
+    case 'depends_on':
+      return 'Depends on';
+    case 'evidence_for':
+      return 'Evidence for';
   }
 }
 
@@ -83,8 +85,10 @@ export function connectionKindMeaning(kind: Connection['kind']): string {
       return 'revisits';
     case 'shared_theme':
       return 'aligns';
-    default:
-      return 'relates';
+    case 'depends_on':
+      return 'requires';
+    case 'evidence_for':
+      return 'supports';
   }
 }
 
@@ -92,6 +96,14 @@ export function connectionSourceLabel(connection: Connection): string {
   return connection.id.startsWith('manual-') ? 'Manual' : 'Facilitated';
 }
 
+// Visual grammar per Build Spec §"Connection-line visual grammar":
+//   parent-of    (builds_on)    → Ink, solid
+//   shares-theme (shared_theme) → AI blue, solid
+//   contradicts                 → Contradict red, dashed
+//   depends-on                  → Revives green, solid arrow
+//   evidence-for                → Revives green, dotted
+//   (revives_killed legacy 6th  → Revives green, solid arrow — same family
+//    as depends_on; kept distinct in label/meaning copy.)
 export function connectionLineStyle(kind: Connection['kind']): {
   stroke: string;
   flowStroke: string;
@@ -110,8 +122,20 @@ export function connectionLineStyle(kind: Connection['kind']): {
         flowStroke: '#86efac',
         markerEnd: 'url(#connection-overlay-arrow)',
       };
+    case 'depends_on':
+      return {
+        stroke: '#15803d',
+        flowStroke: '#86efac',
+        markerEnd: 'url(#connection-overlay-arrow)',
+      };
+    case 'evidence_for':
+      return {
+        stroke: '#15803d',
+        flowStroke: '#86efac',
+        dash: '2 6',
+        lineCap: 'round',
+      };
     case 'builds_on':
-    default:
       return { stroke: '#0f766e', flowStroke: '#5eead4' };
   }
 }

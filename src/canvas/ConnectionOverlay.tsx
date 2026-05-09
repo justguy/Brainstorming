@@ -24,6 +24,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+// Visual grammar per Build Spec §"Connection-line visual grammar". Mirrors
+// reactflowHelpers.connectionLineStyle so both renderer paths agree on tokens.
 function lineStyle(kind: Connection['kind']): {
   stroke: string;
   flowStroke: string;
@@ -42,8 +44,20 @@ function lineStyle(kind: Connection['kind']): {
         flowStroke: '#86efac',
         markerEnd: 'url(#connection-overlay-arrow)',
       };
+    case 'depends_on':
+      return {
+        stroke: '#15803d',
+        flowStroke: '#86efac',
+        markerEnd: 'url(#connection-overlay-arrow)',
+      };
+    case 'evidence_for':
+      return {
+        stroke: '#15803d',
+        flowStroke: '#86efac',
+        dash: '2 6',
+        lineCap: 'round',
+      };
     case 'builds_on':
-    default:
       return { stroke: '#0f766e', flowStroke: '#5eead4' };
   }
 }
@@ -135,8 +149,10 @@ function connectionKindLabel(kind: Connection['kind']): string {
       return 'Revives killed';
     case 'shared_theme':
       return 'Shared theme';
-    default:
-      return kind;
+    case 'depends_on':
+      return 'Depends on';
+    case 'evidence_for':
+      return 'Evidence for';
   }
 }
 
@@ -150,8 +166,10 @@ function connectionKindMeaning(kind: Connection['kind']): string {
       return 'revisits';
     case 'shared_theme':
       return 'aligns';
-    default:
-      return 'relates';
+    case 'depends_on':
+      return 'requires';
+    case 'evidence_for':
+      return 'supports';
   }
 }
 
