@@ -365,7 +365,31 @@ export interface ScoutSuggestion {
 // --- Cross-board connections surfaced by the connectionFinder LLM role ---
 // A connection links two or more ideas (possibly including discarded ones).
 // supportingDocIds refer to SupportingDoc ids when the evidence came from docs.
-export type ConnectionKind = 'builds_on' | 'contradicts' | 'revives_killed' | 'shared_theme';
+//
+// Six-kind grammar for screens-v2 (M1 / bo-111):
+//  - The five spec kinds: 'builds_on' | 'contradicts' | 'shared_theme' |
+//    'depends_on' | 'evidence_for'.
+//  - Plus 'revives_killed', the legacy 6th kind retained from the original
+//    4-kind canvas model. No data migration needed.
+//
+// Consumers that only know the legacy 4 kinds should route the new variants
+// through `kindMapping` in src/connections/kindMapping.ts so the existing
+// canvas (ConnectionOverlay / reactflowHelpers) keeps rendering correctly.
+export type ConnectionKind =
+  | 'builds_on'
+  | 'contradicts'
+  | 'revives_killed'
+  | 'shared_theme'
+  | 'depends_on'
+  | 'evidence_for';
+
+// The 4-kind subset understood by the legacy canvas / overlay code path.
+// `kindMapping.toLegacyKind` projects every ConnectionKind onto this subset.
+export type LegacyConnectionKind =
+  | 'builds_on'
+  | 'contradicts'
+  | 'revives_killed'
+  | 'shared_theme';
 export type ConnectionStrength = 'weak' | 'medium' | 'strong';
 
 export interface Connection {

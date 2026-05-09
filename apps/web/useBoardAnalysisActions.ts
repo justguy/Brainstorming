@@ -19,6 +19,7 @@ import {
   replaceGeneratedConnections,
   upsertConnection,
 } from './connectionState';
+import { toLegacyKind } from '../../src/connections/kindMapping';
 import { acceptCritiqueWithToolPlan } from './acceptCritiqueWithToolPlan';
 import { reportLlmFallback } from '../../src/orchestrator/retryAndFallback';
 
@@ -153,7 +154,15 @@ export function useBoardAnalysisActions({
         return [];
       }
 
-      const materialised = materializeConnections(ideas, supportingDocs, { connections: proposedConnections }, now);
+      // Beat proposals carry the new 6-kind grammar; the canvas / connection
+      // store still consumes the legacy 4-kind enum. Project through the
+      // kindMapping adapter at this boundary until <ConnectionLine> ships
+      // (bo-113) and the canvas adopts the wider grammar natively.
+      const legacyProposals = proposedConnections.map(proposal => ({
+        ...proposal,
+        kind: toLegacyKind(proposal.kind),
+      }));
+      const materialised = materializeConnections(ideas, supportingDocs, { connections: legacyProposals }, now);
       const nextGenerated = [...materialised]
         .sort((left, right) => {
           const strengthDelta = connectionStrengthWeight(right.strength) - connectionStrengthWeight(left.strength);
