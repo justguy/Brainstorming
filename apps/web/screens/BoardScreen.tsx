@@ -38,7 +38,6 @@ import { useBeatReviewActions } from '../useBeatReviewActions';
 import { BeatReviewPanel } from '../BeatReviewPanel';
 import { BoardHistoryPanel } from '../BoardHistoryPanel';
 import { BoardBeadStrip } from '../BoardBeadStrip';
-import { createBoardHistoryEntries } from '../historyTimeline';
 import { IdeaDocsPanel } from '../IdeaDocsPanel';
 import { IdeaTurnLogPanel } from '../IdeaTurnLogPanel';
 import { PeerPresenceStrip } from '../PeerPresenceStrip';
@@ -503,7 +502,6 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
     return () => window.clearTimeout(timer);
   }, [captureReveal, setSelectedId, visibleIdeas]);
 
-  const historyEntries = createBoardHistoryEntries({ changeSets, historyState, ideas, groups, docs, suggestions, critiques, connections, beatReviewSessions, beatReviewItems });
   const aiUndoTarget = findLatestSafeAiUndoTarget(changeSets, historyState.cursor);
   const triggerManualBoardBeat = (beat: 'cluster' | 'summarise'): void => {
     void runManualBoardBeat({ beat, boardId, boardTitle, ideas, groups, connections, runBoardBeat, presentBeatReview }).catch(err => {
@@ -680,7 +678,7 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
       ) : null}
       historyPanel={historyOpen ? (
         <BoardHistoryPanel
-          entries={historyEntries}
+          changeSets={changeSets}
           cursor={historyState.cursor}
           totalChanges={Math.max(0, historyState.nextSeq - 1)}
           canUndo={historyState.canUndo}
