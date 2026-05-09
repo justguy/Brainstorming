@@ -1,11 +1,12 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRoute } from '../routing/useRoute';
 import { useBriefSync } from '../useBriefSync';
 import Markdown from '../../../src/workspace/markdown';
+import BriefVersionPicker from '../brief/BriefVersionPicker';
 import type { Brief, BriefShipStatus, BriefVersion } from '../../../src/types';
 
 /**
- * Screen 04 · The Brief (v0 shell).
+ * Screen 04 · The Brief.
  *
  * Spec: Design/IMPLEMENTATION_PLAN.md §5 (Screen 04 · The Brief), §6 M4.
  *
@@ -24,12 +25,23 @@ import type { Brief, BriefShipStatus, BriefVersion } from '../../../src/types';
  *     "Ship to ..." button. The button is intentionally inert in v0 — the
  *     interrogator + channel integrations are M5 work (Screen 07).
  *
+ * bo-155 additions:
+ *   - ⌘S / Ctrl+S keyboard handler snapshots the currently displayed version
+ *     (its `briefState` + `artifactMd`) into a new BriefVersion via
+ *     `appendVersion`. Auto-versioning is intentionally avoided per spec
+ *     (IMPLEMENTATION_PLAN §5 — "snapshot on ⌘S only, auto-versioning would
+ *     explode the store"). A transient "Saved" indicator confirms the write.
+ *   - `BriefVersionPicker` in the toolbar lets the user inspect prior
+ *     snapshots read-only. The "current" version is always the latest by
+ *     `seq`; selecting an older version flips the article into a viewing
+ *     state but doesn't change which version is canonical. Editing a past
+ *     version is out of scope (spec calls for a fork action — separate task).
+ *
  * Out of scope (deferred to follow-ups):
  *   - Margin notes column / inline annotations  → bo-154
  *     (`brief/MarginNoteList.tsx`, `brief/BriefSection.tsx` annotations).
- *   - Version picker / scrubber                  → bo-155
- *     (`brief/BriefVersionPicker.tsx`, ⌘S snapshot UX).
  *   - Real ship handoff (interrogator + adapters) → bo-130 + Screen 07/M5.
+ *   - Fork-from-version action (editing the past).
  *   - App.tsx route dispatch (rendering this screen on `route.kind === 'brief'`)
  *     is left to bo-130 (BoardScreen refactor of App.tsx). This module is a
  *     self-contained named + default export so the dispatcher can choose
@@ -46,6 +58,11 @@ export interface BriefScreenProps {
   briefOverride?: Brief | null;
   /** Optional override for the placeholder ship handler (tests / future wiring). */
   onShipClick?: (brief: Brief) => void;
+  /**
+   * Optional override for the snapshot author label (tests / future "logged-in
+   * user" wiring). Defaults to `'user'` to match storage's `authoredBy` shape.
+   */
+  authoredBy?: string;
 }
 
 const ROOT_CLASS =
@@ -65,6 +82,12 @@ const STATUS_PILL_BASE_CLASS =
   'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium';
 const SHIP_BUTTON_CLASS =
   'inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+const SAVE_INDICATOR_CLASS =
+  'inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200';
+const SAVE_ERROR_CLASS =
+  'inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-800 ring-1 ring-inset ring-rose-200';
+const HISTORICAL_NOTICE_CLASS =
+  'rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800';
 
 const STATUS_PILL_TONE: Record<BriefShipStatus, string> = {
   draft: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
@@ -146,10 +169,32 @@ function briefStateToMarkdown(version: BriefVersion): string {
   return lines.join('\n').trim();
 }
 
+type SaveIndicatorState =
+  | { kind: 'idle' }
+  | { kind: 'saving' }
+  | { kind: 'saved'; at: number }
+  | { kind: 'error'; message: string };
+
+const SAVE_INDICATOR_TIMEOUT_MS = 2000;
+
+/**
+ * Detect the platform-appropriate save shortcut.
+ *
+ * macOS uses ⌘S; Windows / Linux use Ctrl+S. We accept both on every platform
+ * so headless tests and remote sessions don't have to guess. Browsers map ⌘S
+ * to "Save Page" by default — we `preventDefault()` so this hijack works.
+ */
+function isSaveShortcut(e: KeyboardEvent): boolean {
+  const key = e.key;
+  if (key !== 's' && key !== 'S') return false;
+  return e.metaKey || e.ctrlKey;
+}
+
 export function BriefScreen({
   ideaIdOverride,
   briefOverride,
   onShipClick,
+  authoredBy = 'user',
 }: BriefScreenProps = {}): React.ReactElement {
   const [route] = useRoute();
 
@@ -168,17 +213,111 @@ export function BriefScreen({
     briefOverride !== undefined ? (briefOverride ?? null) : briefSync.brief;
   const isLoading = briefOverride !== undefined ? false : briefSync.isLoading;
   const notFound = briefOverride !== undefined ? briefOverride === null : briefSync.notFound;
+  const appendVersion = briefSync.appendVersion;
 
-  const version = useMemo(() => latestVersion(brief), [brief]);
+  // ---- Version selection ----------------------------------------------------
+  // `null` = "latest" sentinel. We resolve to the actual version below so the
+  // invariant ("current = latest by seq") survives appends — when a new version
+  // lands and the user is on "latest", the article auto-flips to it.
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+  const versions = useMemo<readonly BriefVersion[]>(() => brief?.versions ?? [], [brief]);
+
+  const latestVer = useMemo(() => latestVersion(brief), [brief]);
+
+  const displayedVersion: BriefVersion | null = useMemo(() => {
+    if (selectedVersionId === null) return latestVer;
+    const match = versions.find(v => v.id === selectedVersionId);
+    return match ?? latestVer;
+  }, [latestVer, selectedVersionId, versions]);
+
+  const isViewingHistorical =
+    displayedVersion !== null && latestVer !== null && displayedVersion.id !== latestVer.id;
 
   const renderedMarkdown = useMemo(() => {
-    if (!version) return '';
-    if (version.artifactMd && version.artifactMd.trim().length > 0) {
-      return version.artifactMd;
+    if (!displayedVersion) return '';
+    if (displayedVersion.artifactMd && displayedVersion.artifactMd.trim().length > 0) {
+      return displayedVersion.artifactMd;
     }
-    return briefStateToMarkdown(version);
-  }, [version]);
+    return briefStateToMarkdown(displayedVersion);
+  }, [displayedVersion]);
 
+  // ---- Save (⌘S / Ctrl+S) ---------------------------------------------------
+  const [saveState, setSaveState] = useState<SaveIndicatorState>({ kind: 'idle' });
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest references used by the keydown handler — keeps the listener stable
+  // (we add it once) without staleness.
+  const displayedRef = useRef<BriefVersion | null>(displayedVersion);
+  const briefRef = useRef<Brief | null>(brief);
+  const appendRef = useRef(appendVersion);
+  const authorRef = useRef(authoredBy);
+  const savingRef = useRef(false);
+  displayedRef.current = displayedVersion;
+  briefRef.current = brief;
+  appendRef.current = appendVersion;
+  authorRef.current = authoredBy;
+
+  const scheduleSavedTimeout = useCallback((at: number) => {
+    if (saveTimeoutRef.current !== null) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      setSaveState(prev => (prev.kind === 'saved' && prev.at === at ? { kind: 'idle' } : prev));
+    }, SAVE_INDICATOR_TIMEOUT_MS);
+  }, []);
+
+  const performSnapshot = useCallback(async (): Promise<void> => {
+    if (savingRef.current) return; // de-bounce double-presses
+    const currentBrief = briefRef.current;
+    const currentVersion = displayedRef.current;
+    if (!currentBrief || !currentVersion) return;
+
+    savingRef.current = true;
+    setSaveState({ kind: 'saving' });
+    try {
+      // Snapshot what the user is currently looking at. If they're on a past
+      // version, "save" effectively pins that historical content as a new
+      // latest version — a lightweight fork-by-save. The new version's seq is
+      // assigned by storage (lastSeq + 1), preserving the invariant that the
+      // "current" version is always the latest by seq.
+      await appendRef.current({
+        briefState: currentVersion.briefState,
+        artifactMd: currentVersion.artifactMd,
+        authoredBy: authorRef.current,
+      });
+      // Snap the picker back to "latest" so the article flips to the new
+      // snapshot — otherwise we'd remain visually stuck on the old version
+      // we just cloned.
+      setSelectedVersionId(null);
+      const at = Date.now();
+      setSaveState({ kind: 'saved', at });
+      scheduleSavedTimeout(at);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Save failed';
+      setSaveState({ kind: 'error', message });
+    } finally {
+      savingRef.current = false;
+    }
+  }, [scheduleSavedTimeout]);
+
+  // Single window-level keydown listener: ⌘S / Ctrl+S → snapshot.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!isSaveShortcut(e)) return;
+      // Hijack the browser default ("Save Page As…").
+      e.preventDefault();
+      void performSnapshot();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if (saveTimeoutRef.current !== null) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+    };
+  }, [performSnapshot]);
+
+  // ---- Misc handlers --------------------------------------------------------
   const handleShipClick = useCallback(() => {
     if (!brief) return;
     if (onShipClick) {
@@ -186,6 +325,10 @@ export function BriefScreen({
     }
     // No real handoff in v0. Screen 07 (M5) wires the interrogator + adapters.
   }, [brief, onShipClick]);
+
+  const handleVersionSelect = useCallback((id: string | null) => {
+    setSelectedVersionId(id);
+  }, []);
 
   // ---- Render branches ------------------------------------------------------
 
@@ -250,10 +393,52 @@ export function BriefScreen({
           <p className={SUBTITLE_CLASS}>
             {versionCount === 0
               ? 'No versions snapshotted yet.'
-              : `Version ${version?.seq ?? versionCount} of ${versionCount}.`}
+              : `Version ${displayedVersion?.seq ?? versionCount} of ${versionCount}${
+                  isViewingHistorical ? ' (viewing history)' : ''
+                }.`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {versionCount > 0 && (
+            <BriefVersionPicker
+              versions={versions}
+              selectedVersionId={selectedVersionId}
+              onSelect={handleVersionSelect}
+            />
+          )}
+          {saveState.kind === 'saving' && (
+            <span
+              className={SAVE_INDICATOR_CLASS}
+              role="status"
+              aria-live="polite"
+              data-bo-save-state="saving"
+            >
+              <span aria-hidden="true">●</span>
+              Saving…
+            </span>
+          )}
+          {saveState.kind === 'saved' && (
+            <span
+              className={SAVE_INDICATOR_CLASS}
+              role="status"
+              aria-live="polite"
+              data-bo-save-state="saved"
+            >
+              <span aria-hidden="true">✓</span>
+              Saved
+            </span>
+          )}
+          {saveState.kind === 'error' && (
+            <span
+              className={SAVE_ERROR_CLASS}
+              role="alert"
+              data-bo-save-state="error"
+              title={saveState.message}
+            >
+              <span aria-hidden="true">!</span>
+              Save failed
+            </span>
+          )}
           <span
             className={`${STATUS_PILL_BASE_CLASS} ${STATUS_PILL_TONE[status]}`}
             aria-label={`Ship status: ${STATUS_PILL_LABEL[status]}`}
@@ -275,8 +460,19 @@ export function BriefScreen({
         </div>
       </header>
 
+      {isViewingHistorical && (
+        <div className={HISTORICAL_NOTICE_CLASS} role="note">
+          Viewing version {displayedVersion?.seq} (read-only). The latest version is
+          {' '}v{latestVer?.seq}. Press{' '}
+          <kbd className="rounded border border-amber-300 bg-amber-100 px-1 py-0.5 font-mono">
+            ⌘S
+          </kbd>{' '}
+          to fork this snapshot as a new latest version.
+        </div>
+      )}
+
       <article className={ARTICLE_CLASS} aria-label="Brief content">
-        {version === null ? (
+        {displayedVersion === null ? (
           <p className="text-sm text-slate-500">
             This brief has no versions yet. Snapshot the canvas with{' '}
             <kbd className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-xs">
@@ -294,9 +490,8 @@ export function BriefScreen({
       </article>
 
       {/*
-        Margin notes column (bo-154) and version picker (bo-155) land in
-        follow-up tasks; intentionally absent here so the v0 shell ships
-        without speculative scaffolding.
+        Margin notes column (bo-154) lands in a follow-up task; intentionally
+        absent here so the v0 shell ships without speculative scaffolding.
       */}
     </div>
   );
