@@ -4,7 +4,10 @@ import { useBriefSync } from '../useBriefSync';
 import { usePromoteToPrinciple } from '../usePromoteToPrinciple';
 import Markdown from '../../../src/workspace/markdown';
 import BriefVersionPicker from '../brief/BriefVersionPicker';
-import type { Brief, BriefShipStatus, BriefVersion } from '../../../src/types';
+import MarginNoteList from '../brief/MarginNoteList';
+import AddMarginNoteForm from '../brief/AddMarginNoteForm';
+import { listPersonas } from '../../../src/storage/personas';
+import type { Brief, BriefShipStatus, BriefVersion, Persona } from '../../../src/types';
 
 /**
  * Screen 04 · The Brief.
@@ -64,6 +67,16 @@ export interface BriefScreenProps {
    * user" wiring). Defaults to `'user'` to match storage's `authoredBy` shape.
    */
   authoredBy?: string;
+  /**
+   * Optional override for the persona roster used by the margin-note composer
+   * (tests / Storybook). When omitted, personas are loaded from IDB on mount.
+   */
+  personasOverride?: readonly Persona[];
+  /**
+   * Optional override for the "current persona" — when set, the margin-note
+   * composer defaults attribution to this persona id. Defaults to user.
+   */
+  currentPersonaId?: string | null;
 }
 
 const ROOT_CLASS =
@@ -89,6 +102,15 @@ const SAVE_ERROR_CLASS =
   'inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-800 ring-1 ring-inset ring-rose-200';
 const HISTORICAL_NOTICE_CLASS =
   'rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800';
+const LAYOUT_CLASS = 'grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]';
+const ARTICLE_COLUMN_CLASS = 'flex flex-col gap-4 min-w-0';
+const RAIL_COLUMN_CLASS = 'flex min-h-[400px] flex-col gap-3';
+const SECTION_GUTTER_BUTTON_CLASS =
+  'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none ring-1 ring-inset transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300';
+const SECTION_GUTTER_HAS_CLASS =
+  'bg-amber-100 text-amber-800 ring-amber-200 hover:bg-amber-200';
+const SECTION_GUTTER_EMPTY_CLASS =
+  'bg-slate-100 text-slate-500 ring-slate-200 hover:bg-slate-200';
 
 const STATUS_PILL_TONE: Record<BriefShipStatus, string> = {
   draft: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
@@ -108,6 +130,53 @@ const STATUS_PILL_LABEL: Record<BriefShipStatus, string> = {
 function latestVersion(brief: Brief | null): BriefVersion | null {
   if (!brief || brief.versions.length === 0) return null;
   return brief.versions[brief.versions.length - 1];
+}
+
+/**
+ * Catalogue of brief sections used as `MarginNote.anchorSection` values.
+ *
+ * Stable ids are deliberately kebab-style strings: they're embedded in
+ * persisted MarginNote rows, so the catalogue is append-only — never
+ * rename a section id after a release without a migration. The render
+ * gutter cross-references these ids when rendering per-section indicators.
+ */
+export interface BriefSectionDescriptor {
+  /** Stable persisted id (anchorSection). */
+  id: string;
+  /** Human label shown in section headings + the composer dropdown. */
+  label: string;
+}
+
+export const BRIEF_SECTIONS: readonly BriefSectionDescriptor[] = [
+  { id: 'problem', label: 'Problem' },
+  { id: 'audience', label: 'Audience' },
+  { id: 'desired-outcome', label: 'Desired outcome' },
+  { id: 'must-stay-true', label: 'Must stay true' },
+  { id: 'success-criteria', label: 'Success criteria' },
+  { id: 'out-of-scope', label: 'Out of scope' },
+  { id: 'open-questions', label: 'Open questions' },
+  { id: 'next-step', label: 'Next step' },
+];
+
+/**
+ * Determine which section ids actually have content for the displayed brief
+ * version. The structured rendering in this screen only emits headings for
+ * non-empty sections, but margin notes can anchor to any section regardless
+ * of whether the version has content there yet — the gutter grays those out.
+ */
+function activeSectionIds(version: BriefVersion | null): Set<string> {
+  if (!version) return new Set();
+  const { briefState } = version;
+  const out = new Set<string>();
+  if (briefState.problemStatement) out.add('problem');
+  if (briefState.audience) out.add('audience');
+  if (briefState.desiredOutcome) out.add('desired-outcome');
+  if (briefState.mustStayTrueRules.length > 0) out.add('must-stay-true');
+  if (briefState.successCriteria.length > 0) out.add('success-criteria');
+  if (briefState.outOfScope.length > 0) out.add('out-of-scope');
+  if (briefState.openQuestions.length > 0) out.add('open-questions');
+  if (briefState.nextStep) out.add('next-step');
+  return out;
 }
 
 /**
@@ -196,6 +265,8 @@ export function BriefScreen({
   briefOverride,
   onShipClick,
   authoredBy = 'user',
+  personasOverride,
+  currentPersonaId = null,
 }: BriefScreenProps = {}): React.ReactElement {
   const [route] = useRoute();
 
@@ -215,6 +286,40 @@ export function BriefScreen({
   const isLoading = briefOverride !== undefined ? false : briefSync.isLoading;
   const notFound = briefOverride !== undefined ? briefOverride === null : briefSync.notFound;
   const appendVersion = briefSync.appendVersion;
+  const addMarginNote = briefSync.addMarginNote;
+  const resolveMarginNote = briefSync.resolveMarginNote;
+
+  // ---- Persona roster -------------------------------------------------------
+  // Margin notes attribute to a persona; we load the active roster lazily so
+  // the composer can render a picker. Tests bypass IDB via `personasOverride`.
+  const [loadedPersonas, setLoadedPersonas] = useState<readonly Persona[]>(
+    personasOverride ?? [],
+  );
+
+  useEffect(() => {
+    if (personasOverride !== undefined) {
+      setLoadedPersonas(personasOverride);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const all = await listPersonas();
+        if (!cancelled) setLoadedPersonas(all);
+      } catch {
+        if (!cancelled) setLoadedPersonas([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [personasOverride]);
+
+  // ---- Margin note focus ----------------------------------------------------
+  const [focusedMarginNoteId, setFocusedMarginNoteId] = useState<string | null>(null);
+  // Section preselected in the composer (set when the user clicks a section
+  // gutter indicator). `null` keeps the composer's default ("Whole brief").
+  const [composerSection, setComposerSection] = useState<string | undefined>(undefined);
 
   // ---- Version selection ----------------------------------------------------
   // `null` = "latest" sentinel. We resolve to the actual version below so the
@@ -360,6 +465,84 @@ export function BriefScreen({
   const handleVersionSelect = useCallback((id: string | null) => {
     setSelectedVersionId(id);
   }, []);
+
+  // ---- Margin notes ---------------------------------------------------------
+  const marginNotes = useMemo(() => brief?.marginNotes ?? [], [brief]);
+  const sectionDescriptors = useMemo(() => BRIEF_SECTIONS.slice(), []);
+  const sectionIdsWithContent = useMemo(
+    () => activeSectionIds(displayedVersion),
+    [displayedVersion],
+  );
+  const openNotesBySection = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const note of marginNotes) {
+      if (note.status !== 'open') continue;
+      const key = note.anchorSection ?? '__brief__';
+      out[key] = (out[key] ?? 0) + 1;
+    }
+    return out;
+  }, [marginNotes]);
+
+  const handleAddMarginNote = useCallback(
+    async (input: {
+      text: string;
+      author: { authorPersonaId: string | null; authorLabel: string };
+      anchorSection?: string;
+    }): Promise<void> => {
+      if (!brief) return;
+      const updated = await addMarginNote({
+        text: input.text,
+        authorPersonaId: input.author.authorPersonaId ?? undefined,
+        authorLabel: input.author.authorLabel,
+        anchorSection: input.anchorSection,
+        anchorVersionId: displayedVersion?.id,
+      });
+      // Focus the just-added note so the rail scrolls to it. The latest note
+      // is at the head of `marginNotes` after sorting (newest-first), so
+      // pull it from the persisted record to get its real id.
+      const fresh = updated.marginNotes
+        .filter(n => n.status === 'open')
+        .sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (fresh) setFocusedMarginNoteId(fresh.id);
+    },
+    [addMarginNote, brief, displayedVersion?.id],
+  );
+
+  const handleResolveMarginNote = useCallback(
+    async (noteId: string, status: 'resolved' | 'dismissed'): Promise<void> => {
+      if (!brief) return;
+      await resolveMarginNote({ noteId, status });
+      if (focusedMarginNoteId === noteId) setFocusedMarginNoteId(null);
+    },
+    [brief, focusedMarginNoteId, resolveMarginNote],
+  );
+
+  const handleSectionGutterClick = useCallback(
+    (sectionId: string) => {
+      setComposerSection(sectionId);
+      // Surface the most-recent open note for the section as the focused entry.
+      const candidate = marginNotes
+        .filter(n => n.status === 'open' && n.anchorSection === sectionId)
+        .sort((a, b) => b.createdAt - a.createdAt)[0];
+      setFocusedMarginNoteId(candidate ? candidate.id : null);
+    },
+    [marginNotes],
+  );
+
+  const handleAnchorClickFromList = useCallback(
+    (sectionId: string) => {
+      setComposerSection(sectionId);
+      setFocusedMarginNoteId(null);
+      // Best-effort scroll to the section heading; rendered via id below.
+      if (typeof document !== 'undefined') {
+        const el = document.getElementById(`bo-brief-section-${sectionId}`);
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+      }
+    },
+    [],
+  );
 
   // ---- Render branches ------------------------------------------------------
 
@@ -519,28 +702,115 @@ export function BriefScreen({
         </div>
       )}
 
-      <article className={ARTICLE_CLASS} aria-label="Brief content">
-        {displayedVersion === null ? (
-          <p className="text-sm text-slate-500">
-            This brief has no versions yet. Snapshot the canvas with{' '}
-            <kbd className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-xs">
-              ⌘S
-            </kbd>{' '}
-            to create the first version.
-          </p>
-        ) : renderedMarkdown.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            This version is empty. Add structure on the canvas, then re-snapshot.
-          </p>
-        ) : (
-          <Markdown content={renderedMarkdown} />
-        )}
-      </article>
-
-      {/*
-        Margin notes column (bo-154) lands in a follow-up task; intentionally
-        absent here so the v0 shell ships without speculative scaffolding.
-      */}
+      <div className={LAYOUT_CLASS}>
+        <div className={ARTICLE_COLUMN_CLASS}>
+          {/*
+            Section gutter strip (bo-154). Each section is a clickable button
+            that surfaces a count of open margin notes anchored there. Sections
+            with no current content are dimmed but still clickable — a note can
+            anchor to "Open questions" even when the version doesn't have any
+            yet, signalling the gap.
+          */}
+          {displayedVersion !== null && (
+            <nav
+              aria-label="Brief sections"
+              className="flex flex-wrap items-center gap-1.5 px-1"
+              data-bo-brief-section-gutter
+            >
+              <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Sections
+              </span>
+              {sectionDescriptors.map(s => {
+                const count = openNotesBySection[s.id] ?? 0;
+                const hasContent = sectionIdsWithContent.has(s.id);
+                const tone = count > 0
+                  ? SECTION_GUTTER_HAS_CLASS
+                  : SECTION_GUTTER_EMPTY_CLASS;
+                return (
+                  <button
+                    type="button"
+                    key={s.id}
+                    className={`${SECTION_GUTTER_BUTTON_CLASS} ${tone}${hasContent ? '' : ' opacity-60'}`}
+                    onClick={() => handleSectionGutterClick(s.id)}
+                    title={
+                      count > 0
+                        ? `${s.label}: ${count} open margin note${count === 1 ? '' : 's'}`
+                        : `${s.label}: no margin notes`
+                    }
+                    aria-label={`Section ${s.label}, ${count} open margin notes`}
+                    data-bo-section-id={s.id}
+                    data-bo-section-note-count={count}
+                  >
+                    {s.label}
+                    {count > 0 && (
+                      <span
+                        className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white"
+                        aria-hidden="true"
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+          <article className={ARTICLE_CLASS} aria-label="Brief content">
+            {displayedVersion === null ? (
+              <p className="text-sm text-slate-500">
+                This brief has no versions yet. Snapshot the canvas with{' '}
+                <kbd className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-xs">
+                  ⌘S
+                </kbd>{' '}
+                to create the first version.
+              </p>
+            ) : renderedMarkdown.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                This version is empty. Add structure on the canvas, then re-snapshot.
+              </p>
+            ) : (
+              <>
+                {/*
+                  Anchor stubs for section scroll-to. Each section heading also
+                  ships with a label-derived `id` so MarginNoteList anchor clicks
+                  can scroll the article. The Markdown projection above is
+                  intentionally untouched; these anchors live above the markdown
+                  body to keep DOMPurify's allow-list unchanged.
+                */}
+                {sectionDescriptors.map(s => (
+                  <div
+                    key={s.id}
+                    id={`bo-brief-section-${s.id}`}
+                    aria-hidden="true"
+                    style={{ height: 0, overflow: 'hidden' }}
+                  />
+                ))}
+                <Markdown content={renderedMarkdown} />
+              </>
+            )}
+          </article>
+        </div>
+        <div className={RAIL_COLUMN_CLASS}>
+          <MarginNoteList
+            notes={marginNotes}
+            personas={loadedPersonas}
+            sections={sectionDescriptors}
+            onResolve={handleResolveMarginNote}
+            onAnchorClick={handleAnchorClickFromList}
+            focusedNoteId={focusedMarginNoteId}
+            footer={
+              <AddMarginNoteForm
+                personas={loadedPersonas}
+                sections={sectionDescriptors}
+                onSubmit={handleAddMarginNote}
+                defaultAuthorPersonaId={currentPersonaId}
+                defaultSection={composerSection ?? ''}
+                compact
+              />
+            }
+          />
+        </div>
+      </div>
     </div>
   );
 }
