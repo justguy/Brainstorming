@@ -11,14 +11,27 @@ function makeBoard(id = DEFAULT_BOARD_ID, title = DEFAULT_BOARD_TITLE): BoardRec
     dataVersion: 0,
     changeCursor: 0,
     nextChangeSeq: 1,
+    // M1 / bo-110: new boards default to the screens-v2 lifecycle baseline.
+    status: 'active',
+    currentPhase: 1,
+    activePersonas: [],
+    lastActivityAt: now,
   };
 }
 
+// bo-110: runtime-defaulting layer for screens-v2 widening. We chose this over
+// a v12 migration so existing IDB rows keep loading unchanged — defaults are
+// applied on read, persisted lazily on the next write. Required fields are
+// kept optional on the type so writers stay back-compat.
 function hydrateBoard(board: BoardRecord): BoardRecord {
   return {
     ...board,
     changeCursor: board.changeCursor ?? 0,
     nextChangeSeq: board.nextChangeSeq ?? 1,
+    status: board.status ?? 'active',
+    currentPhase: board.currentPhase ?? 1,
+    activePersonas: board.activePersonas ?? [],
+    lastActivityAt: board.lastActivityAt ?? board.updatedAt,
   };
 }
 

@@ -11,6 +11,53 @@ export type ProjectId = string;
 export type Density = 'simple' | 'standard' | 'expert';
 export type ProviderId = 'gemini' | 'openai' | 'anthropic';
 
+// --- Sticky / Idea visual + lifecycle (M1, bo-110) ---
+// `StickyColor` is the canonical palette for the `<Sticky>` primitive (Build
+// Spec §02). Names map to design tokens consumed by `apps/web/primitives/`.
+export type StickyColor =
+  | 'yellow'
+  | 'pink'
+  | 'blue'
+  | 'green'
+  | 'purple'
+  | 'orange'
+  | 'gray';
+
+// `IdeaState` is the lifecycle facet that the screens-v2 surfaces (Bloom mode,
+// settled-thread halos, mute) read. It is orthogonal to the legacy `IdeaStatus`
+// pipeline ('captured' → 'archived') which remains the source of truth for the
+// orchestrator. Both coexist by design: the screens-v2 layer overlays `state`
+// on top of `status` for visual treatment.
+export type IdeaState = 'draft' | 'live' | 'settled' | 'muted';
+
+// Authorship attribution for Ideas / Connections / margin notes. Decoupled
+// from the existing actor types so screens-v2 can attribute to a Persona by
+// id without dragging the full ChangeActor surface.
+export type IdeaAuthorKind = 'user' | 'persona' | 'role' | 'system';
+export interface IdeaAuthorRef {
+  kind: IdeaAuthorKind;
+  // For kind='persona' this is a Persona.id; for 'role' a roleId; for 'user'
+  // typically 'self'; for 'system' an opaque source identifier.
+  id: string;
+  label?: string;
+}
+
+// A contradiction is a lightweight pointer to another Idea that materially
+// disagrees with this one. Surfaced by Devil's-advocate / Critic personas.
+// The cross-board view (Screen 03) renders contradictions as red-tinged edges.
+export interface IdeaContradiction {
+  // Idea.id of the conflicting idea. May reference a discarded idea.
+  ideaId: string;
+  // 1-2 sentence explanation. Optional so legacy data without rationale loads.
+  rationale?: string;
+  // Persona / role / user that surfaced the contradiction.
+  authorRef?: IdeaAuthorRef;
+  // Optional connection id when the contradiction was materialised as a
+  // Connection of kind='contradicts'. Lets the inspector deep-link.
+  connectionId?: string;
+  createdAt: number;
+}
+
 // --- Project entity (M0) ---
 // A Project sits above one or more Boards. The default workspace ships with a
 // single project (`local-project`) so existing single-board users see no change.
@@ -368,6 +415,25 @@ export interface Idea {
   mergedFrom?: string[];               // if this idea was merged, the ids of the originals
   insights?: IdeaInsight[];
   beadCoordination?: BeadCoordinationState;
+  // --- M1 / bo-110 screens-v2 widening (all optional for back-compat) ---
+  // Cross-board pinning: an idea can appear (read-only) on additional boards
+  // it was not originally captured on. Single source of truth lives on the
+  // original idea — pinned boards reference by id only.
+  pinnedToBoardIds?: BoardId[];
+  // For ideas spawned from a parent (split / fork / "follow this thread").
+  parentIdeaId?: string;
+  // Materialised list of contradicting ideas (Devil's-advocate / Critic
+  // personas). Connections of kind='contradicts' remain canonical; this is
+  // a denormalised view for fast inspector rendering.
+  contradictions?: IdeaContradiction[];
+  // Lifecycle facet read by screens-v2 (Bloom, settled halos, mute).
+  // Orthogonal to legacy `status`; defaults to 'live' at hydrate time.
+  state?: IdeaState;
+  // Who created the idea — Persona / role / user. Older ideas omit this.
+  authorRef?: IdeaAuthorRef;
+  // Sticky color for the canvas card. Older ideas render with the default
+  // (yellow) until a user / role re-colors them.
+  color?: StickyColor;
 }
 
 export interface IdeaInsight {
@@ -393,6 +459,12 @@ export interface Settings {
   activeModel: string;                // e.g. 'gemini-2.5-pro', 'gpt-4o', 'claude-sonnet-4-6'
   density: Density;
   boardTheme: BoardThemeMode;
+  // When true, the orchestrator surfaces gentle peripheral coach nudges on
+  // canvas during user idle / readiness plateau. Default ON.
+  proactiveSuggestionsEnabled: boolean;
+  // Show the green guidance callouts inside Focus / Bloom mode that label controls.
+  // Toggleable from the top-right of the board. Default ON.
+  guidanceNotesEnabled: boolean;
 }
 
 // --- ct-mcp payload that every micro-agent call is built from ---
