@@ -41,6 +41,18 @@ const KIND_OPTIONS: Array<{ value: ConnectionKind; label: string; shortLabel: st
     shortLabel: 'Theme',
     description: 'The notes belong to the same thread or pattern.',
   },
+  {
+    value: 'depends_on',
+    label: 'Depends on',
+    shortLabel: 'Depends',
+    description: 'One note requires the other to land first.',
+  },
+  {
+    value: 'evidence_for',
+    label: 'Evidence for',
+    shortLabel: 'Evidence',
+    description: 'One note backs the other with data, citation, or example.',
+  },
 ];
 
 const KIND_LABEL: Record<ConnectionKind, string> = {
@@ -48,6 +60,8 @@ const KIND_LABEL: Record<ConnectionKind, string> = {
   contradicts: 'contradicts',
   revives_killed: 'revives killed',
   shared_theme: 'shared theme',
+  depends_on: 'depends on',
+  evidence_for: 'evidence for',
 };
 
 const KIND_COLOR: Record<ConnectionKind, string> = {
@@ -55,6 +69,11 @@ const KIND_COLOR: Record<ConnectionKind, string> = {
   contradicts: 'border-rose-200 bg-rose-50 text-rose-700',
   revives_killed: 'border-amber-200 bg-amber-50 text-amber-800',
   shared_theme: 'border-sky-200 bg-sky-50 text-sky-700',
+  // Reuse the builds_on palette until <ConnectionLine> ships its native
+  // depends_on / evidence_for tokens (bo-113). Same legacy bucket as
+  // kindMapping.toLegacyKind.
+  depends_on: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  evidence_for: 'border-emerald-200 bg-emerald-50 text-emerald-700',
 };
 
 const STRENGTH_DOTS: Record<Connection['strength'], string> = {
