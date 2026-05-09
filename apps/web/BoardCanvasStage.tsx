@@ -29,6 +29,13 @@ export interface BoardCanvasStageProps extends Omit<CanvasProps, 'overlayContent
   showClarificationOverlay?: boolean;
   /** Extra layers rendered inside the canvas-coordinate overlay (pans/zooms with the board). */
   extraCanvasOverlay?: React.ReactNode;
+  /**
+   * bo-143 — when set, the canvas paints a preview halo around these ideas
+   * (Synthesizer cluster proposal). Cleared by passing `null`/`undefined`.
+   */
+  clusterPreviewIdeaIds?: string[] | null;
+  /** Stable id for the preview (used to derive the preview halo colour). */
+  clusterPreviewKey?: string | null;
 }
 
 function getBusyIdeaIds(critiqueBusyByIdea: CritiqueBusyByIdea | undefined): string[] {
@@ -56,6 +63,8 @@ export function BoardCanvasStage({
   onActivateAttentionItem,
   showClarificationOverlay = true,
   extraCanvasOverlay,
+  clusterPreviewIdeaIds = null,
+  clusterPreviewKey = null,
   ideas,
   groups,
   onOpen,
@@ -130,6 +139,8 @@ export function BoardCanvasStage({
               surfaceWidth={surfaceBounds.width}
               surfaceHeight={surfaceBounds.height}
               extraCanvasOverlay={extraCanvasOverlay}
+              clusterPreviewIdeaIds={clusterPreviewIdeaIds ?? undefined}
+              clusterPreviewKey={clusterPreviewKey ?? undefined}
             />
           }
         />
@@ -166,6 +177,8 @@ interface BoardCanvasOverlayStackProps {
   surfaceWidth: number;
   surfaceHeight: number;
   extraCanvasOverlay?: React.ReactNode;
+  clusterPreviewIdeaIds?: string[];
+  clusterPreviewKey?: string;
 }
 
 function BoardCanvasOverlayStack({
@@ -190,6 +203,8 @@ function BoardCanvasOverlayStack({
   surfaceWidth,
   surfaceHeight,
   extraCanvasOverlay,
+  clusterPreviewIdeaIds,
+  clusterPreviewKey,
 }: BoardCanvasOverlayStackProps): React.ReactElement {
   return (
     <>
@@ -199,6 +214,8 @@ function BoardCanvasOverlayStack({
         width={surfaceWidth}
         height={surfaceHeight}
         clusterZoom={clusterZoom}
+        previewIdeaIds={clusterPreviewIdeaIds}
+        previewKey={clusterPreviewKey}
       />
       {clusterZoom && (
         <ClusterZoomThumbnailLayer
