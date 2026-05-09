@@ -46,6 +46,8 @@ export interface CreatePersonaInput {
   active?: boolean;
   projectId?: ProjectId;
   boardId?: BoardId;
+  /** Optional human-facing description / system-prompt-ish narrative. */
+  description?: string;
   /** Optional explicit id. Used by built-ins; UUID otherwise. */
   id?: string;
 }
@@ -61,6 +63,7 @@ export async function createPersona(input: CreatePersonaInput): Promise<Persona>
     active: input.active ?? true,
     projectId: input.projectId,
     boardId: input.boardId,
+    description: input.description,
     createdAt: now,
     updatedAt: now,
   };
