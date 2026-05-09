@@ -71,8 +71,29 @@ export interface Project {
   autonomyDial: AutonomyLevel;
   summary?: string;
   principles?: string[];
+  // bo-161 (M5 / Screen 03): AI-detected theme overlap between boards in this
+  // project. Produced by the `themeOverlapDetector` role; the cross-board map
+  // (Screen 03) renders each entry as an edge between two BoardThumbnails.
+  // Stored on the Project (rather than a new IDB store) to keep the shape
+  // simple and avoid an extra v12 migration — re-runs replace the whole list.
+  crossBoardEdges?: CrossBoardEdge[];
   createdAt: number;
   updatedAt: number;
+}
+
+// bo-161 — output edge for the themeOverlapDetector role; persisted on
+// `Project.crossBoardEdges`. `boardA` and `boardB` are always distinct and the
+// pair is canonicalised at write time so (A,B) and (B,A) collapse to one edge.
+// `confidence` is 0.0–1.0; the UI uses it to weight stroke width.
+export interface CrossBoardEdge {
+  boardA: BoardId;
+  boardB: BoardId;
+  themes: string[];
+  confidence: number;
+  rationale?: string;
+  // Epoch ms when this edge was last produced. Helps the UI fade stale edges
+  // when boards have moved on without a re-run of the detector.
+  detectedAt?: number;
 }
 
 // --- Persona entity (M1/M3-pre, bo-120) ---
