@@ -113,6 +113,12 @@ export interface Persona {
   active: boolean;
   projectId?: ProjectId;
   boardId?: BoardId;
+  /**
+   * Optional free-form description / system-prompt-ish narrative supplied
+   * when a custom persona is authored. Built-ins leave this undefined; the
+   * field is purely human-facing today (no orchestrator gating reads it yet).
+   */
+  description?: string;
   createdAt: number;
   updatedAt: number;
 }
