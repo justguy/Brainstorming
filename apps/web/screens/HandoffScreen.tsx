@@ -3,6 +3,10 @@ import { useRoute } from '../routing/useRoute';
 import { useBriefSync } from '../useBriefSync';
 import { HandoffInterrogator } from '../HandoffInterrogator';
 import type { Brief, BriefShipStatus, BriefVersion } from '../../../src/types';
+import { sendGithub } from '../../../src/integrations/github/githubAdapter';
+import { sendNotion } from '../../../src/integrations/notion/notionAdapter';
+import { sendLinear } from '../../../src/integrations/linear/linearAdapter';
+import { sendSlack } from '../../../src/integrations/slack/slackAdapter';
 
 /**
  * Screen 07 · Handoff (v0 shell + placeholder channel cards).
@@ -26,10 +30,10 @@ import type { Brief, BriefShipStatus, BriefVersion } from '../../../src/types';
  *   - Pre-ship LLM interrogator slot               → bo-164
  *     (`handoff/PreShipInterrogator.tsx`). A placeholder slot is left in the
  *     layout below; the interrogator mounts there once it lands.
- *   - GitHub channel formatter + adapter           → bo-165
- *   - Notion channel formatter + adapter           → bo-166
- *   - Linear channel formatter + adapter           → bo-167
- *   - Slack channel formatter + adapter            → bo-168
+ *   - GitHub channel formatter + adapter           → bo-165 (DONE)
+ *   - Notion channel formatter + adapter           → bo-166 (DONE)
+ *   - Linear channel formatter + adapter           → bo-167 (DONE)
+ *   - Slack channel formatter + adapter            → bo-168 (DONE)
  *   - App.tsx route dispatch (rendering this screen on `route.kind === 'handoff'`)
  *     is left to bo-130 (BoardScreen refactor of App.tsx). This module is a
  *     self-contained named + default export so the dispatcher can choose
@@ -177,37 +181,50 @@ export function HandoffScreen({
 
   const title = useMemo(() => deriveBriefTitle(brief), [brief]);
 
-  // Per-channel placeholder "send" state. Keyed by channel id; value is a
-  // synthetic reference string ("Sent · {channel}#{n}") so the UI can show
-  // *something* without pretending we hit a real API. Cleared if the brief
-  // changes shipStatus out from under us.
+  // Per-channel "send" state. Keyed by channel id; value is the adapter's
+  // returned ref (a real-looking URL the user can click / copy). v0 adapters
+  // return placeholder refs + log the formatted payload; M5+ swaps in OAuth
+  // backed implementations without changing this surface.
   const [sentRefs, setSentRefs] = useState<Partial<Record<HandoffChannelId, string>>>({});
+
+  // Adapter dispatch table. Keep the keys in lock-step with `HandoffChannelId`.
+  // Each adapter returns `{ ref, payload }`; we only consume `ref` here — the
+  // payload is logged inside the adapter for debug + manual paste.
+  const adapters = useMemo(
+    () => ({
+      github: sendGithub,
+      notion: sendNotion,
+      linear: sendLinear,
+      slack: sendSlack,
+    }) satisfies Record<HandoffChannelId, (brief: Brief) => Promise<{ ref: string }>>,
+    [],
+  );
 
   const handleChannelSend = useCallback(
     async (channelId: HandoffChannelId): Promise<void> => {
       if (!brief) return;
+      // Test seam: if a parent supplied `onChannelSend`, defer entirely to it
+      // and skip both adapter dispatch and IDB writes. Mirrors BriefScreen.
       if (onChannelSend) {
         onChannelSend(channelId, brief);
         setSentRefs((prev) => ({ ...prev, [channelId]: `placeholder://${channelId}/${brief.id}` }));
         return;
       }
-      // Placeholder ship: flip status to 'shipped' (idempotent) and stash a
-      // synthetic reference so the user gets visual feedback. Real adapters
-      // (bo-165/166/167/168) replace this with channel-specific API calls.
       try {
+        const send = adapters[channelId];
+        const { ref } = await send(brief);
+        // Flip status to 'shipped' (idempotent) so the header pill reflects
+        // reality. Skip when a `briefOverride` is in play (test/storybook).
         if (briefOverride === undefined && brief.shipStatus !== 'shipped') {
           await briefSync.setShipStatus('shipped');
         }
-        setSentRefs((prev) => ({
-          ...prev,
-          [channelId]: `placeholder://${channelId}/${brief.id}`,
-        }));
+        setSentRefs((prev) => ({ ...prev, [channelId]: ref }));
       } catch {
-        // Non-fatal: surface nothing — bo-164 interrogator + adapter tasks own
-        // proper error UX. v0 stays silent rather than mis-implying a state.
+        // Non-fatal: surface nothing — bo-164 interrogator owns proper error
+        // UX. v0 stays silent rather than mis-implying a state.
       }
     },
-    [brief, briefSync, briefOverride, onChannelSend],
+    [adapters, brief, briefOverride, briefSync, onChannelSend],
   );
 
   // ---- Render branches ------------------------------------------------------
@@ -313,8 +330,8 @@ export function HandoffScreen({
               >
                 <header className="flex items-start justify-between gap-2">
                   <h3 className={CARD_NAME_CLASS}>{channel.name}</h3>
-                  <span className={CARD_BADGE_CLASS} title={`Owned by ${channel.owningTaskId}`}>
-                    Coming soon
+                  <span className={CARD_BADGE_CLASS} title={`Adapter wired in ${channel.owningTaskId}`}>
+                    v0 adapter
                   </span>
                 </header>
                 <p className={CARD_BLURB_CLASS}>{channel.blurb}</p>
@@ -323,8 +340,8 @@ export function HandoffScreen({
                   className={CARD_BUTTON_CLASS}
                   onClick={() => { void handleChannelSend(channel.id); }}
                   disabled={status === 'archived' || alreadySent}
-                  title={`Real ${channel.name} integration ships in ${channel.owningTaskId}.`}
-                  aria-label={`Send to ${channel.name} (placeholder)`}
+                  title={`Send via ${channel.name} (v0 adapter — placeholder ref, real payload logged).`}
+                  aria-label={`Send to ${channel.name}`}
                 >
                   {alreadySent ? 'Sent' : 'Send'}
                 </button>
