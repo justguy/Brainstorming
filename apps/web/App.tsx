@@ -22,7 +22,12 @@ import AppLlmErrorBanner from './AppLlmErrorBanner';
 import Options from './Options';
 import { useRoute } from './routing/useRoute';
 import { BoardScreen } from './screens/BoardScreen';
+import { BriefScreen } from './screens/BriefScreen';
+import { HandoffScreen } from './screens/HandoffScreen';
+import { HomeScreen } from './screens/HomeScreen';
+import { LogScrubberScreen } from './screens/LogScrubberScreen';
 import { MapScreen } from './screens/MapScreen';
+import { useBoardSync } from './useBoardSync';
 import { PrinciplesDrawer } from './PrinciplesDrawer';
 import { WebMcpAvailabilityModal } from './WebMcpAvailabilityModal';
 import { detectWebMcpSupport, type SupportStatus } from '../../src/webmcp/detectSupport';
@@ -47,6 +52,17 @@ declare global {
  * partial wave landings (e.g. HomeScreen lands after BoardScreen) keep the
  * app navigable.
  */
+/**
+ * Thin host that loads board state via `useBoardSync` and feeds the
+ * already-required `boardId` + `changeSets` props to `<LogScrubberScreen>`.
+ * Hooks must run unconditionally, so this lives as its own component
+ * mounted only when `route.kind === 'log'`.
+ */
+function LogScreenHost(): React.ReactElement {
+  const { changeSets, boardId } = useBoardSync();
+  return <LogScrubberScreen boardId={boardId} changeSets={changeSets} />;
+}
+
 function ScreenPlaceholder({ label }: { label: string }): React.ReactElement {
   return (
     <div className="flex h-full min-h-screen flex-col items-center justify-center gap-2 bg-gray-50 p-8 text-center">
@@ -126,22 +142,16 @@ export default function App(): React.ReactElement {
       appView = <MapScreen />;
       break;
     case 'home':
-      // TODO(bo-104): swap in <HomeScreen projectId={route.projectId} />
-      // when the multi-board home shim lands. Until then we fall through to
-      // the BoardScreen so the canvas remains the default landing surface.
-      appView = <BoardScreen onNavigate={navigate} />;
+      appView = <HomeScreen />;
       break;
     case 'brief':
-      // TODO(bo-152): swap in <BriefScreen boardId={...} ideaId={...} />.
-      appView = <ScreenPlaceholder label="Brief (coming soon)" />;
+      appView = <BriefScreen />;
       break;
     case 'log':
-      // TODO(bo-132 / bo-156): swap in <LogScreen boardId={...} />.
-      appView = <ScreenPlaceholder label="Project log (coming soon)" />;
+      appView = <LogScreenHost />;
       break;
     case 'handoff':
-      // TODO(bo-163): swap in <HandoffScreen boardId={...} briefId={...} />.
-      appView = <ScreenPlaceholder label="Handoff (coming soon)" />;
+      appView = <HandoffScreen />;
       break;
     case 'unknown':
     default:
