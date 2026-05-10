@@ -13,8 +13,11 @@ import {
 import { computePeekState } from '../../../src/board/projection/peekState';
 import type {
   BeatRunRecord,
+  BoardRecord,
   ChangeSetRecord,
 } from '../../../src/board/types';
+import { forkBoardAtSeq as forkBoardAtSeqStorage } from '../../../src/storage/forkBoardAtSeq';
+import { useRoute } from '../routing/useRoute';
 
 /**
  * Screen 06 · Log scrubber + peek render (bo-156).
@@ -68,6 +71,19 @@ export interface LogScrubberScreenProps {
    * sorted in ascending order (matches `projectLogEvents` output).
    */
   eventsOverride?: readonly LogEvent[];
+  /**
+   * bo-157: injection seam for the fork-from-here mutation. Defaults to the
+   * production `forkBoardAtSeq` storage helper. Tests / Storybook supply a
+   * stub so the screen can be exercised without an IDB roundtrip.
+   */
+  forkImpl?: (boardId: string, seq: number) => Promise<BoardRecord>;
+  /**
+   * bo-157: optional callback fired once the fork completes successfully.
+   * In production we navigate to the new board via `useRoute`; this hook
+   * exists so consumers (tests, an embedding screen) can observe the
+   * mutation without taking over routing.
+   */
+  onForkComplete?: (forkedBoard: BoardRecord) => void;
 }
 
 const ROOT_CLASS =
@@ -94,6 +110,14 @@ const TIMELINE_CLASS =
 
 const PEEK_BANNER_CLASS =
   'pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-violet-200 bg-violet-50/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700 shadow-sm';
+
+// bo-157: the Fork-from-here action sits in the scrubber bar so it is visible
+// alongside the cursor controls. We anchor it to the right of the slider rail
+// so muscle-memory parity with the "Latest" jump button is preserved.
+const FORK_BUTTON_CLASS =
+  'rounded-full border border-violet-400 bg-violet-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50';
+const FORK_ERROR_CLASS =
+  'mt-1 text-[11px] text-rose-600';
 
 interface SeqDomain {
   min: number;
@@ -166,8 +190,16 @@ export function LogScrubberScreen({
   initialSeq,
   onSeqChange,
   eventsOverride,
+  forkImpl,
+  onForkComplete,
 }: LogScrubberScreenProps): React.ReactElement {
   const domain = useMemo(() => computeSeqDomain(changeSets), [changeSets]);
+  // bo-157: navigation hook for the fork action. We always invoke `useRoute`
+  // (hooks must run unconditionally), but only call `navigate` from the fork
+  // handler when no caller-supplied `onForkComplete` overrides it.
+  const [, navigate] = useRoute();
+  const [forkInFlight, setForkInFlight] = useState(false);
+  const [forkError, setForkError] = useState<string | null>(null);
 
   const [cursorSeq, setCursorSeq] = useState<number | null>(() => {
     if (!domain.hasAny) return null;
@@ -222,6 +254,33 @@ export function LogScrubberScreen({
     setCursorSeq(domain.min);
     onSeqChange?.(domain.min);
   }, [domain, onSeqChange]);
+
+  // bo-157 — Fork-from-here. Visible only when the cursor sits below the
+  // latest seq (i.e. the user is genuinely peeking history). Wires through
+  // `forkBoardAtSeq` and then either invokes the supplied `onForkComplete`
+  // hook or navigates to the new board via the route hook.
+  const handleFork = useCallback(async () => {
+    if (!domain.hasAny || cursorSeq === null) return;
+    if (cursorSeq >= domain.max) return;
+    if (forkInFlight) return;
+    setForkInFlight(true);
+    setForkError(null);
+    try {
+      const fn = forkImpl ?? forkBoardAtSeqStorage;
+      const newBoard = await fn(boardId, cursorSeq);
+      if (onForkComplete) {
+        onForkComplete(newBoard);
+      } else {
+        navigate({ kind: 'board', boardId: newBoard.id, ideaId: null });
+      }
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : String(cause ?? 'unknown error');
+      setForkError(message);
+    } finally {
+      setForkInFlight(false);
+    }
+  }, [boardId, cursorSeq, domain, forkImpl, forkInFlight, navigate, onForkComplete]);
 
   const events = useMemo<readonly LogEvent[]>(
     () =>
@@ -340,7 +399,28 @@ export function LogScrubberScreen({
           >
             Latest ⏭
           </button>
+          {/* bo-157 — Fork-from-here. Hidden when no history exists or the
+              cursor is at the latest seq (no point forking the present). */}
+          {domain.hasAny && cursorSeq !== null && !isLatest && (
+            <button
+              type="button"
+              onClick={() => {
+                void handleFork();
+              }}
+              disabled={forkInFlight}
+              className={FORK_BUTTON_CLASS}
+              aria-label={`Fork board at sequence ${cursorSeq}`}
+              title="Fork the board into a new copy starting from this point"
+            >
+              {forkInFlight ? 'Forking…' : 'Fork from here'}
+            </button>
+          )}
         </div>
+        {forkError !== null && (
+          <p className={FORK_ERROR_CLASS} role="alert">
+            Fork failed: {forkError}
+          </p>
+        )}
         <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-slate-500">
           <span>seq #{domain.hasAny ? domain.min : '—'}</span>
           <span>
