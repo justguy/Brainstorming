@@ -72,6 +72,12 @@ export interface AppCompanionRailProps {
     onApply?: (insightId: string) => void;
     onDismiss?: (insightId: string) => void;
   };
+  /**
+   * bo-143 — slot for the Synthesizer cluster-proposal NudgeCard list.
+   * Owned by `BoardScreen` so the apply / preview / dismiss handlers stay
+   * close to the cluster-review state (`useBeatReviewActions`).
+   */
+  synthesizerProposals?: React.ReactNode;
   session: Omit<CompanionSessionInput, 'pendingBoardChange' | 'autoRunReady' | 'suggestionCount'>;
 }
 
@@ -115,6 +121,7 @@ export function AppCompanionRail({
   backgroundAiError,
   dismissBackgroundAiError,
   robotNotes,
+  synthesizerProposals,
   session,
 }: AppCompanionRailProps): React.ReactElement {
   const companionAction = companionActionLabel
@@ -224,6 +231,8 @@ export function AppCompanionRail({
               onDismiss={robotNotes?.onDismiss}
             />
           )}
+
+          {synthesizerProposals}
 
           {showReviewPanel && (
             <section className="bo-card-surface space-y-2.5 rounded-[18px] border border-slate-200/80 p-2.5">

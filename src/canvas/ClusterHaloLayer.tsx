@@ -47,6 +47,20 @@ export interface ClusterHaloLayerProps {
    * Defaults to `false` (idea zoom).
    */
   clusterZoom?: boolean;
+  /**
+   * Optional preview overlay (bo-143). When set, an extra halo is drawn
+   * around the listed ideas using the cluster-zoom active style regardless
+   * of the current zoom mode, so a proposed Synthesizer cluster can be
+   * highlighted before it's applied. Ideas without panels are ignored;
+   * a single panel still renders (proposals start at 2+ but defending the
+   * single-panel case keeps the preview readable).
+   */
+  previewIdeaIds?: string[];
+  /**
+   * Optional stable id used to derive the preview halo colour so two
+   * different previews stay distinguishable. Falls back to a fixed key.
+   */
+  previewKey?: string;
 }
 
 interface HaloRect {
@@ -98,16 +112,56 @@ function computeHaloRects(
   return rects;
 }
 
+function computePreviewRect(
+  ideas: Idea[],
+  previewIdeaIds: string[] | undefined,
+  previewKey: string,
+): HaloRect | null {
+  if (!previewIdeaIds || previewIdeaIds.length === 0) return null;
+  const ideaById = new Map(ideas.map(idea => [idea.id, idea] as const));
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let memberCount = 0;
+  for (const ideaId of previewIdeaIds) {
+    const idea = ideaById.get(ideaId);
+    const panel = idea?.panel;
+    if (!panel) continue;
+    memberCount += 1;
+    minX = Math.min(minX, panel.x);
+    minY = Math.min(minY, panel.y);
+    maxX = Math.max(maxX, panel.x + panel.width);
+    maxY = Math.max(maxY, panel.y + panel.height);
+  }
+  if (memberCount === 0 || !Number.isFinite(minX)) return null;
+  return {
+    groupId: `preview:${previewKey}`,
+    x: minX - HALO_PADDING_PX,
+    y: minY - HALO_PADDING_PX,
+    width: maxX - minX + HALO_PADDING_PX * 2,
+    height: maxY - minY + HALO_PADDING_PX * 2,
+    color: colorForGroup(previewKey),
+    theme: null,
+  };
+}
+
 export function ClusterHaloLayer({
   groups,
   ideas,
   width,
   height,
   clusterZoom = false,
+  previewIdeaIds,
+  previewKey = 'synthesizer-preview',
 }: ClusterHaloLayerProps): React.ReactElement | null {
   const halos = useMemo(() => computeHaloRects(groups, ideas), [groups, ideas]);
+  const previewRect = useMemo(
+    () => computePreviewRect(ideas, previewIdeaIds, previewKey),
+    [ideas, previewIdeaIds, previewKey],
+  );
 
-  if (halos.length === 0) return null;
+  if (halos.length === 0 && !previewRect) return null;
 
   const fillOpacity = clusterZoom ? HALO_FILL_OPACITY_ACTIVE : HALO_FILL_OPACITY_IDLE;
   const strokeOpacity = clusterZoom ? HALO_STROKE_OPACITY_ACTIVE : HALO_STROKE_OPACITY_IDLE;
@@ -115,8 +169,13 @@ export function ClusterHaloLayer({
   // In cluster zoom, sit above the (thumbnail-sized) stickies to dominate the
   // visual hierarchy. In idea zoom, drop behind so stickies stay legible.
   const zIndex = clusterZoom ? 7 : 0;
+  // Preview halos always elevate above stickies so the user sees the proposed
+  // boundary regardless of zoom mode. Match the cluster-zoom thumbnail layer
+  // (zIndex 9) so the preview reads as the dominant unit while it's active.
+  const previewZIndex = 10;
 
   return (
+    <>
     <svg
       className="bo-cluster-halo-layer pointer-events-none absolute left-0 top-0"
       width={width}
@@ -151,6 +210,36 @@ export function ClusterHaloLayer({
         );
       })}
     </svg>
+    {previewRect && (
+      <svg
+        className="bo-cluster-halo-preview-layer pointer-events-none absolute left-0 top-0"
+        width={width}
+        height={height}
+        viewBox={`0 0 ${Math.max(1, width)} ${Math.max(1, height)}`}
+        style={{ zIndex: previewZIndex, overflow: 'visible' }}
+        aria-hidden="true"
+        data-preview="true"
+      >
+        <g key={previewRect.groupId} data-group-id={previewRect.groupId}>
+          <rect
+            x={previewRect.x}
+            y={previewRect.y}
+            width={previewRect.width}
+            height={previewRect.height}
+            rx={HALO_RADIUS_PX}
+            ry={HALO_RADIUS_PX}
+            fill={previewRect.color}
+            fillOpacity={HALO_FILL_OPACITY_ACTIVE}
+            stroke={previewRect.color}
+            strokeOpacity={HALO_STROKE_OPACITY_ACTIVE}
+            strokeWidth={3}
+            strokeDasharray="10 6"
+            style={{ filter: 'drop-shadow(0 4px 14px rgba(26, 24, 20, 0.22))' }}
+          />
+        </g>
+      </svg>
+    )}
+    </>
   );
 }
 

@@ -36,6 +36,10 @@ import { useBoardBeatRunner } from '../useBoardBeatRunner';
 import { BoardAppView } from '../BoardAppView';
 import { useBeatReviewActions } from '../useBeatReviewActions';
 import { BeatReviewPanel } from '../BeatReviewPanel';
+import {
+  SynthesizerProposalNudges,
+  type ClusterHintReviewItem,
+} from '../SynthesizerProposalNudges';
 import { BoardHistoryPanel } from '../BoardHistoryPanel';
 import { BoardBeadStrip } from '../BoardBeadStrip';
 import { IdeaDocsPanel } from '../IdeaDocsPanel';
@@ -150,6 +154,11 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   const [hoverIdeaId, setHoverIdeaId] = useState<string | null>(null);
   const [dismissedDemoSuggestionIds, setDismissedDemoSuggestionIds] = useState<string[]>([]);
   const [dismissedDemoCritiqueIds, setDismissedDemoCritiqueIds] = useState<string[]>([]);
+  // bo-143 — currently previewed Synthesizer cluster proposal. Held as the
+  // full review item so the canvas can paint a halo around the proposed idea
+  // ids without a second lookup, and so the NudgeCard list can flag the
+  // matching card as "showing preview" without a separate id field.
+  const [clusterPreviewItem, setClusterPreviewItem] = useState<ClusterHintReviewItem | null>(null);
   const lastSharedBoardMutationIdRef = useRef<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
@@ -335,6 +344,19 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   }, [facilitatorSync.lastBoardMutation, facilitatorSync.localClientId, loadBoard]);
 
   const { boardBeatReviewSession, boardBeatReviewItems } = selectBoardBeatReviewSurface({ beatReviewSessions, beatReviewItems, activeBeatReviewSession });
+
+  // bo-143 — drop the preview if the item was applied / scratched / removed
+  // out from under us, so the dashed halo doesn't linger on the canvas.
+  useEffect(() => {
+    if (!clusterPreviewItem) return;
+    const live = beatReviewItems.find(item => item.id === clusterPreviewItem.id);
+    if (!live || live.status !== 'pending' || live.candidate.kind !== 'cluster_hint') {
+      setClusterPreviewItem(null);
+    }
+  }, [beatReviewItems, clusterPreviewItem]);
+  const clusterPreviewIdeaIds = clusterPreviewItem
+    ? clusterPreviewItem.candidate.payload.ideaIds ?? clusterPreviewItem.candidate.affectedIdeaIds ?? null
+    : null;
 
   const {
     facilitatorPaused, idleMs, softModeAssessment, interactionSuppressed, softModeBusy,
@@ -769,6 +791,27 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
           onApply: applyStagedInsight,
           onDismiss: insightId => facilitatorSync.setAiActionOutcomeForPendingInsight(insightId, 'rejected'),
         },
+        synthesizerProposals: (
+          <SynthesizerProposalNudges
+            items={boardBeatReviewItems}
+            ideas={ideas}
+            previewItemId={clusterPreviewItem?.id ?? null}
+            busyByItem={beatReviewBusyByItem}
+            onAccept={itemId => {
+              if (clusterPreviewItem?.id === itemId) {
+                setClusterPreviewItem(null);
+              }
+              void handleKeepBeatReviewItem(itemId);
+            }}
+            onPreviewToggle={item => setClusterPreviewItem(item)}
+            onDismiss={itemId => {
+              if (clusterPreviewItem?.id === itemId) {
+                setClusterPreviewItem(null);
+              }
+              void handleScratchBeatReviewItem(itemId);
+            }}
+          />
+        ),
         session: {
           localClientId: facilitatorSync.localClientId,
           hostClientId: facilitatorSync.hostClientId,
@@ -785,6 +828,8 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
         ideas: canvasIdeas, groups, connections: canvasConnections, critiques: canvasCritiques, critiqueBusyByIdea, critiqueFocusIdeaId, hoverIdeaId, editingIdeaId,
         selectedIdeaId: selectedCanvasIdea?.id ?? null,
         showClarificationOverlay: false,
+        clusterPreviewIdeaIds,
+        clusterPreviewKey: clusterPreviewItem?.id ?? null,
         animatedConnectionIds, animatedCritiqueIds, animatedSuggestionIds, suppressAnimations: suppressRevealAnimations, docCounts, highlightIds: highlightedIdeaIds,
         suggestions: canvasSuggestions,
         suggestionOverflowCount, suggestionsExpanded, suggestionBusy,
