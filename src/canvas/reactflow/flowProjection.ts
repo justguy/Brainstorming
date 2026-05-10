@@ -285,7 +285,15 @@ export function projectConnectionEdges(input: {
   activePathIdeaIds?: string[];
   animatedConnectionIds?: string[];
   suppressAnimations?: boolean;
-  onSelect?: (connectionId: string, ideaIds: string[]) => void;
+  // The third argument carries the click's viewport coordinates so callers
+  // can anchor a popover near the user's pointer (Screen 05 — connection
+  // inspector). It's optional for back-compat with synthetic / non-pointer
+  // selections.
+  onSelect?: (
+    connectionId: string,
+    ideaIds: string[],
+    clientPosition?: { x: number; y: number },
+  ) => void;
 }): FlowBoardEdge[] {
   const segments = buildConnectionSegments(input.ideas, input.connections, input.liveDrag);
   const connectionById = new Map(input.connections.map(connection => [connection.id, connection] as const));

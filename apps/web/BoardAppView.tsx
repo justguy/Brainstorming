@@ -21,6 +21,13 @@ interface BoardAppViewProps {
   peerStrip?: React.ReactNode;
   historyPanel?: React.ReactNode;
   reviewPanel?: React.ReactNode;
+  /**
+   * Extra screen-level overlay nodes (popovers, dialogs) rendered alongside
+   * the existing shell. The host is responsible for positioning — this slot
+   * is a no-op for layout but lets the screen mount portals/popovers without
+   * having to thread additional props through `BoardWorkspaceOverlays`.
+   */
+  extraOverlays?: React.ReactNode;
 }
 
 export function BoardAppView({
@@ -37,6 +44,7 @@ export function BoardAppView({
   peerStrip,
   historyPanel,
   reviewPanel,
+  extraOverlays,
 }: BoardAppViewProps): React.ReactElement {
   const hasTurnLogPanel = Boolean(turnLogPanel);
   const hasSelectedIdeaDock = Boolean(workspaceOverlays.selectedBoardIdea);
@@ -113,6 +121,8 @@ export function BoardAppView({
           {peerStrip}
         </section>
       )}
+
+      {extraOverlays}
     </div>
   );
 }
