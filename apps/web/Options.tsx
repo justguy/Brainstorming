@@ -12,7 +12,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { Density, ProviderId, Settings } from '../../src/types';
 import { getSettings, setSettings, setCredential } from '../../src/storage/settings';
 import { selectProvider, ALL_PROVIDERS } from '../../src/providers/index';
-import Button from '../../src/ui/Button';
 import { resetAllLocalData } from './storageReset';
 
 type ValidationState = 'idle' | 'validating' | 'valid' | 'invalid';
@@ -50,6 +49,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
   // issue: the browser owns the field, we read the value at save time. We
   // still track validation state so the marker (✓/✗) renders.
   const [proactiveEnabled, setProactiveEnabled] = useState<boolean>(true);
+  const [guidanceEnabled, setGuidanceEnabled] = useState<boolean>(true);
   const [providerKeys, setProviderKeys] = useState<Record<ProviderId, ProviderKeyState>>({
     gemini: { key: '', validation: 'idle' },
     openai: { key: '', validation: 'idle' },
@@ -64,9 +64,28 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
   function readKey(providerId: ProviderId): string {
     return keyInputRefs.current[providerId]?.value ?? providerKeys[providerId].key;
   }
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [saveError, setSaveError] = useState<string | null>(null);
+  // Tiny live-save status indicator. We ditched the "Validate & Save" button in
+  // favour of immediate per-field persistence — this just shows a fleeting
+  // "Saved" pip so the user has feedback that their toggle landed in storage.
+  const [saveTick, setSaveTick] = useState<{ key: string; ts: number } | null>(null);
   const [resetStatus, setResetStatus] = useState<'idle' | 'resetting'>('idle');
+
+  /**
+   * Persist a partial settings patch immediately and flash a "Saved" pip.
+   * Errors are swallowed to keep the form responsive; callers can choose to
+   * surface them inline if needed.
+   */
+  async function persist(patch: Partial<Settings>): Promise<void> {
+    try {
+      await setSettings(patch);
+      const key = Object.keys(patch).join('+') || 'change';
+      setSaveTick({ key, ts: Date.now() });
+    } catch {
+      // intentionally silent — IndexedDB writes are essentially synchronous in
+      // practice and rarely fail; if they do, the UI state remains the truth
+      // until the next reload, when we'd resync from storage.
+    }
+  }
 
   async function handleResetLocalData() {
     if (resetStatus === 'resetting') return;
@@ -92,6 +111,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
       setActiveModel(s.activeModel);
       setDensity(s.density);
       setProactiveEnabled(s.proactiveSuggestionsEnabled);
+      setGuidanceEnabled(s.guidanceNotesEnabled);
       setProviderKeys(prev => {
         const next = { ...prev };
         for (const id of ['gemini', 'openai', 'anthropic'] as ProviderId[]) {
@@ -111,64 +131,80 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
   }, []);
 
 
-  async function handleValidateAndSave() {
-    setSaveStatus('saving');
-    setSaveError(null);
-
-    // Read straight from the DOM since the inputs are uncontrolled.
-    const activeKey = readKey(activeProvider).trim();
-    if (!activeKey) {
-      setSaveError(`API key for ${PROVIDER_LABELS[activeProvider]} is required.`);
-      setSaveStatus('error');
-      return;
+  /**
+   * Persist an API key for a single provider on blur. Validation runs lazily
+   * — see handleValidateProvider below — so a typo doesn't gate persistence.
+   */
+  async function persistKeyOnBlur(providerId: ProviderId): Promise<void> {
+    const key = readKey(providerId).trim();
+    if (!key) return;
+    try {
+      await setCredential(providerId, key);
+      setProviderKeys(prev => ({
+        ...prev,
+        [providerId]: { ...prev[providerId], key },
+      }));
+      setSaveTick({ key: `key:${providerId}`, ts: Date.now() });
+    } catch {
+      // ignore; field still holds the typed value
     }
+  }
 
+  /**
+   * Optional explicit "Test" — validates the typed key against the provider.
+   * Decoupled from persistence so users can save now and validate later
+   * (e.g. before paying for a key swap).
+   */
+  async function handleValidateProvider(providerId: ProviderId): Promise<void> {
+    const key = readKey(providerId).trim();
+    if (!key) return;
     setProviderKeys(prev => ({
       ...prev,
-      [activeProvider]: { ...prev[activeProvider], validation: 'validating' },
+      [providerId]: { ...prev[providerId], validation: 'validating' },
     }));
-
     let valid = false;
     try {
-      const provider = selectProvider(activeProvider);
-      valid = await provider.validateCredentials(activeKey);
+      const provider = selectProvider(providerId);
+      valid = await provider.validateCredentials(key);
     } catch {
       valid = false;
     }
-
     setProviderKeys(prev => ({
       ...prev,
-      [activeProvider]: {
-        ...prev[activeProvider],
-        key: activeKey,
+      [providerId]: {
+        ...prev[providerId],
+        key,
         validation: valid ? 'valid' : 'invalid',
       },
     }));
-
-    if (!valid) {
-      setSaveError(`API key for ${PROVIDER_LABELS[activeProvider]} appears invalid.`);
-      setSaveStatus('error');
-      return;
-    }
-
-    try {
-      for (const id of ['gemini', 'openai', 'anthropic'] as ProviderId[]) {
-        const k = readKey(id).trim();
-        if (k) await setCredential(id, k);
-      }
-      await setSettings({ activeProvider, activeModel, density, proactiveSuggestionsEnabled: proactiveEnabled });
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save settings.');
-      setSaveStatus('error');
-    }
   }
 
   function handleProviderChange(id: ProviderId) {
     setActiveProvider(id);
     const provider = selectProvider(id);
-    setActiveModel(provider.availableModels[0] ?? '');
+    const nextModel = provider.availableModels[0] ?? '';
+    setActiveModel(nextModel);
+    void persist({ activeProvider: id, activeModel: nextModel });
+  }
+
+  function handleModelChange(model: string) {
+    setActiveModel(model);
+    void persist({ activeModel: model });
+  }
+
+  function handleDensityChange(d: Density) {
+    setDensity(d);
+    void persist({ density: d });
+  }
+
+  function handleProactiveChange(enabled: boolean) {
+    setProactiveEnabled(enabled);
+    void persist({ proactiveSuggestionsEnabled: enabled });
+  }
+
+  function handleGuidanceChange(enabled: boolean) {
+    setGuidanceEnabled(enabled);
+    void persist({ guidanceNotesEnabled: enabled });
   }
 
   const currentProvider = selectProvider(activeProvider);
@@ -267,6 +303,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
                               }));
                             }
                           }}
+                          onBlur={() => { void persistKeyOnBlur(provider.id); }}
                           placeholder={isActive ? 'Required' : 'Optional'}
                           autoComplete="off"
                           autoCorrect="off"
@@ -275,6 +312,14 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
                           className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
                           aria-label={`API key for ${PROVIDER_LABELS[provider.id]}`}
                         />
+                        <button
+                          type="button"
+                          onClick={() => { void handleValidateProvider(provider.id); }}
+                          className="rounded border border-gray-300 px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          aria-label={`Test ${PROVIDER_LABELS[provider.id]} key`}
+                        >
+                          Test
+                        </button>
                         {(() => {
                           const v = providerKeys[provider.id].validation;
                           if (v === 'validating') return <span className="text-xs text-gray-500">…</span>;
@@ -300,7 +345,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
           <select
             id="model-select"
             value={activeModel}
-            onChange={e => setActiveModel(e.target.value)}
+            onChange={e => handleModelChange(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
             aria-label="Select model"
           >
@@ -330,7 +375,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
                   name="density"
                   value={opt.value}
                   checked={density === opt.value}
-                  onChange={() => setDensity(opt.value)}
+                  onChange={() => handleDensityChange(opt.value)}
                   className="mt-0.5 accent-violet-600"
                 />
                 <div>
@@ -357,7 +402,7 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
             <input
               type="checkbox"
               checked={proactiveEnabled}
-              onChange={e => setProactiveEnabled(e.target.checked)}
+              onChange={e => handleProactiveChange(e.target.checked)}
               className="mt-0.5 accent-violet-600"
               aria-label="Enable proactive coach suggestions"
             />
@@ -372,31 +417,53 @@ export default function Options({ onBack }: OptionsProps): React.ReactElement {
           </label>
         </section>
 
-        {/* Save */}
-        {saveError && (
-          <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-3" role="alert">
-            {saveError}
-          </p>
-        )}
-        {saveStatus === 'saved' && (
-          <p className="text-xs text-green-700 bg-green-50 rounded px-3 py-2 mb-3" role="status">
-            Settings saved successfully.
-          </p>
-        )}
+        {/* Guidance notes */}
+        <section className="mb-6" aria-labelledby="guidance-heading">
+          <h2 id="guidance-heading" className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Guidance notes
+          </h2>
+          <label
+            className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+              guidanceEnabled
+                ? 'border-violet-500 bg-violet-50'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={guidanceEnabled}
+              onChange={e => handleGuidanceChange(e.target.checked)}
+              className="mt-0.5 accent-violet-600"
+              aria-label="Enable guidance callouts"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-900">
+                Show inline guidance callouts
+              </span>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Light green callouts inside Focus / Bloom mode that label controls and explain
+                what each surface does. Off hides the labels once you know your way around.
+              </p>
+            </div>
+          </label>
+        </section>
 
-        <Button
-          variant="primary"
-          size="lg"
-          onClick={handleValidateAndSave}
-          disabled={saveStatus === 'saving'}
-          className="w-full"
-        >
-          {saveStatus === 'saving' ? 'Validating & Saving…' : 'Validate & Save'}
-        </Button>
+        {/* Live-save status */}
+        {saveTick && (Date.now() - saveTick.ts) < 2000 && (
+          <p
+            key={saveTick.ts}
+            className="text-xs text-green-700 bg-green-50 rounded px-3 py-2 mb-3"
+            role="status"
+          >
+            Saved.
+          </p>
+        )}
 
         <p className="text-xs text-gray-400 mt-4 text-center">
-          Keys are stored in the browser's IndexedDB-backed settings store on this device.
-          Legacy localStorage values are migrated on first load.
+          Changes save instantly. Keys are stored in the browser's IndexedDB on this device.
+          Use a provider's <span className="font-medium">Test</span> button above to validate
+          the API key without sending real traffic. Legacy localStorage values are migrated on
+          first load.
         </p>
 
         <section className="mt-8 border-t border-gray-100 pt-6" aria-labelledby="local-data-heading">
