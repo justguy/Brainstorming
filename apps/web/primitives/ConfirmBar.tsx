@@ -3,6 +3,11 @@ import React from 'react';
 /**
  * ConfirmBar — minimal primitive for confirm/cancel decisions.
  *
+ * Renders the design system's bottom-bar treatment: a paper-coloured strip
+ * with a 2px ink border and the message on the left, a sketchy `.btn` pair
+ * (`.btn.primary` for confirm, `.btn.ghost` for cancel) on the right. The
+ * `danger` tone tints the confirm button toward `--accent-contradicts`.
+ *
  * Per the M1 brief this is the visual primitive only. Wiring this through
  * phase-advance flows is a separate follow-up; do not import this from
  * call sites that mutate phase state until that task lands.
@@ -29,20 +34,6 @@ export interface ConfirmBarProps {
   className?: string;
 }
 
-const ROOT_CLASS =
-  'bo-card-surface flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl px-3 py-2 text-xs leading-5';
-
-const MESSAGE_CLASS = 'min-w-0 flex-1 text-slate-700';
-
-const CONFIRM_DEFAULT =
-  'rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-50';
-
-const CONFIRM_DANGER =
-  'rounded-full border border-rose-300 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700 transition hover:border-rose-400 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-50';
-
-const CANCEL_CLASS =
-  'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 transition hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50';
-
 export function ConfirmBar({
   message,
   confirmLabel = 'Confirm',
@@ -54,22 +45,57 @@ export function ConfirmBar({
   ariaLabel,
   className,
 }: ConfirmBarProps): React.ReactElement {
-  const rootClassName = [ROOT_CLASS, className ?? ''].filter(Boolean).join(' ');
-  const confirmClassName = tone === 'danger' ? CONFIRM_DANGER : CONFIRM_DEFAULT;
+  const rootClassName = ['confirm-bar', `confirm-bar--${tone}`, className ?? '']
+    .filter(Boolean)
+    .join(' ');
+
+  const confirmClassName = ['btn', 'sm', tone === 'danger' ? '' : 'primary']
+    .filter(Boolean)
+    .join(' ');
+
+  // For the danger tone, paint the primary button red instead of ink. We
+  // express this with inline overrides on top of the regular `.btn.sm`
+  // surface so it picks up hover/active animations from `brainstorm.css`.
+  const dangerStyle: React.CSSProperties | undefined =
+    tone === 'danger'
+      ? {
+          background: 'var(--accent-contradicts)',
+          color: 'var(--paper)',
+          borderColor: 'var(--accent-contradicts)',
+          boxShadow: '1.5px 1.5px 0 var(--ink)',
+        }
+      : undefined;
 
   return (
     <div
       role="group"
       aria-label={ariaLabel ?? 'Confirm action'}
       className={rootClassName}
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        padding: '8px 14px',
+        background: 'var(--paper)',
+        border: '2px solid var(--ink)',
+        borderRadius: 12,
+        boxShadow: '2px 2px 0 var(--ink)',
+        fontFamily: 'var(--f-hand-body)',
+        fontSize: 14,
+        lineHeight: 1.3,
+        color: 'var(--ink)',
+      }}
     >
-      <div className={MESSAGE_CLASS}>{message}</div>
-      <div className="flex shrink-0 gap-2">
+      <div style={{ minWidth: 0, flex: 1, color: 'var(--ink)' }}>{message}</div>
+      <div style={{ display: 'flex', flexShrink: 0, gap: 8 }}>
         <button
           type="button"
           onClick={onCancel}
           disabled={busy}
-          className={CANCEL_CLASS}
+          className="btn sm ghost"
+          style={busy ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
         >
           {cancelLabel}
         </button>
@@ -78,6 +104,10 @@ export function ConfirmBar({
           onClick={onConfirm}
           disabled={busy}
           className={confirmClassName}
+          style={{
+            ...(dangerStyle ?? {}),
+            ...(busy ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+          }}
         >
           {confirmLabel}
         </button>

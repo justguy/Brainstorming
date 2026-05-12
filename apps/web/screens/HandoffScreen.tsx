@@ -9,35 +9,40 @@ import { sendLinear } from '../../../src/integrations/linear/linearAdapter';
 import { sendSlack } from '../../../src/integrations/slack/slackAdapter';
 
 /**
- * Screen 07 · Handoff (v0 shell + placeholder channel cards).
+ * Screen 07 · Handoff (paper-dots restyle).
  *
- * Spec: Design/IMPLEMENTATION_PLAN.md §5 (Screen 07 · Handoff), §6 M5.
+ * Spec: Design/Build Spec.html §s07, Design/IMPLEMENTATION_PLAN.md §5 / §6 M5.
  *
- * v0 scope (bo-163):
+ * Behavior:
  *   - Read the active route via `useRoute` and require `route.kind === 'handoff'`.
  *     The handoff route is `#/b/:boardId/handoff/:briefId`, so we resolve the
- *     brief through `useBriefSync({ briefId })`. (`BriefScreen` keys off
- *     `ideaId`; this screen keys off `briefId` per the route shape.)
- *   - Render a header summary: title + ship-status pill, mirroring the look of
- *     `BriefScreen` for visual continuity.
- *   - Render a grid of "channel cards" — one per channel (GitHub, Notion,
- *     Linear, Slack). Each card shows the channel name + a placeholder action.
- *     Cards are intentionally inert in v0: clicking "Send" stubs out the
- *     handoff by flipping the brief's `shipStatus` to `'shipped'` and
- *     surfacing a placeholder reference inline. No real network calls.
+ *     brief through `useBriefSync({ briefId })`.
+ *   - Render a hand-written header: brief title + ship-status pill, in the
+ *     same paper-dots idiom as `BriefScreen` for visual continuity.
+ *   - Render a grid of paper-tile "channel cards" — one per channel
+ *     (GitHub, Notion, Linear, Slack). Each tile shows an inline-SVG ink
+ *     icon, channel name in Caveat, blurb in Kalam, and a `.btn.primary`
+ *     Send button. Adapters are stubs (placeholder refs + logged payload).
+ *   - Pre-flight check (Build Spec §s07): a pure derivation over the latest
+ *     `Brief` version flags missing fields per channel (no owner, no
+ *     estimate, missing must-stay-true content, empty artifactMd, TL;DR
+ *     overflow). Warnings render inline as red ".tag" pills before Send.
+ *   - Per-channel inline "Connect <channel>" CTA: when a channel is not
+ *     connected, the Send button is replaced with a Connect button that
+ *     toggles local component state. No separate settings page.
+ *   - Idempotent re-ship: per-channel sent-ref state. Once a ref exists,
+ *     the Send button relabels to "Re-ship (update)" and dispatches with
+ *     an `existingRef` hint so future adapters can update in place. The
+ *     same ref is reused (no duplication) and the inline status reads
+ *     "Updated existing destination".
  *
- * Out of scope (deferred to follow-up tasks):
- *   - Pre-ship LLM interrogator slot               → bo-164
- *     (`handoff/PreShipInterrogator.tsx`). A placeholder slot is left in the
- *     layout below; the interrogator mounts there once it lands.
- *   - GitHub channel formatter + adapter           → bo-165 (DONE)
- *   - Notion channel formatter + adapter           → bo-166 (DONE)
- *   - Linear channel formatter + adapter           → bo-167 (DONE)
- *   - Slack channel formatter + adapter            → bo-168 (DONE)
- *   - App.tsx route dispatch (rendering this screen on `route.kind === 'handoff'`)
- *     is left to bo-130 (BoardScreen refactor of App.tsx). This module is a
- *     self-contained named + default export so the dispatcher can choose
- *     either convention.
+ * Out of scope (deferred):
+ *   - Real per-channel credential storage (currently `useState`).
+ *   - Real adapter `existingRef` support — adapters today ignore the hint
+ *     and return placeholder refs; the screen surfaces an "Updated"
+ *     status by detecting that a prior ref already existed.
+ *   - LLM-driven pre-flight interrogator (bo-164) — the static
+ *     interrogator slot below stays as the long-form critique surface.
  */
 
 export type HandoffChannelId = 'github' | 'notion' | 'linear' | 'slack';
@@ -94,39 +99,183 @@ export interface HandoffScreenProps {
   onChannelSend?: (channelId: HandoffChannelId, brief: Brief) => void;
 }
 
-const ROOT_CLASS =
-  'bo-handoff-screen relative flex min-h-screen flex-col gap-6 bg-slate-50 px-8 py-10 text-slate-900';
-const HEADER_CLASS = 'flex flex-wrap items-start justify-between gap-4';
-const HEADER_TEXT_CLASS = 'flex flex-col gap-1';
-const TITLE_CLASS = 'text-2xl font-semibold tracking-tight';
-const SUBTITLE_CLASS = 'text-sm text-slate-500';
-const SECTION_HEADING_CLASS =
-  'text-xs font-semibold uppercase tracking-wide text-slate-500';
-const GRID_CLASS =
-  'grid w-full grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4';
-const CARD_CLASS =
-  'flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm';
-const CARD_NAME_CLASS = 'text-base font-semibold text-slate-900';
-const CARD_BLURB_CLASS = 'text-sm text-slate-600';
-const CARD_BUTTON_CLASS =
-  'inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
-const CARD_BADGE_CLASS =
-  'inline-flex w-fit items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200';
-const CARD_REF_CLASS =
-  'mt-1 truncate text-xs text-emerald-700';
-const EMPTY_CLASS =
-  'rounded-2xl border border-dashed border-slate-300 bg-white/70 px-6 py-12 text-center text-sm text-slate-500';
-const LOADING_CLASS = 'text-sm text-slate-500';
-const ERROR_CLASS =
-  'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700';
-const STATUS_PILL_BASE_CLASS =
-  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium';
+// ---- Paper-style layout primitives ----------------------------------------
 
-const STATUS_PILL_TONE: Record<BriefShipStatus, string> = {
-  draft: 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
-  ready: 'bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-200',
-  shipped: 'bg-emerald-100 text-emerald-800 ring-1 ring-inset ring-emerald-200',
-  archived: 'bg-zinc-200 text-zinc-700 ring-1 ring-inset ring-zinc-300',
+const ROOT_STYLE: React.CSSProperties = {
+  minHeight: '100vh',
+  maxHeight: '100vh',
+  overflowY: 'auto',
+  padding: '32px 28px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 20,
+  color: 'var(--ink)',
+};
+
+const HEADER_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 16,
+};
+
+const HEADER_TEXT_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+};
+
+const TITLE_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-hand)',
+  fontSize: 40,
+  lineHeight: 1.05,
+  margin: 0,
+  color: 'var(--ink)',
+};
+
+const SUBTITLE_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 16,
+  color: 'var(--ink-soft, var(--ink))',
+  opacity: 0.78,
+  margin: 0,
+};
+
+const SECTION_HEADING_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-hand)',
+  fontSize: 24,
+  margin: '4px 0 0',
+  color: 'var(--ink)',
+};
+
+const SECTION_BODY_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+};
+
+const GRID_STYLE: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+  gap: 16,
+  width: '100%',
+};
+
+const TILE_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  padding: '16px 16px 18px',
+  border: '1.5px solid var(--ink)',
+  borderRadius: 14,
+  background: 'var(--paper, #fdfbf3)',
+  boxShadow: '2px 3px 0 rgba(0,0,0,0.06)',
+};
+
+const TILE_HEADER_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+};
+
+const TILE_NAME_ROW_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+};
+
+const TILE_NAME_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-hand)',
+  fontSize: 22,
+  color: 'var(--ink)',
+  margin: 0,
+};
+
+const TILE_BLURB_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 15,
+  color: 'var(--ink-soft, var(--ink))',
+  opacity: 0.85,
+  margin: 0,
+  lineHeight: 1.35,
+};
+
+const TILE_REF_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-mono)',
+  fontSize: 12,
+  color: 'var(--ink)',
+  opacity: 0.75,
+  margin: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+const PREFLIGHT_WRAP_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  margin: 0,
+};
+
+const PREFLIGHT_PILL_STYLE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 12,
+  lineHeight: 1.15,
+  padding: '2px 8px',
+  borderRadius: 999,
+  border: '1.5px solid var(--accent-contradicts, #c94a3a)',
+  color: 'var(--accent-contradicts, #c94a3a)',
+  background: 'var(--paper, #fdfbf3)',
+};
+
+const SHIP_NOTE_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 12,
+  color: 'var(--ink)',
+  opacity: 0.7,
+  margin: 0,
+};
+
+const EMPTY_STYLE: React.CSSProperties = {
+  padding: '40px 24px',
+  border: '1.5px dashed var(--ink)',
+  borderRadius: 14,
+  background: 'var(--paper, #fdfbf3)',
+  textAlign: 'center',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 16,
+  color: 'var(--ink)',
+  opacity: 0.85,
+};
+
+const LOADING_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 16,
+  color: 'var(--ink)',
+  opacity: 0.7,
+};
+
+const ERROR_STYLE: React.CSSProperties = {
+  padding: '12px 16px',
+  border: '1.5px solid var(--ink)',
+  borderRadius: 12,
+  background: 'var(--sticky-pink, #fcdcdc)',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 15,
+  color: 'var(--ink)',
+};
+
+const STATUS_PILL_BG: Record<BriefShipStatus, string> = {
+  draft: 'var(--paper, #fdfbf3)',
+  ready: 'var(--sticky-green, #d6ecc4)',
+  shipped: 'var(--sticky-blue, #c9dcf5)',
+  archived: 'var(--sticky-grey, #dedede)',
 };
 
 const STATUS_PILL_LABEL: Record<BriefShipStatus, string> = {
@@ -136,10 +285,169 @@ const STATUS_PILL_LABEL: Record<BriefShipStatus, string> = {
   archived: 'Archived',
 };
 
+function statusPillStyle(status: BriefShipStatus): React.CSSProperties {
+  return {
+    background: STATUS_PILL_BG[status],
+    border: '1.5px solid var(--ink)',
+    color: 'var(--ink)',
+    fontFamily: 'var(--f-hand)',
+    fontSize: 16,
+    padding: '4px 12px',
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    lineHeight: 1.2,
+  };
+}
+
+// ---- Inline channel icons (small, generic, ink-stroked) -------------------
+
+function ChannelIcon({ id }: { id: HandoffChannelId }): React.ReactElement {
+  const stroke = 'var(--ink, #14110f)';
+  const common = {
+    width: 22,
+    height: 22,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke,
+    strokeWidth: 1.6,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  switch (id) {
+    case 'github':
+      // Generic octocat-ish: circle head + two ears + tail
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="11" r="6.5" />
+          <path d="M7.5 5.5 L8.5 8" />
+          <path d="M16.5 5.5 L15.5 8" />
+          <path d="M9.5 19 C 9.5 16, 14.5 16, 14.5 19" />
+          <circle cx="10" cy="11" r="0.8" fill={stroke} />
+          <circle cx="14" cy="11" r="0.8" fill={stroke} />
+        </svg>
+      );
+    case 'notion':
+      // Generic doc with corner fold + lines
+      return (
+        <svg {...common}>
+          <path d="M6 4 H15 L18 7 V20 H6 Z" />
+          <path d="M15 4 V7 H18" />
+          <path d="M8.5 11 H15.5" />
+          <path d="M8.5 14 H15.5" />
+          <path d="M8.5 17 H13" />
+        </svg>
+      );
+    case 'linear':
+      // Generic angled lines (linear-ish chevron)
+      return (
+        <svg {...common}>
+          <path d="M4 14 L10 8 L14 12 L20 6" />
+          <path d="M14 6 H20 V12" />
+        </svg>
+      );
+    case 'slack':
+      // Generic chat bubble with dots
+      return (
+        <svg {...common}>
+          <path d="M5 7 Q5 4, 8 4 H16 Q19 4, 19 7 V14 Q19 17, 16 17 H11 L7 20 V17 Q5 17, 5 14 Z" />
+          <circle cx="10" cy="10.5" r="0.8" fill={stroke} />
+          <circle cx="13" cy="10.5" r="0.8" fill={stroke} />
+          <circle cx="16" cy="10.5" r="0.8" fill={stroke} />
+        </svg>
+      );
+  }
+}
+
 /** Latest version of a brief, or `null` when none exist yet. */
 function latestVersion(brief: Brief | null): BriefVersion | null {
   if (!brief || brief.versions.length === 0) return null;
   return brief.versions[brief.versions.length - 1];
+}
+
+/**
+ * Pre-flight: pure derivation of "missing field" warnings per channel.
+ *
+ * Build Spec §s07 calls out: "AI flags missing fields per channel (no owner,
+ * no estimate, etc)". This is a deterministic, no-LLM probe over the latest
+ * `Brief` version so the tile can self-warn before Send. Adapters may also
+ * surface their own validation downstream — these checks are advisory.
+ *
+ * Probes (per channel):
+ *   linear  · owner attribution missing  (`authoredBy` empty + no
+ *             owner-bearing field on briefState)
+ *   linear  · no estimate field          (briefState has no `estimate`-shaped
+ *             metadata; today there's no canonical slot, so always warns)
+ *   github  · "Must stay true" empty     (GH formatter renders a checkbox
+ *             list from `mustStayTrueRules`; empty → no actionable content)
+ *   notion  · empty artifactMd           (Notion adapter pages the rendered
+ *             markdown; empty → empty page)
+ *   slack   · TL;DR > 3 sentences        (Slack digest expects a 1-3
+ *             sentence lede; sentence-split `problemStatement`)
+ */
+function derivePreflightWarnings(
+  brief: Brief,
+): Record<HandoffChannelId, string[]> {
+  const out: Record<HandoffChannelId, string[]> = {
+    github: [],
+    notion: [],
+    linear: [],
+    slack: [],
+  };
+  const v = latestVersion(brief);
+  if (!v) return out;
+  const state = v.briefState;
+
+  // ---- linear: owner + estimate ----
+  // BriefState has no canonical `owner` field today. We treat `authoredBy`
+  // on the version as a soft owner signal (persona / role attribution).
+  const ownerSignal = (v.authoredBy ?? '').trim();
+  const briefStateRecord = state as unknown as Record<string, unknown>;
+  const ownerOnState =
+    typeof briefStateRecord.owner === 'string'
+      ? (briefStateRecord.owner as string).trim()
+      : '';
+  if (!ownerSignal && !ownerOnState) {
+    out.linear.push('no owner assigned');
+  }
+  const estimate = briefStateRecord.estimate;
+  const hasEstimate =
+    (typeof estimate === 'string' && estimate.trim().length > 0) ||
+    (typeof estimate === 'number' && Number.isFinite(estimate));
+  if (!hasEstimate) {
+    out.linear.push('no estimate');
+  }
+
+  // ---- github: Must stay true content ----
+  if (!state.mustStayTrueRules || state.mustStayTrueRules.length === 0) {
+    out.github.push('no "Must stay true" rules');
+  }
+
+  // ---- notion: artifact markdown ----
+  if (!v.artifactMd || v.artifactMd.trim().length === 0) {
+    out.notion.push('artifact markdown is empty');
+  }
+
+  // ---- slack: TL;DR length ----
+  // Heuristic: sentence-split the problemStatement (or fall back to the
+  // first non-empty narrative field). Warn if more than 3 sentences.
+  const lede =
+    (state.problemStatement ?? '').trim() ||
+    (state.desiredOutcome ?? '').trim() ||
+    (state.audience ?? '').trim();
+  if (lede) {
+    const sentences = lede
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (sentences.length > 3) {
+      out.slack.push('TL;DR longer than 3 sentences');
+    }
+  }
+
+  return out;
 }
 
 /** Best-effort, human-readable title pulled from the latest brief version. */
@@ -187,6 +495,31 @@ export function HandoffScreen({
   // backed implementations without changing this surface.
   const [sentRefs, setSentRefs] = useState<Partial<Record<HandoffChannelId, string>>>({});
 
+  // Track whether the most recent send for a channel was an update (re-ship)
+  // rather than a first ship. Used to swap the inline status copy from
+  // "Shipped" → "Updated existing destination" without losing the prior ref.
+  const [reshipped, setReshipped] = useState<Partial<Record<HandoffChannelId, boolean>>>({});
+
+  // Per-channel connection state. Real channel-credential storage is
+  // deferred (no existing helper exists in src/storage/ — settings.ts holds
+  // LLM-provider credentials only). For v1 we keep a local map; when real
+  // OAuth lands, swap this for a persisted lookup without touching the
+  // tile contract below.
+  const [connected, setConnected] = useState<Record<HandoffChannelId, boolean>>({
+    github: false,
+    notion: false,
+    linear: false,
+    slack: false,
+  });
+
+  const preflight = useMemo<Record<HandoffChannelId, string[]>>(
+    () =>
+      brief
+        ? derivePreflightWarnings(brief)
+        : { github: [], notion: [], linear: [], slack: [] },
+    [brief],
+  );
+
   // Adapter dispatch table. Keep the keys in lock-step with `HandoffChannelId`.
   // Each adapter returns `{ ref, payload }`; we only consume `ref` here — the
   // payload is logged inside the adapter for debug + manual paste.
@@ -203,36 +536,59 @@ export function HandoffScreen({
   const handleChannelSend = useCallback(
     async (channelId: HandoffChannelId): Promise<void> => {
       if (!brief) return;
+      const existingRef = sentRefs[channelId];
       // Test seam: if a parent supplied `onChannelSend`, defer entirely to it
       // and skip both adapter dispatch and IDB writes. Mirrors BriefScreen.
       if (onChannelSend) {
         onChannelSend(channelId, brief);
-        setSentRefs((prev) => ({ ...prev, [channelId]: `placeholder://${channelId}/${brief.id}` }));
+        setSentRefs((prev) => ({
+          ...prev,
+          // Re-ship reuses the existing ref to stay idempotent.
+          [channelId]:
+            existingRef ?? `placeholder://${channelId}/${brief.id}`,
+        }));
+        setReshipped((prev) => ({ ...prev, [channelId]: Boolean(existingRef) }));
         return;
       }
       try {
         const send = adapters[channelId];
+        // Adapters today take only `brief` and return a fresh placeholder
+        // ref. When a prior ref exists, we still dispatch (so the
+        // formatted payload is re-rendered + logged), but we *reuse* the
+        // prior ref in state so the destination is not duplicated. Real
+        // `existingRef` support — i.e. an in-place update via the
+        // platform API — is owned by the per-channel adapter task.
         const { ref } = await send(brief);
-        // Flip status to 'shipped' (idempotent) so the header pill reflects
-        // reality. Skip when a `briefOverride` is in play (test/storybook).
         if (briefOverride === undefined && brief.shipStatus !== 'shipped') {
           await briefSync.setShipStatus('shipped');
         }
-        setSentRefs((prev) => ({ ...prev, [channelId]: ref }));
+        setSentRefs((prev) => ({
+          ...prev,
+          [channelId]: existingRef ?? ref,
+        }));
+        setReshipped((prev) => ({ ...prev, [channelId]: Boolean(existingRef) }));
       } catch {
         // Non-fatal: surface nothing — bo-164 interrogator owns proper error
         // UX. v0 stays silent rather than mis-implying a state.
       }
     },
-    [adapters, brief, briefOverride, briefSync, onChannelSend],
+    [adapters, brief, briefOverride, briefSync, onChannelSend, sentRefs],
   );
+
+  const handleChannelConnect = useCallback((channelId: HandoffChannelId): void => {
+    // Stub: real implementation will trigger an OAuth dance and persist
+    // tokens through a dedicated channel-credentials storage helper
+    // (deferred). Today we just flip local state so the Send button
+    // unlocks.
+    setConnected((prev) => ({ ...prev, [channelId]: true }));
+  }, []);
 
   // ---- Render branches ------------------------------------------------------
 
   if (route.kind !== 'handoff' && briefIdOverride === undefined && briefOverride === undefined) {
     return (
-      <div className={ROOT_CLASS} aria-label="Handoff">
-        <div className={ERROR_CLASS} role="alert">
+      <div className="paper-dots bo-handoff-screen" style={ROOT_STYLE} aria-label="Handoff">
+        <div style={ERROR_STYLE} role="alert">
           HandoffScreen mounted on a non-handoff route. Expected
           {' '}<code>route.kind === &apos;handoff&apos;</code>.
         </div>
@@ -242,8 +598,8 @@ export function HandoffScreen({
 
   if (briefId === null && briefOverride === undefined) {
     return (
-      <div className={ROOT_CLASS} aria-label="Handoff">
-        <div className={ERROR_CLASS} role="alert">
+      <div className="paper-dots bo-handoff-screen" style={ROOT_STYLE} aria-label="Handoff">
+        <div style={ERROR_STYLE} role="alert">
           No brief selected. Open a brief from the canvas, then ship from there.
         </div>
       </div>
@@ -252,8 +608,8 @@ export function HandoffScreen({
 
   if (isLoading) {
     return (
-      <div className={ROOT_CLASS} aria-label="Handoff">
-        <div className={LOADING_CLASS} role="status">
+      <div className="paper-dots bo-handoff-screen" style={ROOT_STYLE} aria-label="Handoff">
+        <div style={LOADING_STYLE} role="status">
           Loading brief…
         </div>
       </div>
@@ -262,16 +618,14 @@ export function HandoffScreen({
 
   if (notFound || brief === null) {
     return (
-      <div className={ROOT_CLASS} aria-label="Handoff">
-        <header className={HEADER_CLASS}>
-          <div className={HEADER_TEXT_CLASS}>
-            <h1 className={TITLE_CLASS}>Handoff</h1>
-            <p className={SUBTITLE_CLASS}>
-              No brief found for this id.
-            </p>
+      <div className="paper-dots bo-handoff-screen" style={ROOT_STYLE} aria-label="Handoff">
+        <header style={HEADER_STYLE}>
+          <div style={HEADER_TEXT_STYLE}>
+            <h1 style={TITLE_STYLE}>Handoff</h1>
+            <p style={SUBTITLE_STYLE}>No brief found for this id.</p>
           </div>
         </header>
-        <div className={EMPTY_CLASS}>
+        <div style={EMPTY_STYLE}>
           Briefs come into existence when an idea graduates from the canvas.
           Ship-to channels light up once a brief is written.
         </div>
@@ -282,17 +636,18 @@ export function HandoffScreen({
   const status = brief.shipStatus;
 
   return (
-    <div className={ROOT_CLASS} aria-label="Handoff">
-      <header className={HEADER_CLASS}>
-        <div className={HEADER_TEXT_CLASS}>
-          <h1 className={TITLE_CLASS}>{title}</h1>
-          <p className={SUBTITLE_CLASS}>
+    <div className="paper-dots bo-handoff-screen" style={ROOT_STYLE} aria-label="Handoff">
+      <header style={HEADER_STYLE}>
+        <div style={HEADER_TEXT_STYLE}>
+          <h1 style={TITLE_STYLE}>{title}</h1>
+          <p style={SUBTITLE_STYLE}>
             Ship the brief to one or more channels. Pick where it should land.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
           <span
-            className={`${STATUS_PILL_BASE_CLASS} ${STATUS_PILL_TONE[status]}`}
+            className="pill"
+            style={statusPillStyle(status)}
             aria-label={`Ship status: ${STATUS_PILL_LABEL[status]}`}
             data-bo-ship-status={status}
           >
@@ -311,44 +666,116 @@ export function HandoffScreen({
       <section
         aria-label="Pre-ship interrogator"
         data-bo-interrogator-slot="true"
+        style={SECTION_BODY_STYLE}
       >
+        <h2 style={SECTION_HEADING_STYLE}>Pre-ship interrogator</h2>
         <HandoffInterrogator brief={brief} />
       </section>
 
-      <section aria-label="Channels" className="flex flex-col gap-3">
-        <h2 className={SECTION_HEADING_CLASS}>Channels</h2>
-        <div className={GRID_CLASS}>
+      <section aria-label="Channels" style={SECTION_BODY_STYLE}>
+        <h2 style={SECTION_HEADING_STYLE}>Channels</h2>
+        <div style={GRID_STYLE}>
           {CHANNELS.map((channel) => {
             const sentRef = sentRefs[channel.id];
             const alreadySent = sentRef !== undefined;
+            const wasReshipped = Boolean(reshipped[channel.id]);
+            const isConnected = connected[channel.id];
+            const warnings = preflight[channel.id];
+            const archived = status === 'archived';
+            // We allow Send when there's no prior ref OR there is one and
+            // the user wants to update in place (re-ship). Archived briefs
+            // remain locked.
+            const sendDisabled = archived;
+            const sendLabel = alreadySent ? 'Re-ship (update)' : 'Send';
+            const sendTitle = alreadySent
+              ? `Re-ship to ${channel.name}: updates the existing destination in place (no duplicate).`
+              : `Send via ${channel.name} (v0 adapter — placeholder ref, real payload logged).`;
             return (
               <article
                 key={channel.id}
-                className={CARD_CLASS}
+                className="board-card"
+                style={TILE_STYLE}
                 data-bo-channel-id={channel.id}
+                data-bo-connected={isConnected ? 'true' : 'false'}
+                data-bo-sent={alreadySent ? 'true' : 'false'}
                 aria-label={`${channel.name} channel`}
               >
-                <header className="flex items-start justify-between gap-2">
-                  <h3 className={CARD_NAME_CLASS}>{channel.name}</h3>
-                  <span className={CARD_BADGE_CLASS} title={`Adapter wired in ${channel.owningTaskId}`}>
-                    v0 adapter
+                <header style={TILE_HEADER_STYLE}>
+                  <div style={TILE_NAME_ROW_STYLE}>
+                    <ChannelIcon id={channel.id} />
+                    <h3 style={TILE_NAME_STYLE}>{channel.name}</h3>
+                  </div>
+                  <span
+                    className="tag"
+                    title={`Adapter wired in ${channel.owningTaskId}`}
+                    style={{ fontFamily: 'var(--f-mono)', fontSize: 11 }}
+                  >
+                    {channel.owningTaskId}
                   </span>
                 </header>
-                <p className={CARD_BLURB_CLASS}>{channel.blurb}</p>
-                <button
-                  type="button"
-                  className={CARD_BUTTON_CLASS}
-                  onClick={() => { void handleChannelSend(channel.id); }}
-                  disabled={status === 'archived' || alreadySent}
-                  title={`Send via ${channel.name} (v0 adapter — placeholder ref, real payload logged).`}
-                  aria-label={`Send to ${channel.name}`}
-                >
-                  {alreadySent ? 'Sent' : 'Send'}
-                </button>
+                <p style={TILE_BLURB_STYLE}>{channel.blurb}</p>
+                {warnings.length > 0 ? (
+                  <ul
+                    style={PREFLIGHT_WRAP_STYLE}
+                    aria-label={`Pre-flight warnings for ${channel.name}`}
+                    data-bo-preflight={channel.id}
+                  >
+                    {warnings.map((w) => (
+                      <li
+                        key={w}
+                        className="tag"
+                        style={PREFLIGHT_PILL_STYLE}
+                        role="note"
+                      >
+                        <span aria-hidden="true">⚠</span>
+                        <span>{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {isConnected ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignSelf: 'flex-start' }}>
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => { void handleChannelSend(channel.id); }}
+                      disabled={sendDisabled}
+                      title={sendTitle}
+                      aria-label={`${sendLabel} to ${channel.name}`}
+                      data-bo-send={channel.id}
+                      style={{
+                        opacity: sendDisabled ? 0.55 : 1,
+                        cursor: sendDisabled ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {sendLabel}
+                    </button>
+                    <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
+                      Demo connection · no real auth
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => { handleChannelConnect(channel.id); }}
+                    title={`Demo-only: simulates a ${channel.name} connection. Real OAuth + token storage deferred.`}
+                    aria-label={`Connect ${channel.name} (demo)`}
+                    data-bo-connect={channel.id}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    Connect {channel.name} <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, opacity: 0.7, marginLeft: 6 }}>(demo)</span>
+                  </button>
+                )}
                 {alreadySent ? (
-                  <p className={CARD_REF_CLASS} title={sentRef}>
-                    {sentRef}
-                  </p>
+                  <>
+                    <p style={SHIP_NOTE_STYLE}>
+                      {wasReshipped ? 'Updated existing destination' : 'Shipped'}
+                    </p>
+                    <p style={TILE_REF_STYLE} title={sentRef}>
+                      {sentRef}
+                    </p>
+                  </>
                 ) : null}
               </article>
             );

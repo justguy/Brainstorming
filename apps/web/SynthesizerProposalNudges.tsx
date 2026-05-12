@@ -106,14 +106,54 @@ export function SynthesizerProposalNudges({
 
   return (
     <section
-      className="bo-card-surface flex flex-col gap-2 rounded-[18px] border border-slate-200/80 p-2.5"
+      className="bo-card-surface flex flex-col gap-2"
       aria-label={title}
+      style={{
+        borderRadius: 14,
+        border: '2px solid var(--ink)',
+        background: 'var(--paper)',
+        boxShadow: '3px 3px 0 var(--ink)',
+        padding: 12,
+        fontFamily: 'var(--f-hand-body)',
+        color: 'var(--ink)',
+      }}
     >
-      <header className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+      <header
+        className="flex items-center justify-between gap-2"
+        style={{
+          paddingBottom: 8,
+          borderBottom: '1.4px dashed var(--hairline)',
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            fontFamily: 'var(--f-mono)',
+            fontSize: 10,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            color: 'var(--ink-faint)',
+            fontWeight: 700,
+          }}
+        >
           {title}
         </p>
-        <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '2px 10px',
+            borderRadius: 999,
+            border: '1.5px solid var(--accent-cluster)',
+            background: 'var(--sticky-green)',
+            fontFamily: 'var(--f-mono)',
+            fontSize: 10,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            fontWeight: 700,
+            color: 'var(--ink)',
+          }}
+        >
           {pendingClusterHints.length} pending
         </span>
       </header>

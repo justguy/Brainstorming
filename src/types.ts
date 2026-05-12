@@ -398,6 +398,13 @@ export type LegacyConnectionKind =
   | 'shared_theme';
 export type ConnectionStrength = 'weak' | 'medium' | 'strong';
 
+// Lifecycle facet for connections (Build Spec §s05). `active` is the default
+// for legacy rows; `superseded` marks a row whose kind was flipped (the new
+// row's id is stored on `supersededBy`); `deleted` is the soft-delete state
+// used by the inspector's "↶ delete" action so the row survives for log
+// replay while disappearing from canvas renderers.
+export type ConnectionState = 'active' | 'superseded' | 'deleted';
+
 export interface Connection {
   id: string;
   boardId?: BoardId;
@@ -407,6 +414,18 @@ export interface Connection {
   rationale: string;            // 1-3 sentences explaining the link
   strength: ConnectionStrength;
   createdAt: number;
+  // Lifecycle marker (Build Spec §s05). Undefined / 'active' renders normally;
+  // 'superseded' rows were replaced by a later flip-type write (see
+  // `supersededBy`); 'deleted' rows are soft-deleted and hidden from canvas
+  // while remaining in the changeSet log for replay.
+  state?: ConnectionState;
+  // When this row was created via "flip type" on an existing connection, the
+  // id of the row this one replaced. The inspector / log scrubber follow the
+  // pointer to surface the kind-history of a line.
+  supersededBy?: string;
+  // Author attribution for connections drawn / edited from screens-v2. Older
+  // rows omit this; the connection-finder role is assumed when missing.
+  authorRef?: IdeaAuthorRef;
 }
 
 export type CritiqueStatus = 'active' | 'dismissed';

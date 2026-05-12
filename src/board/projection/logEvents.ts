@@ -284,6 +284,9 @@ function changeSetToLogEvent(record: ChangeSetRecord): LogEvent | null {
       };
 
     case 'replace_connections':
+    case 'flip_connection_type':
+    case 'soft_delete_connection':
+    case 'unsoft_delete_connection':
       return {
         ...base,
         kind: 'connection-drawn',

@@ -123,38 +123,131 @@ export function CaptureIdeaPopover({
     }
   }
 
+  const containerStyle: React.CSSProperties = {
+    ...panelStyle,
+    background: 'var(--paper)',
+    border: '2px solid var(--ink)',
+    borderRadius: 12,
+    boxShadow: '3px 3px 0 var(--ink)',
+    padding: 14,
+    color: 'var(--ink)',
+    fontFamily: 'var(--f-hand-body)',
+  };
+
+  const feedbackStyle: React.CSSProperties = feedback
+    ? {
+        padding: '8px 10px',
+        borderRadius: 8,
+        border: '2px solid var(--ink)',
+        boxShadow: '2px 2px 0 var(--ink)',
+        fontFamily: 'var(--f-hand-body)',
+        fontSize: 13,
+        color: 'var(--ink)',
+        background:
+          feedback.tone === 'success' ? 'var(--sticky-green)' : 'var(--sticky-pink)',
+      }
+    : {};
+
   return createPortal(
     <div
       ref={panelRef}
-      style={panelStyle}
+      style={containerStyle}
       className="bo-capture-surface z-[110]"
       onPointerDown={event => event.stopPropagation()}
       onClick={event => event.stopPropagation()}
       role="dialog"
       aria-label="Add note to canvas"
     >
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="text-sm font-semibold leading-tight">Add note to canvas</h2>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--f-hand)',
+            fontWeight: 700,
+            fontSize: 22,
+            letterSpacing: '0.2px',
+            color: 'var(--ink)',
+            lineHeight: 1.1,
+          }}
+        >
+          Add note to canvas
+        </h2>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-full border border-black/20 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-black/20"
+          className="btn sm"
           aria-label="Close note dialog"
         >
           Close
         </button>
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div
+        style={{
+          display: 'flex',
+          gap: 6,
+          marginTop: 10,
+          alignItems: 'center',
+        }}
+        aria-hidden="true"
+      >
+        <span
+          style={{
+            fontFamily: 'var(--f-mono)',
+            fontSize: 10,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--ink-faint)',
+            marginRight: 4,
+          }}
+        >
+          sticky
+        </span>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 16,
+            height: 16,
+            borderRadius: 4,
+            background: 'var(--sticky-yellow)',
+            border: '1.5px solid var(--ink)',
+          }}
+        />
+        <span
+          style={{
+            display: 'inline-block',
+            width: 16,
+            height: 16,
+            borderRadius: 4,
+            background: 'var(--sticky-pink)',
+            border: '1.5px solid var(--ink)',
+          }}
+        />
+        <span
+          style={{
+            display: 'inline-block',
+            width: 16,
+            height: 16,
+            borderRadius: 4,
+            background: 'var(--sticky-blue)',
+            border: '1.5px solid var(--ink)',
+          }}
+        />
+        <span
+          style={{
+            display: 'inline-block',
+            width: 16,
+            height: 16,
+            borderRadius: 4,
+            background: 'var(--sticky-green)',
+            border: '1.5px solid var(--ink)',
+          }}
+        />
+      </div>
+
+      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {feedback && (
-          <div
-            className={`rounded-md border px-3 py-2 text-xs ${
-              feedback.tone === 'success'
-                ? 'border-emerald-300 bg-emerald-50/60 text-emerald-800'
-                : 'border-rose-300 bg-rose-50/65 text-rose-800'
-            }`}
-            role="status"
-          >
+          <div style={feedbackStyle} role="status">
             {feedback.message}
           </div>
         )}
@@ -168,6 +261,18 @@ export function CaptureIdeaPopover({
           rows={4}
           className="bo-capture-input"
           aria-label="New idea description"
+          style={{
+            background: 'var(--paper)',
+            border: '1.5px solid var(--ink)',
+            borderRadius: 8,
+            padding: '8px 10px',
+            fontFamily: 'var(--f-hand-body)',
+            fontSize: 14,
+            color: 'var(--ink)',
+            resize: 'vertical',
+            width: '100%',
+            boxSizing: 'border-box',
+          }}
           onKeyDown={event => {
             if (event.key === 'Escape') {
               event.preventDefault();
@@ -188,6 +293,17 @@ export function CaptureIdeaPopover({
           placeholder="Tags, comma-separated"
           className="bo-capture-input"
           aria-label="Tags"
+          style={{
+            background: 'var(--paper)',
+            border: '1.5px solid var(--ink)',
+            borderRadius: 8,
+            padding: '6px 10px',
+            fontFamily: 'var(--f-mono)',
+            fontSize: 12,
+            color: 'var(--ink)',
+            width: '100%',
+            boxSizing: 'border-box',
+          }}
         />
 
         <button
@@ -196,12 +312,23 @@ export function CaptureIdeaPopover({
             void handleSubmit();
           }}
           disabled={creating || !text.trim()}
-          className="bo-topbar-primary-action w-full"
+          className="btn sm primary"
+          style={{ width: '100%', justifyContent: 'center' }}
         >
           {creating ? 'Adding note...' : 'Add note'}
         </button>
 
-        <p className="text-[11px] leading-5 text-black/60">
+        <p
+          style={{
+            margin: 0,
+            fontFamily: 'var(--f-mono)',
+            fontSize: 10,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: 'var(--ink-faint)',
+            lineHeight: 1.5,
+          }}
+        >
           New notes appear near the current viewport and center into view.
         </p>
       </div>

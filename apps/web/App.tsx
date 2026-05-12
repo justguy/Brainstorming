@@ -47,10 +47,8 @@ declare global {
 }
 
 /**
- * Tiny placeholder for routes whose dedicated screen components have not
- * landed yet. The route dispatcher renders this instead of crashing so that
- * partial wave landings (e.g. HomeScreen lands after BoardScreen) keep the
- * app navigable.
+ * Fallback shown for `route.kind === 'unknown'` — i.e. an unrecognised hash.
+ * All eight design-spec screens dispatch to real components above.
  */
 /**
  * Thin host that loads board state via `useBoardSync` and feeds the

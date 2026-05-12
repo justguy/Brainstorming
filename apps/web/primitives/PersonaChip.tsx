@@ -10,10 +10,10 @@ import type { AutonomyLevel, Persona, PersonaKind } from '../../../src/types';
  * resolution (e.g. log-event projection rows, brief margin notes) can
  * render the same primitive without round-tripping through IDB.
  *
- * Visual style mirrors the other M1 primitives: a 2xl rounded surface
- * with an avatar slot (kind-themed initials by default), a name label,
- * and optional autonomy / status decoration. Kebab-style "more" actions
- * are surfaced via `onMore`; primary activation goes through `onClick`.
+ * Visual style follows the hand-drawn design system from
+ * `Design/src/persona.jsx` and `brainstorm.css`: paper-coloured pill with a
+ * 2px ink border, hard offset shadow, hand body font, optional kind-themed
+ * avatar dot.
  */
 
 export type PersonaChipKind = PersonaKind;
@@ -44,8 +44,8 @@ export interface PersonaChipProps {
   /** Autonomy value used by the dot. Ignored when `withAutonomyDot` is false. */
   autonomyLevel?: AutonomyLevel;
   /**
-   * Optional override for the avatar slot. When omitted, kind-themed
-   * initials are rendered.
+   * Optional override for the avatar slot. When omitted, a kind-themed
+   * sticky-coloured dot with initials is rendered.
    */
   avatar?: React.ReactNode;
   /**
@@ -64,39 +64,24 @@ export interface PersonaChipProps {
   title?: string;
 }
 
-const ROOT_CLASS =
-  'bo-card-surface inline-flex max-w-full items-center gap-2 rounded-2xl px-2.5 py-1.5 text-xs leading-5 text-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300';
-
-const ROOT_INTERACTIVE =
-  'cursor-pointer hover:-translate-y-[1px] hover:shadow-md';
-
-const ROOT_SELECTED = 'ring-2 ring-emerald-300';
-
-const ROOT_INACTIVE = 'opacity-60';
-
-const NAME_CLASS = 'min-w-0 truncate font-semibold text-slate-900';
-
-const MORE_BUTTON_CLASS =
-  'shrink-0 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-semibold leading-none text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300';
-
-const KIND_AVATAR_CLASS: Record<PersonaChipKind, string> = {
-  scout:
-    'bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200',
-  synthesizer:
-    'bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200',
-  devil:
-    'bg-rose-100 text-rose-700 ring-1 ring-inset ring-rose-200',
-  historian:
-    'bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-200',
-  custom:
-    'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
+/**
+ * Per-kind avatar background colour. Maps each persona kind to one of the
+ * sticky paper colours from the design tokens so the chip reads as part of
+ * the same palette as the canvas stickies.
+ */
+const KIND_AVATAR_BG: Record<PersonaChipKind, string> = {
+  scout: 'var(--sticky-blue)',
+  synthesizer: 'var(--sticky-green)',
+  devil: 'var(--sticky-pink)',
+  historian: 'var(--sticky-peach)',
+  custom: 'var(--sticky-lilac)',
 };
 
-const AUTONOMY_DOT_CLASS: Record<AutonomyLevel, string> = {
-  silent: 'bg-slate-300',
-  whispers: 'bg-sky-400',
-  active: 'bg-emerald-400',
-  'takes-pen': 'bg-amber-500',
+const AUTONOMY_DOT_COLOR: Record<AutonomyLevel, string> = {
+  silent: 'var(--ink-faint)',
+  whispers: 'var(--accent-theme)',
+  active: 'var(--accent-revives)',
+  'takes-pen': 'var(--accent-contradicts)',
 };
 
 const KIND_LABEL: Record<PersonaChipKind, string> = {
@@ -110,8 +95,6 @@ const KIND_LABEL: Record<PersonaChipKind, string> = {
 function deriveInitials(name: string, kind: PersonaChipKind): string {
   const cleaned = name.trim();
   if (!cleaned) {
-    // Stable single-letter fallback per kind so empty names still render
-    // a recognisable avatar.
     return kind.slice(0, 1).toUpperCase();
   }
   const parts = cleaned.split(/\s+/).filter(Boolean);
@@ -144,13 +127,7 @@ export function PersonaChip({
     ? ({ type: 'button' as const, onClick: handleClick })
     : {};
 
-  const rootClassName = [
-    ROOT_CLASS,
-    handleClick ? ROOT_INTERACTIVE : '',
-    selected ? ROOT_SELECTED : '',
-    !isActive ? ROOT_INACTIVE : '',
-    className ?? '',
-  ]
+  const rootClassName = ['persona-chip', selected ? 'is-selected' : '', !isActive ? 'is-inactive' : '', className ?? '']
     .filter(Boolean)
     .join(' ');
 
@@ -159,14 +136,30 @@ export function PersonaChip({
     ariaLabel ??
     `${kindLabel}: ${name}${selected ? ', selected' : ''}${isActive ? '' : ', inactive'}`;
 
+  const avatarBg = KIND_AVATAR_BG[kind] ?? KIND_AVATAR_BG.custom;
+
   const avatarNode =
     avatar ?? (
       <span
         aria-hidden="true"
-        className={[
-          'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold uppercase tracking-[0.08em]',
-          KIND_AVATAR_CLASS[kind] ?? KIND_AVATAR_CLASS.custom,
-        ].join(' ')}
+        style={{
+          display: 'inline-flex',
+          width: 22,
+          height: 22,
+          flexShrink: 0,
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: avatarBg,
+          border: '1.5px solid var(--ink)',
+          borderRadius: '50%',
+          fontFamily: 'var(--f-mono)',
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: 'var(--ink)',
+          lineHeight: 1,
+        }}
       >
         {deriveInitials(name, kind)}
       </span>
@@ -186,17 +179,53 @@ export function PersonaChip({
       aria-label={computedAriaLabel}
       aria-pressed={handleClick ? selected : undefined}
       title={title}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        maxWidth: '100%',
+        padding: '4px 12px 4px 6px',
+        background: 'var(--paper)',
+        border: '1.5px solid var(--ink)',
+        borderRadius: 999,
+        boxShadow: selected ? '2px 2px 0 var(--ink)' : '1.5px 1.5px 0 var(--ink)',
+        fontFamily: 'var(--f-hand-body)',
+        fontSize: 13,
+        lineHeight: 1.2,
+        color: 'var(--ink)',
+        cursor: handleClick ? 'pointer' : 'default',
+        opacity: isActive ? 1 : 0.55,
+        font: handleClick ? undefined : undefined,
+        textAlign: 'left',
+        appearance: 'none',
+        WebkitAppearance: 'none',
+      }}
     >
       {avatarNode}
-      <span className={NAME_CLASS}>{name}</span>
+      <span
+        style={{
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          fontWeight: 600,
+        }}
+      >
+        {name}
+      </span>
       {withAutonomyDot && autonomyLevel && (
         <span
           aria-hidden="true"
           title={`Autonomy: ${autonomyLevel}`}
-          className={[
-            'inline-block h-2 w-2 shrink-0 rounded-full',
-            AUTONOMY_DOT_CLASS[autonomyLevel],
-          ].join(' ')}
+          style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            flexShrink: 0,
+            borderRadius: '50%',
+            background: AUTONOMY_DOT_COLOR[autonomyLevel],
+            border: '1px solid var(--ink)',
+          }}
         />
       )}
       {handleMoreClick && (
@@ -204,9 +233,25 @@ export function PersonaChip({
           type="button"
           onClick={handleMoreClick}
           aria-label={moreAriaLabel}
-          className={MORE_BUTTON_CLASS}
+          style={{
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 20,
+            height: 20,
+            padding: 0,
+            background: 'var(--paper)',
+            border: '1.5px solid var(--ink)',
+            borderRadius: '50%',
+            fontFamily: 'var(--f-mono)',
+            fontSize: 12,
+            fontWeight: 700,
+            color: 'var(--ink-soft)',
+            cursor: 'pointer',
+            lineHeight: 1,
+          }}
         >
-          {/* unicode kebab; aria-hidden text fallback covered by aria-label */}
           <span aria-hidden="true">{'⋮'}</span>
         </button>
       )}

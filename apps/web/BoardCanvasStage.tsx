@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import Canvas, { type CanvasProps } from '../../src/canvas/ReactFlowCanvas';
 import { ClusterHaloLayer } from '../../src/canvas/ClusterHaloLayer';
+import {
+  setManualClusterOverride,
+  useCanvasZoomModeOnly,
+} from '../../src/canvas/useCanvasZoomMode';
 import { estimateBoardBounds } from '../../src/canvas/reactflow/flowProjection';
 import {
   CritiqueCardsLayer,
@@ -71,10 +75,33 @@ export function BoardCanvasStage({
   ...canvasProps
 }: BoardCanvasStageProps): React.ReactElement {
   const busyIdeaIds = getBusyIdeaIds(critiqueBusyByIdea);
-  // M3 / Screen 02: cluster-zoom toggles between idea zoom (default — full
-  // sticky cards on the canvas, halos quietly behind) and cluster zoom
-  // (stickies dim to thumbnails + halos elevate so the cluster reads first).
-  const [clusterZoom, setClusterZoom] = useState(false);
+  // M3 / Screen 02 / Build Spec §s02: cluster-zoom is a *visual mode*, not a
+  // separate viewport. The canvas is one DOM; we tween between two modes:
+  //   - sticky mode (zoom > 0.52): full sticky cards, halos quiet, lines & edit.
+  //   - cluster mode (zoom < 0.48): 22×16 chips, halos bold, cluster labels.
+  // The hook below derives the live mode from react-flow's actual zoom (with
+  // 0.48 ↔ 0.52 hysteresis). We keep the manual `clusterZoomOverride` state so
+  // the `C` keyboard shortcut and the on-canvas toggle still let users force
+  // cluster mode independently of zoom level — they OR with the zoom-driven
+  // signal. This means the layout matches the design spec even when react-flow's
+  // `minZoom` clamps the viewport above 0.5 (preserving existing UX).
+  const zoomDrivenMode = useCanvasZoomModeOnly();
+  const [clusterZoomOverride, setClusterZoomOverride] = useState(false);
+  const clusterZoom = clusterZoomOverride || zoomDrivenMode === 'cluster';
+
+  // Mirror the manual override into the shared zoom-mode store so every
+  // consumer of `useCanvasZoomMode` (IdeaNoteNode, ClusterHaloLayer, etc.)
+  // sees cluster mode regardless of the actual zoom.
+  useEffect(() => {
+    setManualClusterOverride(clusterZoomOverride);
+  }, [clusterZoomOverride]);
+  // Defensive cleanup — if the stage unmounts mid-override, release the
+  // override so a remount doesn't observe a stuck cluster mode.
+  useEffect(() => {
+    return () => {
+      setManualClusterOverride(false);
+    };
+  }, []);
 
   // Keyboard shortcut "C" to flip between idea/cluster zoom — matches the
   // affordance of "F"/"+/-" already supplied by the ReactFlow viewport panel.
@@ -93,7 +120,7 @@ export function BoardCanvasStage({
         }
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      setClusterZoom(value => !value);
+      setClusterZoomOverride(value => !value);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -148,7 +175,7 @@ export function BoardCanvasStage({
       <ZoomViewToggle
         clusterZoom={clusterZoom}
         clusterCount={groupList.length}
-        onToggle={() => setClusterZoom(value => !value)}
+        onToggle={() => setClusterZoomOverride(value => !value)}
       />
       {children}
     </div>
@@ -217,7 +244,17 @@ function BoardCanvasOverlayStack({
         previewIdeaIds={clusterPreviewIdeaIds}
         previewKey={clusterPreviewKey}
       />
-      {clusterZoom && (
+      {/*
+        Chip rendering at cluster zoom now lives inside `IdeaNoteNode`
+        itself (Build Spec §s02 — one DOM, two modes). `IdeaNoteNode` reads
+        the shared zoom-mode store and counter-scales the 22×16 chip so it
+        lands at the design target regardless of the viewport's CSS scale,
+        whether the cluster mode came from actual zoom-out or from the
+        manual override. The original 48×48 thumbnail overlay therefore is
+        no longer needed; the function is kept as a no-op so future tests
+        that referenced the helper still type-check.
+      */}
+      {false && clusterZoom && (
         <ClusterZoomThumbnailLayer
           ideas={ideas}
           selectedIdeaId={selectedIdeaId}

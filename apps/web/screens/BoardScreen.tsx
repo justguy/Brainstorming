@@ -40,6 +40,8 @@ import { useBoardSuggestionActions } from '../useBoardSuggestionActions';
 import { useBoardActivity } from '../useBoardActivity';
 import { useBoardBeatRunner } from '../useBoardBeatRunner';
 import { BoardAppView } from '../BoardAppView';
+import { BloomCard } from '../BloomCard';
+import { FocusMode } from '../FocusMode';
 import { useBeatReviewActions } from '../useBeatReviewActions';
 import { BeatReviewPanel } from '../BeatReviewPanel';
 import {
@@ -70,6 +72,11 @@ import {
   ConnectionInspectorPopover,
   type ConnectionInspectorAnchor,
 } from '../ConnectionInspectorPopover';
+import { PinToBoardsDialog } from '../PinToBoardsDialog';
+import { getDb } from '../../../src/storage/db';
+import { pinIdeaToBoards } from '../../../src/storage/ideas';
+import type { BoardRecord } from '../../../src/board/types';
+import { formatRoute } from '../routing/parseRoute';
 
 const DEV_COMPANION_PAUSED_TWEAK_KEY = 'companion.facilitatorPaused';
 const CAPTURE_CANVAS_SELECTOR = '.bo-canvas';
@@ -158,6 +165,12 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   const [docsIdeaId, setDocsIdeaId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [turnLogOpen, setTurnLogOpen] = useState(false);
+  // Bloom/Focus dual-mode idea opener — hoisted here so transitions between
+  // the two surfaces preserve the selected idea + docs/turn-log/inspector
+  // state. `'closed'` means no overlay is mounted and the canvas is in its
+  // default chrome (the legacy BoardSelectedIdeaDock for demo seeds, nothing
+  // for live ideas — clicking a sticky promotes straight into Bloom).
+  const [bloomFocusMode, setBloomFocusMode] = useState<'bloom' | 'focus' | 'closed'>('closed');
   const [selectedAttentionItemId, setSelectedAttentionItemId] = useState<string | null>(null);
   const [selectedSuggestionId, setSelectedSuggestionId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -177,6 +190,12 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
     useState<ConnectionInspectorAnchor | null>(null);
   const [connectionInspectorBusy, setConnectionInspectorBusy] = useState(false);
   const [connectionInspectorError, setConnectionInspectorError] = useState<string | null>(null);
+  // Cross-board pinning picker — opens from the selected-idea dock so the user
+  // can mirror an idea onto other boards in the project. Boards + idea counts
+  // are loaded lazily on first open so the BoardScreen mount path stays cheap.
+  const [pinDialogIdeaId, setPinDialogIdeaId] = useState<string | null>(null);
+  const [pinDialogBoards, setPinDialogBoards] = useState<ReadonlyArray<BoardRecord>>([]);
+  const [pinDialogBoardCounts, setPinDialogBoardCounts] = useState<Record<string, number>>({});
   const lastSharedBoardMutationIdRef = useRef<string | null>(null);
   const { activity, setActivity, textEntryActive, markActivity } = useBoardActivity({ captureOpen });
   const { activeBeatRun, runBoardBeat } = useBoardBeatRunner();
@@ -244,6 +263,7 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
     if (!selectedBoardIdea) {
       setInspectorOpen(false);
       setTurnLogOpen(false);
+      setBloomFocusMode('closed');
     }
   }, [selectedBoardIdea]);
 
@@ -434,6 +454,11 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
   const canvasSuggestions = usingDemoBoard ? demoSuggestions : visibleCanvasSuggestions;
   const canvasCritiques = usingDemoBoard ? demoCritiques : critiques;
   const openOptions = () => onNavigate('#/options');
+  const navigateHome = () => onNavigate(formatRoute({ kind: 'home', projectId: null }));
+  const navigateMap = () => onNavigate(formatRoute({ kind: 'map', boardId }));
+  const navigateLog = () => onNavigate(formatRoute({ kind: 'log', boardId }));
+  const navigateBrief = (ideaId: string) =>
+    onNavigate(formatRoute({ kind: 'brief', boardId, ideaId }));
   const closeSuggestionDrawer = () => setSelectedSuggestionId(null);
   const openSuggestionDrawer = (suggestionId: string) => {
     setSelectedAttentionItemId(null);
@@ -731,6 +756,122 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
     closeConnectionInspector();
   }, [connectionInspectorId, connections]);
 
+  // Cross-board pinning — load the project's boards lazily on open. Filtered
+  // to the same project as the active board so users only see candidates that
+  // make sense for cross-board threads. The dialog itself filters out the
+  // idea's home board from the picker rows.
+  async function openPinToBoardsDialog(targetIdeaId: string): Promise<void> {
+    setPinDialogIdeaId(targetIdeaId);
+    try {
+      const db = await getDb();
+      const allBoards = await db.getAll('boards');
+      const currentBoard = allBoards.find(board => board.id === boardId);
+      const projectId = currentBoard?.projectId ?? 'local-project';
+      const scoped = allBoards.filter(board => (board.projectId ?? 'local-project') === projectId);
+      const counts: Record<string, number> = {};
+      for (const board of scoped) {
+        try {
+          const boardIdeas = await db.getAllFromIndex('ideas', 'byBoardId', board.id);
+          counts[board.id] = boardIdeas.filter(idea => idea.status !== 'discarded' && idea.status !== 'archived').length;
+        } catch {
+          counts[board.id] = 0;
+        }
+      }
+      setPinDialogBoards(scoped);
+      setPinDialogBoardCounts(counts);
+    } catch (err) {
+      console.error('[BoardScreen] failed to load boards for pin picker:', err);
+      setPinDialogBoards([]);
+      setPinDialogBoardCounts({});
+    }
+  }
+
+  function closePinToBoardsDialog(): void {
+    setPinDialogIdeaId(null);
+  }
+
+  async function commitPinToBoards(nextOtherBoardIds: string[]): Promise<void> {
+    if (!pinDialogIdeaId) return;
+    await pinIdeaToBoards(pinDialogIdeaId, nextOtherBoardIds);
+    // Re-read the idea so the dock's `currentPinned` source-of-truth refreshes
+    // without waiting for a full board reload. The map screen subscribes
+    // through its own loader, so cross-board edges light up on next nav.
+    await loadIdeas();
+  }
+
+  // Bloom/Focus surface. The current selection is the source of truth; we
+  // mount Bloom or Focus when `bloomFocusMode !== 'closed'` and the host
+  // has a live (non-demo) board idea selected. Both surfaces share the same
+  // action props so the six host buttons (Docs / Turn log / Inspector /
+  // Brief / Pin / Back) work identically in either mode.
+  const bloomFocusActive = bloomFocusMode !== 'closed' && Boolean(selectedBoardIdea) && !usingDemoBoard;
+  const closeBloomFocusSurface = (): void => {
+    setBloomFocusMode('closed');
+    setSelectedId(null);
+    setInspectorOpen(false);
+    setTurnLogOpen(false);
+    setDocsIdeaId(null);
+    setSelectedAttentionItemId(null);
+    setSelectedSuggestionId(null);
+  };
+  const bloomFocusSurfaceNode: React.ReactNode = bloomFocusActive && selectedBoardIdea
+    ? bloomFocusMode === 'focus'
+      ? (
+        <FocusMode
+          idea={selectedBoardIdea}
+          boardIdeas={ideas}
+          boardConnections={connections}
+          boardSuggestions={suggestions}
+          boardTitle={boardTitle}
+          onUpdate={handleIdeaUpdate}
+          docCount={docCounts[selectedBoardIdea.id] ?? 0}
+          isTurnLogOpen={turnLogOpen}
+          onOpenDocs={openDocsPanel}
+          onToggleTurnLog={() => {
+            setDocsIdeaId(null);
+            setTurnLogOpen(value => !value);
+          }}
+          onOpenInspector={() => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(true);
+          }}
+          onOpenBrief={navigateBrief}
+          onOpenPinDialog={(ideaId) => { void openPinToBoardsDialog(ideaId); }}
+          onClose={closeBloomFocusSurface}
+          onDemoteToBloom={() => setBloomFocusMode('bloom')}
+          onJumpToIdea={(ideaId) => {
+            // Switching subjects keeps us in Focus mode but rebinds the
+            // surface to the neighbor idea.
+            setSelectedId(ideaId);
+          }}
+        />
+      )
+      : (
+        <BloomCard
+          idea={selectedBoardIdea}
+          boardIdeas={ideas}
+          boardConnections={connections}
+          boardSuggestions={suggestions}
+          onUpdate={handleIdeaUpdate}
+          docCount={docCounts[selectedBoardIdea.id] ?? 0}
+          isTurnLogOpen={turnLogOpen}
+          onOpenDocs={openDocsPanel}
+          onToggleTurnLog={() => {
+            setDocsIdeaId(null);
+            setTurnLogOpen(value => !value);
+          }}
+          onOpenInspector={() => {
+            setSelectedSuggestionId(null);
+            setInspectorOpen(true);
+          }}
+          onOpenBrief={navigateBrief}
+          onOpenPinDialog={(ideaId) => { void openPinToBoardsDialog(ideaId); }}
+          onClose={closeBloomFocusSurface}
+          onPromoteToFocus={() => setBloomFocusMode('focus')}
+        />
+      )
+    : null;
+
   return (
     <BoardAppView
       header={{
@@ -777,6 +918,9 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
         onToggleHistory: () => setHistoryOpen(value => !value),
         onSetBoardTheme: setBoardTheme,
         onOpenOptions: openOptions,
+        onNavigateHome: navigateHome,
+        onNavigateMap: navigateMap,
+        onNavigateLog: navigateLog,
         guidanceNotesEnabled: guidanceVisible,
         onToggleGuidanceNotes: toggleGuidance,
       }}
@@ -942,6 +1086,12 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
           setInspectorOpen(false);
           setSelectedAttentionItemId(null);
           setSelectedId(id);
+          // Live boards promote the selection into Bloom mode; demo boards
+          // fall back to the legacy BoardSelectedIdeaDock so demo seeds keep
+          // their (preview-only) preview chrome.
+          if (!usingDemoBoard) {
+            setBloomFocusMode('bloom');
+          }
         },
         onOpenSuggestion: openSuggestionDrawer,
         onOpenDocs: openDocsPanel,
@@ -966,6 +1116,9 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
           setInspectorOpen(false);
           setSelectedId(ideaId);
           setSelectedAttentionItemId(attentionId);
+          if (!usingDemoBoard) {
+            setBloomFocusMode('bloom');
+          }
         },
       }}
       workspaceOverlays={{
@@ -1036,20 +1189,61 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
           setSelectedAttentionItemId(null);
           setSelectedSuggestionId(null);
           setSelectedId(null);
+          setBloomFocusMode('closed');
         },
       }}
       selectedIdeaDockContent={selectedCanvasIdea ? (
         usingDemoBoard
           ? (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-900">Demo note preview</p>
-              <p className="text-sm text-gray-600">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: 'var(--f-hand)',
+                  fontSize: 18,
+                  color: 'var(--ink)',
+                }}
+              >
+                Demo note preview
+              </p>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: 'var(--f-hand-body)',
+                  fontSize: 14,
+                  color: 'var(--ink-soft)',
+                  lineHeight: 1.4,
+                }}
+              >
                 This board is showing fallback demo notes. Selection is live, but editing and inspector actions stay disabled until real board data exists.
               </p>
             </div>
           )
           : (
             <>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  alignItems: 'center',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => { void openPinToBoardsDialog(selectedCanvasIdea.id); }}
+                  title="Mirror this idea onto other boards so it shows up on the planet map as a cross-board thread."
+                >
+                  {(() => {
+                    const homeId = selectedCanvasIdea.boardId ?? boardId;
+                    const otherPinCount = (selectedCanvasIdea.pinnedToBoardIds ?? []).filter(id => id && id !== homeId).length;
+                    return otherPinCount > 0
+                      ? `Pin to boards · ${otherPinCount}`
+                      : 'Pin to boards…';
+                  })()}
+                </button>
+              </div>
               <IdeaAttentionPanel
                 idea={selectedCanvasIdea}
                 critiques={canvasCritiques}
@@ -1064,17 +1258,38 @@ export function BoardScreen({ onNavigate }: BoardScreenProps): React.ReactElemen
             </>
           )
       ) : null}
+      onOpenBrief={usingDemoBoard ? undefined : navigateBrief}
+      bloomFocusActive={bloomFocusActive}
+      bloomFocusSurface={bloomFocusSurfaceNode}
       extraOverlays={
-        <ConnectionInspectorPopover
-          open={Boolean(inspectorConnection)}
-          connection={inspectorConnection}
-          ideas={ideas}
-          anchor={connectionInspectorAnchor}
-          onSave={handleConnectionInspectorSave}
-          onClose={closeConnectionInspector}
-          busy={connectionInspectorBusy}
-          error={connectionInspectorError}
-        />
+        <>
+          <ConnectionInspectorPopover
+            open={Boolean(inspectorConnection)}
+            connection={inspectorConnection}
+            ideas={ideas}
+            anchor={connectionInspectorAnchor}
+            onSave={handleConnectionInspectorSave}
+            onClose={closeConnectionInspector}
+            busy={connectionInspectorBusy}
+            error={connectionInspectorError}
+          />
+          {pinDialogIdeaId && (() => {
+            const pinTarget = ideas.find(idea => idea.id === pinDialogIdeaId);
+            if (!pinTarget) return null;
+            return (
+              <PinToBoardsDialog
+                open={Boolean(pinDialogIdeaId)}
+                ideaId={pinTarget.id}
+                ideaBoardId={pinTarget.boardId ?? boardId}
+                currentPinned={pinTarget.pinnedToBoardIds ?? []}
+                boards={pinDialogBoards}
+                boardIdeaCounts={pinDialogBoardCounts}
+                onCommit={commitPinToBoards}
+                onClose={closePinToBoardsDialog}
+              />
+            );
+          })()}
+        </>
       }
     />
   );

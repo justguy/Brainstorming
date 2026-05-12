@@ -6,9 +6,9 @@ import React from 'react';
  * block for inline nudges (companion rail, Robot's Notes, Synthesizer
  * cluster proposals, etc.).
  *
- * Patterned on the action group inside `RobotNotesSummary`, but extracted
- * so it can be reused on its own. The migration of existing call sites is
- * tracked separately (bo-144).
+ * Visual style follows the `.persona-say` speech-bubble pattern from
+ * `Design/brainstorm.css` — paper background, 2px ink border, hard offset
+ * shadow, hand body font. Actions are `.btn.sm` sketchy buttons.
  */
 
 export interface NudgeCardProps {
@@ -38,18 +38,6 @@ export interface NudgeCardProps {
   className?: string;
 }
 
-const ROOT_CLASS =
-  'bo-card-surface w-full rounded-2xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700';
-
-const ACCEPT_CLASS =
-  'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-800';
-
-const PREVIEW_CLASS =
-  'rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700 transition hover:border-sky-300 hover:text-sky-800';
-
-const DISMISS_CLASS =
-  'rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 transition hover:border-slate-300 hover:text-slate-700';
-
 export function NudgeCard({
   eyebrow,
   title,
@@ -64,57 +52,82 @@ export function NudgeCard({
   ariaLabel,
   className,
 }: NudgeCardProps): React.ReactElement {
-  const rootClassName = [ROOT_CLASS, className ?? ''].filter(Boolean).join(' ');
+  const rootClassName = ['nudge-card', className ?? ''].filter(Boolean).join(' ');
 
   return (
     <article
       className={rootClassName}
       aria-label={ariaLabel ?? title}
       role="group"
+      style={{
+        position: 'relative',
+        width: '100%',
+        background: 'var(--paper)',
+        border: '2px solid var(--ink)',
+        borderRadius: 12,
+        padding: '10px 12px',
+        boxShadow: '3px 3px 0 var(--ink)',
+        fontFamily: 'var(--f-hand-body)',
+        fontSize: 14,
+        lineHeight: 1.3,
+        color: 'var(--ink)',
+      }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          {eyebrow && (
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-              {eyebrow}
-            </p>
-          )}
-          <p className="mt-1 font-semibold text-slate-900">{title}</p>
-          {body !== undefined && body !== null && (
-            <p className="mt-1 text-[11px] text-slate-600">{body}</p>
-          )}
-          {children && <div className="mt-1 text-[11px] text-slate-600">{children}</div>}
+      {eyebrow && (
+        <div
+          style={{
+            fontFamily: 'var(--f-mono)',
+            fontSize: 10,
+            color: 'var(--ink-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            marginBottom: 4,
+          }}
+        >
+          {eyebrow}
         </div>
-        <div className="flex shrink-0 flex-wrap gap-1">
+      )}
+      <div
+        style={{
+          fontFamily: 'var(--f-hand)',
+          fontSize: 18,
+          fontWeight: 700,
+          lineHeight: 1.15,
+          color: 'var(--ink)',
+        }}
+      >
+        {title}
+      </div>
+      {body !== undefined && body !== null && (
+        <div style={{ marginTop: 4, color: 'var(--ink-soft)' }}>{body}</div>
+      )}
+      {children && <div style={{ marginTop: 4, color: 'var(--ink-soft)' }}>{children}</div>}
+      {(onAccept || onPreview || onDismiss) && (
+        <div
+          style={{
+            marginTop: 8,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 6,
+          }}
+        >
           {onAccept && (
-            <button
-              type="button"
-              onClick={onAccept}
-              className={ACCEPT_CLASS}
-            >
+            <button type="button" onClick={onAccept} className="btn sm primary">
               {acceptLabel}
             </button>
           )}
           {onPreview && (
-            <button
-              type="button"
-              onClick={onPreview}
-              className={PREVIEW_CLASS}
-            >
+            <button type="button" onClick={onPreview} className="btn sm">
               {previewLabel}
             </button>
           )}
           {onDismiss && (
-            <button
-              type="button"
-              onClick={onDismiss}
-              className={DISMISS_CLASS}
-            >
+            <button type="button" onClick={onDismiss} className="btn sm ghost">
               {dismissLabel}
             </button>
           )}
         </div>
-      </div>
+      )}
     </article>
   );
 }

@@ -36,6 +36,15 @@ export interface AppHeaderBarProps {
   onToggleGuidanceNotes: () => void;
   onSetBoardTheme: (theme: BoardThemeMode) => void | Promise<void>;
   onOpenOptions: () => void;
+  /**
+   * Optional cross-screen navigation callbacks. Each is rendered as a small
+   * icon-btn in the left toolbar group only when the host wires it in; this
+   * keeps the header backwards-compatible with any caller (tests, future
+   * lightweight screens) that doesn't need the full nav set.
+   */
+  onNavigateHome?: () => void;
+  onNavigateMap?: () => void;
+  onNavigateLog?: () => void;
 }
 
 export function AppHeaderBar({
@@ -60,6 +69,9 @@ export function AppHeaderBar({
   onToggleGuidanceNotes,
   onSetBoardTheme,
   onOpenOptions,
+  onNavigateHome,
+  onNavigateMap,
+  onNavigateLog,
   boardTitle,
 }: AppHeaderBarProps): React.ReactElement {
   const normalizedTitle = boardTitle?.trim() ?? '';
@@ -78,24 +90,63 @@ export function AppHeaderBar({
     ?? canvasBusy
     ?? (advancingFromTool ? 'Agent driving the board' : null);
 
+  const ideaCountLabel = visibleBoardSubtitle ?? 'board';
+  const statusToneColor = statusTone === 'error' ? 'var(--accent-critique)' : 'var(--ink-soft)';
+
   return (
-    <header className="bo-topbar">
-      <div className="bo-topbar-left">
-        <div className="bo-brand-pill">
-          <span className="bo-brand-lamp" aria-hidden="true">
+    <header className="topbar bo-topbar">
+      <div
+        className="bo-topbar-left"
+        style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}
+      >
+        <div className="brand bo-brand-pill">
+          <span className="brand-mark bo-brand-lamp" aria-hidden="true">
             <BrandLampIcon />
           </span>
-          <span className="bo-brand-copy">
-            <span className="bo-brand-title">Brainstorm</span>
-            <span className="bo-brand-subtitle">A thinking partner</span>
+          <span className="bo-brand-copy" style={{ display: 'flex', flexDirection: 'column' }}>
+            <span className="brand-name bo-brand-title">Brainstorm</span>
+            <span className="brand-tag bo-brand-subtitle">a thinking partner</span>
           </span>
         </div>
 
-        <div className="bo-topbar-util-group">
+        <div className="toolbar-group bo-topbar-util-group">
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="icon-btn bo-topbar-icon-button"
+              title="Back to home"
+              aria-label="Back to home"
+            >
+              <HomeIcon />
+            </button>
+          )}
+          {onNavigateMap && (
+            <button
+              type="button"
+              onClick={onNavigateMap}
+              className="icon-btn bo-topbar-icon-button"
+              title="Cross-board map"
+              aria-label="Cross-board map"
+            >
+              <MapIcon />
+            </button>
+          )}
+          {onNavigateLog && (
+            <button
+              type="button"
+              onClick={onNavigateLog}
+              className="icon-btn bo-topbar-icon-button"
+              title="Project log"
+              aria-label="Project log"
+            >
+              <LogIcon />
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleHistory}
-            className={`bo-topbar-icon-button ${historyOpen ? 'is-active' : ''}`}
+            className={`icon-btn bo-topbar-icon-button${historyOpen ? ' active is-active' : ''}`}
             title={totalChanges > 0 ? `Board history (${historyState.cursor}/${totalChanges})` : 'Board history'}
             aria-label="Open board history"
           >
@@ -104,7 +155,7 @@ export function AppHeaderBar({
           <button
             type="button"
             onClick={onOpenOptions}
-            className="bo-topbar-icon-button"
+            className="icon-btn bo-topbar-icon-button"
             title="Open options"
             aria-label="Open options"
           >
@@ -113,21 +164,45 @@ export function AppHeaderBar({
         </div>
       </div>
 
-      <div className="bo-topbar-center">
+      <div
+        className="bo-topbar-center"
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, pointerEvents: 'auto' }}
+      >
         {visibleBoardTitle && (
-          <div className="bo-title-plaque" title={visibleBoardTitle}>
-            <span className="bo-title-main">{visibleBoardTitle}</span>
+          <div className="board-title-chip bo-title-plaque" title={visibleBoardTitle}>
+            <div className="bt bo-title-main">{visibleBoardTitle}</div>
             {visibleBoardSubtitle && (
-              <span className="bo-title-subtitle">{visibleBoardSubtitle}</span>
+              <div className="bs bo-title-subtitle">{ideaCountLabel}</div>
             )}
           </div>
         )}
 
         {statusMessage && (
-          <div className={`bo-topbar-status ${statusTone === 'error' ? 'is-error' : 'is-success'}`} role="status">
+          <div
+            className={`bo-topbar-status ${statusTone === 'error' ? 'is-error' : 'is-success'}`}
+            role="status"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 12px',
+              borderRadius: 8,
+              border: '1.5px solid var(--ink)',
+              background: 'var(--paper)',
+              boxShadow: '1.5px 1.5px 0 var(--ink)',
+              fontFamily: 'var(--f-mono)',
+              fontSize: 11,
+              letterSpacing: '0.05em',
+              color: statusToneColor,
+            }}
+          >
             <span>{statusMessage}</span>
             {captureActionLabel && onCaptureAction && (
-              <button type="button" onClick={onCaptureAction} className="bo-topbar-status-action">
+              <button
+                type="button"
+                onClick={onCaptureAction}
+                className="btn sm bo-topbar-status-action"
+              >
                 {captureActionLabel}
               </button>
             )}
@@ -135,14 +210,17 @@ export function AppHeaderBar({
         )}
       </div>
 
-      <div className="bo-topbar-right">
-        <div className="bo-topbar-util-group">
+      <div
+        className="bo-topbar-right"
+        style={{ display: 'flex', gap: 10, alignItems: 'center', pointerEvents: 'auto' }}
+      >
+        <div className="toolbar-group bo-topbar-util-group">
           <button
             type="button"
             onClick={onOpenCapture}
             aria-pressed={captureOpen}
             data-capture-anchor="bo-capture-portal-anchor"
-            className="bo-topbar-icon-button"
+            className={`icon-btn bo-topbar-icon-button${captureOpen ? ' active' : ''}`}
             title={creating ? 'Adding note' : 'Add note'}
             aria-label="Add note"
           >
@@ -152,7 +230,7 @@ export function AppHeaderBar({
           <button
             type="button"
             onClick={onToggleLinkMode}
-            className={`bo-topbar-icon-button ${linkModeEnabled ? 'is-active' : ''}`}
+            className={`icon-btn bo-topbar-icon-button${linkModeEnabled ? ' active is-active' : ''}`}
             aria-pressed={linkModeEnabled}
             title="Toggle link mode"
             aria-label="Toggle link mode"
@@ -163,7 +241,7 @@ export function AppHeaderBar({
           <button
             type="button"
             onClick={onToggleGuidanceNotes}
-            className={`bo-topbar-icon-button ${guidanceNotesEnabled ? 'is-active' : ''}`}
+            className={`icon-btn bo-topbar-icon-button${guidanceNotesEnabled ? ' active is-active' : ''}`}
             aria-pressed={guidanceNotesEnabled}
             title={guidanceNotesEnabled ? 'Hide guidance notes inside Focus / Bloom' : 'Show guidance notes inside Focus / Bloom'}
             aria-label="Toggle guidance notes"
@@ -177,7 +255,7 @@ export function AppHeaderBar({
               void onUndo();
             }}
             disabled={!historyState.canUndo}
-            className="bo-topbar-icon-button"
+            className="icon-btn bo-topbar-icon-button"
             title="Undo"
             aria-label="Undo"
           >
@@ -190,7 +268,7 @@ export function AppHeaderBar({
               void onRedo();
             }}
             disabled={!historyState.canRedo}
-            className="bo-topbar-icon-button"
+            className="icon-btn bo-topbar-icon-button"
             title="Redo"
             aria-label="Redo"
           >
@@ -203,7 +281,7 @@ export function AppHeaderBar({
           onClick={() => {
             void onSetBoardTheme(nextTheme);
           }}
-          className="bo-topbar-icon-button"
+          className="icon-btn bo-topbar-icon-button"
           aria-label={`Switch to ${nextTheme} theme`}
           title={`Switch to ${nextTheme} theme`}
         >
@@ -297,6 +375,36 @@ function GuidanceIcon(): React.ReactElement {
       <path d="M5 4.5h6.4l3.1 3.1V15.5H5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
       <path d="M11.4 4.5v3.1h3.1" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
       <path d="M7.4 11h5.2M7.4 13.2h3.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HomeIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M3.5 9.4 10 4l6.5 5.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 8.8v7h10v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.7 15.8v-3.6h2.6v3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MapIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="5.5" cy="6" r="2" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="14.5" cy="14" r="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="m7 7.4 6 5.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function LogIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M6 3.5h8M6 16.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M6.5 3.5v2c0 2 3.5 3.5 3.5 4.5s-3.5 2.5-3.5 4.5v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13.5 3.5v2c0 2-3.5 3.5-3.5 4.5s3.5 2.5 3.5 4.5v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

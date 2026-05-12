@@ -825,7 +825,7 @@ export default function ReactFlowCanvas({
             deleteKeyCode={null}
             fitView={false}
             nodeClickDistance={4}
-            minZoom={0.55}
+            minZoom={0.2}
             maxZoom={1.9}
             proOptions={{ hideAttribution: true }}
             className="bo-reactflow-canvas"

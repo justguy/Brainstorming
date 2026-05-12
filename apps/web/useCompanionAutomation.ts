@@ -40,10 +40,22 @@ import {
   buildFacilitatorControlPlaneContext,
   decideCompanionAutomationAction,
 } from './facilitatorPolicy';
+import { runBoardAmbiguityScan } from '../../src/beats/boardAmbiguityScan';
 // Default idle gap before the policy layer treats a board change as "settled".
 // Scaled per autonomy dial (`takes-pen` reacts faster, `whispers` waits longer)
 // via `autonomyGateVerdict(...).idleScale`.
 export const AUTO_IDLE_MS = 1_500;
+// Idle-time Historian (board ambiguity) scan tuning. The role is expensive, so
+// we gate it behind a change-count heuristic and a hard throttle. Constants are
+// exported so future tests can tune them without poking at the closure.
+export const AMBIGUITY_SCAN_THROTTLE_MS = 3 * 60_000;
+export const AMBIGUITY_SCAN_CHANGE_THRESHOLD = 5;
+export const AMBIGUITY_SCAN_MAX_FLAGS = 3;
+const AMBIGUITY_SEVERITY_RANK: Record<'high' | 'medium' | 'low', number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
 type RevealOrigin = 'manual' | 'ai';
 type AutomatedRunOptions = {
   origin?: RevealOrigin;
@@ -198,6 +210,34 @@ export function useCompanionAutomation({
   const previousVisibleIdeaIdsRef = useRef<Set<string>>(new Set());
   const pendingConnectionIdeaIdsRef = useRef<string[]>([]);
   const pendingScoutIdeaIdsRef = useRef<string[]>([]);
+  // Board-ambiguity (Historian) scan bookkeeping. Tracks (a) when we last
+  // ran one, so we can throttle to ~once per 3 minutes, and (b) how many
+  // sticky changes have happened since the last scan, so we don't fire on
+  // a near-empty board. The signature ref records the last-seen
+  // {id -> rawText} fingerprint so we can count adds AND edits, not just
+  // adds. `inFlight` guards against concurrent overlap if a scan straddles
+  // a re-render.
+  const ambiguityScanLastAtRef = useRef<number>(0);
+  const ambiguityChangeCountRef = useRef<number>(0);
+  const ambiguityIdeaSignatureRef = useRef<Map<string, string>>(new Map());
+  const ambiguityScanInFlightRef = useRef<boolean>(false);
+  // Persist the last-scan timestamp across remounts so navigating away and
+  // back doesn't reset the 3-minute throttle and re-fire an LLM call. The hook
+  // is mounted only inside BoardScreen, so a single key is sufficient: the
+  // throttle covers the whole user session regardless of which board they
+  // navigate between.
+  const AMBIGUITY_SCAN_STORAGE_KEY = 'bo-ambiguity-last-scan';
+  useEffect(() => {
+    try {
+      const raw = typeof localStorage !== 'undefined'
+        ? localStorage.getItem(AMBIGUITY_SCAN_STORAGE_KEY)
+        : null;
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      ambiguityScanLastAtRef.current = Number.isFinite(parsed) ? parsed : 0;
+    } catch {
+      ambiguityScanLastAtRef.current = 0;
+    }
+  }, []);
   const idleMs = Math.max(0, clockMs - activity.lastInteractionAt);
   const lastMeaningfulActivity = latestMeaningfulActivity(activity);
   const effectiveFacilitatorPaused = facilitatorPaused || sharedFacilitatorPaused;
@@ -325,6 +365,30 @@ export function useCompanionAutomation({
     pendingScoutIdeaIdsRef.current = pendingWork.scoutIdeaIds;
     previousVisibleIdeaIdsRef.current = new Set(visibleIdeas.map(idea => idea.id));
   }, [docCounts, latestSyncedBoardChangeAt, visibleIdeas]);
+  // Count adds + edits against the Historian threshold. Comparing rawText
+  // fingerprints lets us catch substantive sticky edits (which are the
+  // ambiguity-generating events) without depending on `syncBoardChangeAt`,
+  // which fires on every panel move. The first pass after mount just seeds
+  // the signature map — we don't credit the user for ideas that were
+  // already on the board when the hook woke up.
+  useEffect(() => {
+    const signature = ambiguityIdeaSignatureRef.current;
+    if (signature.size === 0 && visibleIdeas.length > 0) {
+      for (const idea of visibleIdeas) signature.set(idea.id, idea.rawText);
+      return;
+    }
+    let delta = 0;
+    const next = new Map<string, string>();
+    for (const idea of visibleIdeas) {
+      const previousText = signature.get(idea.id);
+      if (previousText === undefined || previousText !== idea.rawText) delta += 1;
+      next.set(idea.id, idea.rawText);
+    }
+    if (delta > 0) {
+      ambiguityChangeCountRef.current += delta;
+    }
+    ambiguityIdeaSignatureRef.current = next;
+  }, [visibleIdeas]);
   async function handleSoftModeAction(): Promise<void> {
     setActivity(prev => dismissSoftModeHint(recordActivity(prev, 'edit')));
     recordRecoverySignal('Explicit pull from the facilitator dock.');
@@ -597,6 +661,114 @@ export function useCompanionAutomation({
     autonomyState,
     setAutonomyBackoffState,
     setAutonomyEffectiveMode,
+  ]);
+
+  // Idle-time Historian (board ambiguity) pass. Today the Historian role only
+  // runs inside the per-idea phase flow, so a user just adding stickies on the
+  // canvas never gets ambiguity flags surfaced. We fire `runBoardAmbiguityScan`
+  // when:
+  //   * autonomy dial is `active` or `takes-pen` (not `silent` / `whispers`),
+  //   * the facilitator isn't paused and the user isn't mid-interaction,
+  //   * the canvas has settled (`autoRunReady`),
+  //   * ≥ AMBIGUITY_SCAN_CHANGE_THRESHOLD sticky changes have happened since
+  //     the last scan (counted by the rawText-signature effect above),
+  //   * the throttle (~3 minutes since last scan) has elapsed.
+  // Results are staged via `addStagedInsight` with `kind: 'generic'` and
+  // `source: 'Historian'`, mirroring how Scout / Synthesizer drafts surface
+  // through the existing Robot's Notes queue. We do NOT emit a shared AI
+  // action because `FacilitatorAiAction.kind` is restricted to
+  // `connect | critique | scout` — adding a fourth would force every consumer
+  // to widen, which is out of scope here.
+  useEffect(() => {
+    if (effectiveFacilitatorPaused) return;
+    if (interactionSuppressed) return;
+    if (!autoRunReady) return;
+    if (ambiguityScanInFlightRef.current) return;
+    const dialAllowsHistorian = autonomyDial === 'active' || autonomyDial === 'takes-pen';
+    if (!dialAllowsHistorian) return;
+    if (visibleIdeas.length < 2) return;
+    if (ambiguityChangeCountRef.current < AMBIGUITY_SCAN_CHANGE_THRESHOLD) return;
+    const now = Date.now();
+    if (now - ambiguityScanLastAtRef.current < AMBIGUITY_SCAN_THROTTLE_MS) return;
+
+    let cancelled = false;
+    ambiguityScanInFlightRef.current = true;
+    // Reserve the throttle slot up front so a long-running scan doesn't get
+    // re-launched by a subsequent render. We restore it on hard failure so the
+    // next idle window can retry. Persist to localStorage so navigation
+    // (Map → back to Board) doesn't reset the 3-minute throttle.
+    ambiguityScanLastAtRef.current = now;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(AMBIGUITY_SCAN_STORAGE_KEY, String(now));
+      }
+    } catch {
+      // localStorage may be unavailable / over quota — fall back to ref-only.
+    }
+    const ideasSnapshot = visibleIdeas.slice();
+    void (async () => {
+      try {
+        const scan = await runBoardAmbiguityScan(ideasSnapshot);
+        if (cancelled) return;
+        if (scan.failed) {
+          // Roll back the throttle — we never produced anything.
+          ambiguityScanLastAtRef.current = 0;
+          return;
+        }
+        if (scan.flags.length === 0) {
+          // Successful run with no flags: keep the throttle so we don't hammer
+          // the role on every idle, but reset the change counter — the user
+          // needs to add/edit more stickies before we look again.
+          ambiguityChangeCountRef.current = 0;
+          return;
+        }
+        ambiguityChangeCountRef.current = 0;
+        // Stage the highest-severity flags first; cap at AMBIGUITY_SCAN_MAX_FLAGS
+        // to avoid flooding the Robot's Notes queue.
+        const ranked = scan.flags
+          .slice()
+          .sort((a, b) => AMBIGUITY_SEVERITY_RANK[a.severity] - AMBIGUITY_SEVERITY_RANK[b.severity])
+          .slice(0, AMBIGUITY_SCAN_MAX_FLAGS);
+        const sourceActionId = crypto.randomUUID();
+        for (const flag of ranked) {
+          addStagedInsight({
+            id: crypto.randomUUID(),
+            at: now,
+            sourceActionId,
+            kind: 'generic',
+            ideaId: flag.ideaId,
+            summary: flag.plainLanguage.length <= 90
+              ? flag.plainLanguage
+              : `${flag.plainLanguage.slice(0, 89)}…`,
+            source: 'Historian',
+            payload: {
+              flagId: flag.id,
+              type: flag.type,
+              severity: flag.severity,
+              resolutionMode: flag.resolutionMode,
+              plainLanguage: flag.plainLanguage,
+              scannedIdeaIds: scan.scannedIdeaIds,
+            },
+            status: 'pending',
+          });
+        }
+      } catch (err) {
+        console.warn('[useCompanionAutomation] ambiguity scan failed:', err);
+        if (!cancelled) ambiguityScanLastAtRef.current = 0;
+      } finally {
+        ambiguityScanInFlightRef.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoRunReady,
+    autonomyDial,
+    visibleIdeas,
+    interactionSuppressed,
+    effectiveFacilitatorPaused,
+    addStagedInsight,
   ]);
 
   return {

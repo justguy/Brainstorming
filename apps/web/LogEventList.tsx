@@ -10,6 +10,12 @@ interface LogEventListProps {
   currentSeq?: number;
   /** Optional empty-state copy override. */
   emptyMessage?: string;
+  /**
+   * Optional hover-action callback for the Screen 06 scrubber's
+   * "↶ rewind to here" affordance. When supplied, each `changeSet`-sourced
+   * row renders a small button that calls back with the row's seq.
+   */
+  onJumpToSeq?: (seq: number) => void;
 }
 
 /**
@@ -29,6 +35,7 @@ export function LogEventList({
   events,
   currentSeq,
   emptyMessage = 'No durable change sets yet. The first edit or AI action will appear here as a readable patch set.',
+  onJumpToSeq,
 }: LogEventListProps): React.ReactElement {
   if (events.length === 0) {
     return (
@@ -41,7 +48,12 @@ export function LogEventList({
   return (
     <div className="space-y-3">
       {events.map(event => (
-        <LogEventRow key={event.id} event={event} currentSeq={currentSeq} />
+        <LogEventRow
+          key={event.id}
+          event={event}
+          currentSeq={currentSeq}
+          onJumpToSeq={onJumpToSeq}
+        />
       ))}
     </div>
   );
@@ -50,9 +62,10 @@ export function LogEventList({
 interface LogEventRowProps {
   event: LogEvent;
   currentSeq?: number;
+  onJumpToSeq?: (seq: number) => void;
 }
 
-function LogEventRow({ event, currentSeq }: LogEventRowProps): React.ReactElement {
+function LogEventRow({ event, currentSeq, onJumpToSeq }: LogEventRowProps): React.ReactElement {
   const isCurrent =
     typeof currentSeq === 'number' &&
     event.source.kind === 'changeSet' &&
@@ -104,6 +117,23 @@ function LogEventRow({ event, currentSeq }: LogEventRowProps): React.ReactElemen
         <div className="text-right text-[11px] text-slate-500">
           {event.source.kind === 'changeSet' && <div>#{event.source.seq}</div>}
           <div>{formatTimestamp(event.ts)}</div>
+          {onJumpToSeq && event.source.kind === 'changeSet' && (
+            <button
+              type="button"
+              onClick={() => onJumpToSeq(event.source.kind === 'changeSet' ? event.source.seq : 0)}
+              className="bo-log-event-rewind mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
+              style={{
+                fontFamily: 'var(--f-mono)',
+                color: 'var(--ink)',
+                borderColor: 'var(--ink)',
+                background: 'var(--paper)',
+              }}
+              title={`Rewind scrubber to seq #${event.source.seq}`}
+              aria-label={`Rewind scrubber to seq ${event.source.seq}`}
+            >
+              ↶ rewind to here
+            </button>
+          )}
         </div>
       </div>
 

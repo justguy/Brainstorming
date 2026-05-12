@@ -8,16 +8,18 @@ import { pathForConnection } from '../../../src/canvas/reactflow/reactflowHelper
  * ConnectionLine — canonical SVG edge primitive for the screens-v2 6-kind
  * connection grammar (Build Spec §02 — "Connection-line visual grammar").
  *
- * Renders all six `ConnectionKind` values with distinct visual treatments:
+ * Renders all six `ConnectionKind` values with distinct visual treatments,
+ * using the hand-drawn design system's ink palette (matches the `--accent-*`
+ * tokens declared in `apps/web/brainstorm.css`):
  *
  *   kind            color              stroke               glyph / cap
  *   ─────────────── ────────────────── ──────────────────── ─────────────
- *   builds_on       Ink   (#0f172a)    Solid 2.5px          arrow ↑ (parent-of)
- *   shared_theme    Blue  (#2e86c7)    Solid 2px            (none)
- *   contradicts     Red   (#dc2626)    Dashed 2.5px (12 8)  zig-cap
- *   depends_on      Green (#15803d)    Solid 2px            arrow → (depends-on)
- *   evidence_for    Green (#15803d)    Dotted 1.5px (1 5)   (none)
- *   revives_killed  Green (#15803d)    Long-dash 2.5px      arrow → (legacy)
+ *   builds_on       Ink   (#1a1814)    Solid 1.8px          arrow → (parent-of)
+ *   shared_theme    Grey  (#8a8578)    Dotted 1.4px (1 5)   (none)
+ *   contradicts     Red   (#c94a3a)    Dashed 2px (8 5)     (none)
+ *   depends_on      Green (#2f8f5e)    Solid 1.8px          arrow → (depends-on)
+ *   evidence_for    Green (#2f8f5e)    Dotted 1.4px (1 5)   (none)
+ *   revives_killed  Green (#2f8f5e)    Long-dash 1.8px      arrow → (legacy)
  *
  * Each kind's fill / stroke / dash / marker is fully self-contained — the
  * existing `connectionLineStyle` helper in `reactflowHelpers.ts` only knows
@@ -67,37 +69,45 @@ interface ConnectionLineVisual {
 
 const KIND_VISUAL: Record<ConnectionKind, ConnectionLineVisual> = {
   // parent-of in the spec table — the canonical "this builds on that"
-  // hierarchy. Ink / dark slate, solid, with an arrow toward the parent.
+  // hierarchy. Ink, solid, with an arrow toward the parent.
+  // Mirrors `--accent-builds` from the design tokens.
   builds_on: {
-    stroke: '#0f172a',
-    strokeWidth: 2.5,
+    stroke: '#1a1814',
+    strokeWidth: 1.8,
+    lineCap: 'round',
     arrowEnd: true,
   },
-  // shares-theme in the spec table — soft AI blue, no arrow (theme is
-  // bidirectional / non-causal).
+  // shares-theme — soft ink-faint grey, dotted, no arrow (theme is
+  // bidirectional / non-causal). Mirrors `--accent-theme`.
   shared_theme: {
-    stroke: '#2e86c7',
-    strokeWidth: 2,
+    stroke: '#8a8578',
+    strokeWidth: 1.4,
+    dash: '1 5',
+    lineCap: 'round',
     arrowEnd: false,
   },
   // contradicts — red dashed, no arrow (conflict is bidirectional).
+  // Mirrors `--accent-contradicts`.
   contradicts: {
-    stroke: '#dc2626',
-    strokeWidth: 2.5,
-    dash: '12 8',
+    stroke: '#c94a3a',
+    strokeWidth: 2,
+    dash: '8 5',
+    lineCap: 'round',
     arrowEnd: false,
   },
   // depends-on — green solid arrow → (causal: a depends on b).
+  // Mirrors `--accent-revives` (the design's only green accent).
   depends_on: {
-    stroke: '#15803d',
-    strokeWidth: 2,
+    stroke: '#2f8f5e',
+    strokeWidth: 1.8,
+    lineCap: 'round',
     arrowEnd: true,
   },
   // evidence-for — green dotted, lighter weight (evidence is supportive,
   // not structural).
   evidence_for: {
-    stroke: '#15803d',
-    strokeWidth: 1.5,
+    stroke: '#2f8f5e',
+    strokeWidth: 1.4,
     dash: '1 5',
     lineCap: 'round',
     arrowEnd: false,
@@ -106,9 +116,10 @@ const KIND_VISUAL: Record<ConnectionKind, ConnectionLineVisual> = {
   // existing 4-kind canvas. Green long-dash with arrow (reads as
   // "revisit / reopen").
   revives_killed: {
-    stroke: '#15803d',
-    strokeWidth: 2.5,
-    dash: '12 6',
+    stroke: '#2f8f5e',
+    strokeWidth: 1.8,
+    dash: '8 5',
+    lineCap: 'round',
     arrowEnd: true,
   },
 };

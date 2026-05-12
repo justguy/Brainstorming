@@ -4,15 +4,17 @@ import { SUB_PHASES, type SubPhaseSpec } from '../../../src/orchestrator/subPhas
 /**
  * PhaseStrip — generalised lifecycle strip parameterised on `currentPhase`.
  *
- * Mirrors the visual treatment of `BoardBeadStrip` (`bo-lifecycle-strip`),
- * but does not derive its state from a specific Idea. Instead it reads the
- * canonical phase registry and highlights the supplied phase number.
+ * Mirrors the visual treatment of the design's hand-drawn progress beads —
+ * a row of small ink-bordered dots, each with a tiny Kalam label, on a
+ * paper-coloured strip. The active bead inverts to ink-on-paper; completed
+ * beads fill ink; locked beads are paper-with-ink-border; attention/nudge
+ * beads pick up the design's accent reds/greens.
  *
  * Phases at numbers strictly less than `currentPhase` are rendered as
  * `completed`, the matching phase is `active`, and any phases beyond it are
- * `locked` (rendered as the default empty bead). Optional decorations
- * (`needs_attention`, `soft_nudge`) may be supplied via `phaseStatusOverrides`
- * for callers that already know about review or nudge state.
+ * `locked`. Optional decorations (`needs_attention`, `soft_nudge`) may be
+ * supplied via `phaseStatusOverrides` for callers that already know about
+ * review or nudge state.
  */
 
 export type PhaseBeadStatus =
@@ -43,12 +45,38 @@ export interface PhaseStripProps {
   className?: string;
 }
 
-const STATUS_CLASS: Record<PhaseBeadStatus, string> = {
-  locked: 'bo-lifecycle-strip__bead',
-  active: 'bo-lifecycle-strip__bead bo-lifecycle-strip__bead--active',
-  completed: 'bo-lifecycle-strip__bead bo-lifecycle-strip__bead--done',
-  needs_attention: 'bo-lifecycle-strip__bead bo-lifecycle-strip__bead--attention',
-  soft_nudge: 'bo-lifecycle-strip__bead bo-lifecycle-strip__bead--nudge',
+interface BeadVisual {
+  background: string;
+  border: string;
+  ink: string;
+}
+
+const BEAD_VISUAL: Record<PhaseBeadStatus, BeadVisual> = {
+  locked: {
+    background: 'var(--paper)',
+    border: 'var(--ink-faint)',
+    ink: 'var(--ink-faint)',
+  },
+  active: {
+    background: 'var(--paper)',
+    border: 'var(--ink)',
+    ink: 'var(--ink)',
+  },
+  completed: {
+    background: 'var(--ink)',
+    border: 'var(--ink)',
+    ink: 'var(--paper)',
+  },
+  needs_attention: {
+    background: 'var(--sticky-pink)',
+    border: 'var(--accent-contradicts)',
+    ink: 'var(--accent-contradicts)',
+  },
+  soft_nudge: {
+    background: 'var(--sticky-yellow)',
+    border: 'var(--ink)',
+    ink: 'var(--ink)',
+  },
 };
 
 const PHASE_EPSILON = 1e-9;
@@ -84,18 +112,12 @@ export function PhaseStrip({
     activeBead?.phase.shortLabel ?? (completedCount >= beads.length ? 'done' : 'queued');
 
   const Root = onActivate ? 'button' : 'div';
-  const rootProps = onActivate
-    ? ({ type: 'button' as const, onClick: onActivate })
-    : {};
+  const rootProps = onActivate ? ({ type: 'button' as const, onClick: onActivate }) : {};
 
   const computedAriaLabel =
     ariaLabel ?? `Lifecycle progress: ${progressIndex} of ${beads.length}, ${progressLabel}`;
 
-  const rootClassName = [
-    'bo-lifecycle-strip',
-    onActivate ? 'bo-lifecycle-strip--interactive' : '',
-    className ?? '',
-  ]
+  const rootClassName = ['phase-strip', onActivate ? 'is-interactive' : '', className ?? '']
     .filter(Boolean)
     .join(' ');
 
@@ -105,21 +127,94 @@ export function PhaseStrip({
       className={rootClassName}
       title={title}
       aria-label={computedAriaLabel}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '6px 12px',
+        background: 'var(--paper)',
+        border: '1.5px solid var(--ink)',
+        borderRadius: 999,
+        boxShadow: '1.5px 1.5px 0 var(--ink)',
+        fontFamily: 'var(--f-hand-body)',
+        fontSize: 13,
+        lineHeight: 1.2,
+        color: 'var(--ink)',
+        cursor: onActivate ? 'pointer' : 'default',
+        appearance: 'none',
+        WebkitAppearance: 'none',
+        textAlign: 'left',
+        font: onActivate ? undefined : undefined,
+      }}
     >
-      <span className="bo-lifecycle-strip__label">Lifecycle</span>
-      <div className="bo-lifecycle-strip__track" aria-hidden="true">
-        {beads.map(({ phase, status: beadStatus }) => (
-          <span
-            key={phase.id}
-            className={STATUS_CLASS[beadStatus]}
-            title={`${phase.shortLabel}: ${phase.label}`}
-          />
-        ))}
+      <span
+        style={{
+          fontFamily: 'var(--f-mono)',
+          fontSize: 9.5,
+          color: 'var(--ink-faint)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.14em',
+        }}
+      >
+        Lifecycle
+      </span>
+      <div
+        aria-hidden="true"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
+        {beads.map(({ phase, status: beadStatus }) => {
+          const visual = BEAD_VISUAL[beadStatus];
+          return (
+            <span
+              key={phase.id}
+              title={`${phase.shortLabel}: ${phase.label}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                background: visual.background,
+                border: `1.5px solid ${visual.border}`,
+                color: visual.ink,
+                fontFamily: 'var(--f-hand)',
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1,
+                boxShadow:
+                  beadStatus === 'active' ? '1.5px 1.5px 0 var(--ink)' : undefined,
+              }}
+            >
+              {phase.shortLabel.slice(0, 2)}
+            </span>
+          );
+        })}
       </div>
-      <span className="bo-lifecycle-strip__summary">
+      <span style={{ color: 'var(--ink-soft)' }}>
         {progressIndex} / {beads.length} · {summary ?? progressLabel}
       </span>
-      {status && <span className="bo-lifecycle-strip__status">{status}</span>}
+      {status && (
+        <span
+          style={{
+            fontFamily: 'var(--f-mono)',
+            fontSize: 9.5,
+            color: 'var(--ink)',
+            border: '1.5px solid var(--ink)',
+            padding: '2px 6px',
+            borderRadius: 3,
+            textTransform: 'uppercase',
+            letterSpacing: '0.15em',
+            background: 'var(--paper)',
+          }}
+        >
+          {status}
+        </span>
+      )}
     </Root>
   );
 }

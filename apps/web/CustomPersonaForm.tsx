@@ -27,7 +27,40 @@ import {
 } from '../../src/personas/registry';
 import { createPersona } from '../../src/storage/personas';
 import { DEFAULT_PROJECT_ID } from '../../src/storage/projects';
-import type { BoardId, Persona, ProjectId } from '../../src/types';
+import { getSettings } from '../../src/storage/settings';
+import { callLlmViaSW } from '../../src/orchestrator/llmBridge';
+import type { BoardId, LlmMessage, Persona, ProjectId } from '../../src/types';
+
+/**
+ * Synthesize a deterministic system-prompt suggestion from the current form
+ * draft. Client-side only — no LLM call. The user can edit the produced text
+ * before saving; the goal is to give them a useful starting point.
+ */
+function suggestSystemPrompt(args: {
+  name: string;
+  bio: string;
+  roles: ReadonlyArray<AvailableRole>;
+  selectedRoleIds: ReadonlyArray<string>;
+}): string {
+  const trimmedName = args.name.trim() || 'this persona';
+  const trimmedBio = args.bio.trim();
+  const primary =
+    args.roles.find((r) => args.selectedRoleIds.includes(r.id)) ?? args.roles[0];
+  const roleLabel = primary?.label ?? 'collaborator';
+  const roleStyle = (primary?.description ?? `a focused ${roleLabel.toLowerCase()}`)
+    .trim()
+    .replace(/\s+/g, ' ');
+  const bioClause = trimmedBio
+    ? `Your bio: ${trimmedBio}.`
+    : 'Your bio: (no bio provided — keep it neutral and helpful).';
+  return [
+    `You are ${trimmedName}, a ${roleLabel}.`,
+    bioClause,
+    `When asked, respond concisely in the voice of ${roleStyle}.`,
+    'Always cite the board state.',
+    'Never write more than 3 sentences per reply.',
+  ].join(' ');
+}
 
 export interface CustomPersonaFormProps {
   /**
@@ -89,9 +122,15 @@ export function CustomPersonaForm({
   const [selectedRoleIds, setSelectedRoleIds] = useState<ReadonlyArray<string>>([]);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  // bo-suggest-prompt — LLM-backed "Suggest prompt" state. We track the
+  // pending request separately from form submission so the user can still
+  // edit other fields while we wait (the button itself is disabled).
+  const [suggesting, setSuggesting] = useState<boolean>(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const trimmedName = name.trim();
-  const canSubmit = trimmedName.length > 0 && selectedRoleIds.length > 0 && !submitting;
+  const canSubmit =
+    trimmedName.length > 0 && selectedRoleIds.length > 0 && !submitting && !suggesting;
 
   const scopeLabel = useMemo(
     () => (boardId ? 'this board' : 'the whole project'),
@@ -104,6 +143,86 @@ export function CustomPersonaForm({
       return [...prev, roleId];
     });
   }, []);
+
+  /** Static-template fallback. Kept available as "Use template instead". */
+  const applyTemplate = useCallback(() => {
+    const suggestion = suggestSystemPrompt({
+      name,
+      bio: description,
+      roles,
+      selectedRoleIds,
+    });
+    setDescription(suggestion);
+    setSuggestError(null);
+  }, [name, description, roles, selectedRoleIds]);
+
+  /**
+   * LLM-backed suggestion. Calls the same `callLlmViaSW` path the orchestrator
+   * roles use, but without a JSON schema — we want a single paragraph of
+   * prose, not a structured artifact. On failure we surface the error inline
+   * and offer the deterministic template as a fallback (the action stays on
+   * the alert card so the user can recover without retyping anything).
+   */
+  const handleSuggestPrompt = useCallback(async (): Promise<void> => {
+    if (suggesting) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const primary =
+        roles.find((r) => selectedRoleIds.includes(r.id)) ?? roles[0];
+      const roleLabel = primary?.label ?? 'collaborator';
+      const roleDescription = primary?.description ?? '';
+      const trimmedName = name.trim() || 'this persona';
+      const trimmedBio = description.trim();
+      const scopeWord = boardId ? 'board' : 'project';
+
+      const system =
+        'You are a tool that writes single-paragraph system prompts for AI brainstorming personas. ' +
+        'Return ONLY the prompt body as 2-3 sentences of plain prose. ' +
+        'No markdown, no quotes, no preamble, no headings, no lists.';
+
+      const userParts: string[] = [
+        `Persona name: ${trimmedName}`,
+        `Role: ${roleLabel}${roleDescription ? ` (${roleDescription})` : ''}`,
+        `Scope: scoped to a single ${scopeWord}`,
+      ];
+      if (trimmedBio) userParts.push(`Author bio / guidance: ${trimmedBio}`);
+      userParts.push(
+        'Write a 2-3 sentence system prompt for an AI critic persona of this role and bio. ' +
+          'Use second-person voice ("You are…"). Be specific to the role. Do not exceed three sentences.',
+      );
+
+      const messages: LlmMessage[] = [
+        { role: 'system', content: system },
+        { role: 'user', content: userParts.join('\n') },
+      ];
+
+      const settings = await getSettings();
+      const result = await callLlmViaSW({
+        providerId: settings.activeProvider,
+        model: settings.activeModel,
+        messages,
+        maxTokens: 320,
+      });
+      const text = (result.raw ?? '').trim();
+      if (!text) {
+        throw new Error('The model returned an empty response.');
+      }
+      setDescription(text);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setSuggestError(message);
+    } finally {
+      setSuggesting(false);
+    }
+  }, [
+    suggesting,
+    roles,
+    selectedRoleIds,
+    name,
+    description,
+    boardId,
+  ]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -172,9 +291,41 @@ export function CustomPersonaForm({
       </div>
 
       <div className={FIELD_CLASS}>
-        <label className={LABEL_CLASS} htmlFor="bo-custom-persona-description">
-          Description (optional)
-        </label>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
+          <label className={LABEL_CLASS} htmlFor="bo-custom-persona-description">
+            Description (optional)
+          </label>
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => { void handleSuggestPrompt(); }}
+            disabled={suggesting || submitting}
+            data-bo-suggest-state={suggesting ? 'pending' : 'idle'}
+            style={{
+              fontFamily: 'var(--f-hand-body)',
+              fontSize: 11,
+              padding: '2px 8px',
+              background: 'var(--paper)',
+              border: '1.5px solid var(--ink)',
+              borderRadius: 999,
+              cursor: suggesting || submitting ? 'not-allowed' : 'pointer',
+              color: 'var(--ink)',
+              boxShadow: '1px 1px 0 var(--ink)',
+              opacity: suggesting || submitting ? 0.6 : 1,
+            }}
+            aria-label="Suggest a system prompt based on the form values"
+            aria-busy={suggesting || undefined}
+          >
+            {suggesting ? 'Thinking…' : 'Suggest prompt'}
+          </button>
+        </div>
         <textarea
           id="bo-custom-persona-description"
           className={TEXTAREA_CLASS}
@@ -182,7 +333,63 @@ export function CustomPersonaForm({
           onChange={(e) => setDescription(e.target.value)}
           placeholder="What is this persona for? Free-form notes / system-prompt-ish guidance."
           maxLength={2000}
+          disabled={suggesting || submitting}
         />
+        {suggestError && (
+          <div
+            role="alert"
+            data-bo-suggest-error
+            style={{
+              fontFamily: 'var(--f-hand-body)',
+              fontSize: 12,
+              color: 'var(--accent-contradicts)',
+              border: '1.5px solid var(--accent-contradicts)',
+              background: 'var(--paper)',
+              borderRadius: 8,
+              padding: '6px 10px',
+              margin: 0,
+              boxShadow: '1px 1px 0 var(--accent-contradicts)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            <span>Suggestion failed: {suggestError}</span>
+            <button
+              type="button"
+              onClick={applyTemplate}
+              style={{
+                alignSelf: 'flex-start',
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                color: 'var(--accent-contradicts)',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontFamily: 'var(--f-hand-body)',
+                fontSize: 12,
+              }}
+              aria-label="Apply the deterministic template instead"
+            >
+              Use template instead
+            </button>
+          </div>
+        )}
+        <p
+          style={{
+            fontFamily: 'var(--f-hand-body)',
+            fontSize: 12,
+            color: 'var(--ink-soft)',
+            border: '1.5px solid var(--ink)',
+            background: 'var(--paper)',
+            borderRadius: 8,
+            padding: '4px 8px',
+            margin: 0,
+            boxShadow: '1px 1px 0 var(--ink)',
+          }}
+        >
+          Tip: edit the suggestion to taste.
+        </p>
       </div>
 
       <fieldset className={FIELD_CLASS}>
