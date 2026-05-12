@@ -14,7 +14,12 @@ import type { BoardCommitResult, BoardIdeaCommitResult } from './boardController
 import { getDb } from './db';
 import { publishIdeaRows } from './ideaSync';
 import { commitDismissCritique, commitDismissSuggestion } from './boardOverlayMutations';
-import { commitReplaceConnections } from './boardConnectionMutations';
+import {
+  commitFlipConnectionType,
+  commitReplaceConnections,
+  commitSoftDeleteConnection,
+  commitUnsoftDeleteConnection,
+} from './boardConnectionMutations';
 import { commitCreateDoc, commitDeleteDoc, commitUpdateDoc } from './boardDocMutations';
 import { commitUpdateTweaks } from './boardTweakMutations';
 import {
@@ -151,6 +156,19 @@ export function createBoardController(boardId: BoardId) {
     },
     replaceConnections(input: { connections: import('../types').Connection[]; actor: ChangeActor; summary?: string }) {
       return commitReplaceConnections(boardId, input);
+    },
+    flipConnectionType(input: {
+      connectionId: string;
+      newKind: import('../types').ConnectionKind;
+      authorRef: import('../types').IdeaAuthorRef;
+    }) {
+      return commitFlipConnectionType(boardId, input);
+    },
+    softDeleteConnection(input: { connectionId: string; authorRef: import('../types').IdeaAuthorRef }) {
+      return commitSoftDeleteConnection(boardId, input);
+    },
+    unsoftDeleteConnection(input: { connectionId: string; authorRef: import('../types').IdeaAuthorRef }) {
+      return commitUnsoftDeleteConnection(boardId, input);
     },
     updateTweaks(input: { patch: Record<string, unknown>; actor: ChangeActor; summary?: string }) {
       return commitUpdateTweaks(boardId, input);

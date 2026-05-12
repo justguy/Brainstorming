@@ -3,6 +3,7 @@ import { installChromeShim } from './chrome-shim';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import '../../src/styles.css';
+import './brainstorm.css';
 
 installChromeShim();
 

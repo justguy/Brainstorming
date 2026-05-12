@@ -60,13 +60,14 @@ export interface CallWithRetryResult {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   result: any;
   usedFallback: boolean;
+  lastError?: Error;
 }
 
 export async function callWithRetry(
   options: CallWithRetryOptions
 ): Promise<CallWithRetryResult> {
   const { providerId, model, messages, jsonSchema, maxTokens, schema, onFallback } = options;
-  let lastError: unknown = null;
+  let lastError: Error | undefined;
 
   // Attempt 1: call via SW with schema, validate
   try {
@@ -75,8 +76,8 @@ export async function callWithRetry(
     const validated = schema.parse(parsed);
     return { result: validated, usedFallback: false };
   } catch (err1) {
-    lastError = err1;
     console.warn(`[retryAndFallback] Attempt 1 failed for ${providerId}/${model}:`, err1);
+    lastError = err1 instanceof Error ? err1 : new Error(String(err1));
   }
 
   // Attempt 2: prepend corrective message, retry via SW
@@ -92,8 +93,8 @@ export async function callWithRetry(
     const validated = schema.parse(parsed);
     return { result: validated, usedFallback: false };
   } catch (err2) {
-    lastError = err2;
     console.warn(`[retryAndFallback] Attempt 2 failed for ${providerId}/${model}:`, err2);
+    lastError = err2 instanceof Error ? err2 : new Error(String(err2));
   }
 
   // Attempt 3 (terminal): signal fallback and surface the failure to the UI.
@@ -103,7 +104,7 @@ export async function callWithRetry(
   const { message, status } = describeError(lastError);
   dispatchLlmError({ providerId, model, message, status });
   if (onFallback) onFallback();
-  return { result: null, usedFallback: true };
+  return { result: null, usedFallback: true, lastError };
 }
 
 function tryParse(raw: string, parsedJson?: unknown): unknown {

@@ -6,6 +6,7 @@ import type {
   IdeaCritique,
   IdeaGroup,
   LlmMessage,
+  ProjectId,
   ScoutSuggestion,
   Settings,
   SupportingDoc,
@@ -23,6 +24,11 @@ export const DEFAULT_BOARD_ID: BoardId = 'local-board';
 export const DEFAULT_BOARD_TITLE = 'Main Board';
 export const BOARD_DATA_VERSION = 1;
 
+// M1 / bo-110: screens-v2 lifecycle for a board. 'active' is the working
+// state, 'shelved' is paused/archived but recoverable, 'shipped' means a
+// brief graduated and the board's primary work is done.
+export type BoardStatus = 'active' | 'shelved' | 'shipped';
+
 export interface BoardRecord {
   id: BoardId;
   title: string;
@@ -31,6 +37,28 @@ export interface BoardRecord {
   dataVersion: number;
   changeCursor: number;
   nextChangeSeq: number;
+  // M0 / bo-102: introduce a Project layer above Board. The default workspace
+  // back-fills `projectId: 'local-project'` via the v11 migration.
+  projectId?: ProjectId;
+  // --- M1 / bo-110 screens-v2 widening (all optional for back-compat) ---
+  // Older v11-migrated boards may lack these fields; `hydrateBoard` in
+  // src/storage/boards.ts fills sensible defaults at read time so consumers
+  // can treat them as present (see DEFAULTS there). Type-side, they remain
+  // optional so writers keep working without partial-update plumbing.
+  status?: BoardStatus;
+  // 1-indexed sub-phase id the board is currently anchored on (Build Spec §02
+  // PhaseStrip). Distinct from the per-Idea `phase` cursor.
+  currentPhase?: number;
+  // Persona ids actively rostered on this board. Source of truth for the
+  // PersonaChip strip on Screen 02. Empty array == no personas active.
+  activePersonas?: string[];
+  // Epoch ms of the most recent meaningful activity on the board (capture,
+  // move, brief edit, etc). Drives Home sort order. Defaults to `updatedAt`.
+  lastActivityAt?: number;
+  // 'self' for now (single-user). Reserved for future multiplayer.
+  openedBy?: string;
+  // Short user / AI-supplied description shown on the BoardThumbnail.
+  summary?: string;
 }
 
 export interface IdeaTurnRecord {
@@ -262,6 +290,9 @@ export type ChangeSetKind =
   | 'update_doc'
   | 'delete_doc'
   | 'replace_connections'
+  | 'flip_connection_type'
+  | 'soft_delete_connection'
+  | 'unsoft_delete_connection'
   | 'create_beat_review_session'
   | 'keep_beat_review_item'
   | 'scratch_beat_review_item'

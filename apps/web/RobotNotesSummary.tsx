@@ -1,4 +1,5 @@
 import React from 'react';
+import { NudgeCard } from './primitives/NudgeCard';
 
 export interface RobotNotesItem {
   id: string;
@@ -31,62 +32,134 @@ export function RobotNotesSummary({
   const overflowCount = Math.max(0, stagedCount - previewItems.length);
 
   return (
-    <details className="bo-card-surface w-full rounded-[24px] p-4 text-sm" aria-label="Robot notes summary">
-      <summary className="cursor-pointer list-none select-none">
+    <details
+      className="bo-card-surface w-full"
+      aria-label="Robot notes summary"
+      style={{
+        borderRadius: 14,
+        border: '2px solid var(--ink)',
+        background: 'var(--paper)',
+        boxShadow: '3px 3px 0 var(--ink)',
+        padding: 14,
+        fontFamily: 'var(--f-hand-body)',
+        fontSize: 14,
+        color: 'var(--ink)',
+      }}
+    >
+      <summary
+        className="cursor-pointer list-none select-none"
+        style={{ outline: 'none' }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <p
+              style={{
+                margin: 0,
+                fontFamily: 'var(--f-mono)',
+                fontSize: 10,
+                letterSpacing: '0.2em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-faint)',
+                fontWeight: 700,
+              }}
+            >
               {title}
             </p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">Staged insight queue</p>
+            <p
+              style={{
+                marginTop: 4,
+                marginBottom: 0,
+                fontFamily: 'var(--f-hand)',
+                fontSize: 22,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                color: 'var(--ink)',
+              }}
+            >
+              Staged insight queue
+            </p>
           </div>
-          <span className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-700">
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '2px 10px',
+              borderRadius: 999,
+              border: '1.5px solid var(--ink)',
+              background: 'var(--sticky-yellow)',
+              fontFamily: 'var(--f-mono)',
+              fontSize: 11,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+              color: 'var(--ink)',
+            }}
+          >
             {stagedCount} staged
           </span>
         </div>
       </summary>
-      <div className="mt-3 space-y-2">
+      <div
+        style={{
+          marginTop: 12,
+          paddingTop: 10,
+          borderTop: '1.4px dashed var(--hairline)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
         {items.length === 0 ? (
-          <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+          <p
+            style={{
+              margin: 0,
+              borderRadius: 10,
+              border: '1.4px dashed var(--hairline)',
+              background: 'var(--paper-dark)',
+              padding: '8px 12px',
+              fontSize: 13,
+              lineHeight: 1.4,
+              color: 'var(--ink-soft)',
+              fontFamily: 'var(--f-hand-body)',
+            }}
+          >
             No staged insights yet. When Shadow mode is active, generated ideas will arrive here before mutation.
           </p>
         ) : (
-          previewItems.map(item => (
-            <article key={item.id} className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-slate-900">
-                    {item.intent}
-                  </p>
-                  <p className="mt-1">{item.title}</p>
-                  {item.detail && <p className="mt-1 text-[11px] text-slate-500">{item.detail}</p>}
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {item.primaryLabel && onPrimaryAction && (
-                    <button
-                      type="button"
-                      onClick={() => onPrimaryAction(item.id)}
-                      className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-800"
-                    >
-                      {item.primaryLabel}
-                    </button>
-                  )}
-                  {onDismiss && (
-                    <button
-                      type="button"
-                      onClick={() => onDismiss(item.id)}
-                      className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
-                    >
-                      Dismiss
-                    </button>
-                  )}
-                </div>
-              </div>
-            </article>
-          ))
+          previewItems.map(item => {
+            const handleAccept = item.primaryLabel && onPrimaryAction
+              ? () => onPrimaryAction(item.id)
+              : undefined;
+            const handleDismiss = onDismiss
+              ? () => onDismiss(item.id)
+              : undefined;
+            return (
+              <NudgeCard
+                key={item.id}
+                eyebrow={item.intent}
+                title={item.title}
+                body={item.detail}
+                acceptLabel={item.primaryLabel}
+                onAccept={handleAccept}
+                onDismiss={handleDismiss}
+              />
+            );
+          })
         )}
         {overflowCount > 0 && (
-          <p className="px-2 text-xs text-slate-500">+{overflowCount} more insight{overflowCount === 1 ? '' : 's'} in queue</p>
+          <p
+            style={{
+              margin: 0,
+              paddingLeft: 4,
+              fontFamily: 'var(--f-mono)',
+              fontSize: 11,
+              letterSpacing: '0.08em',
+              color: 'var(--ink-faint)',
+              textTransform: 'uppercase',
+            }}
+          >
+            +{overflowCount} more insight{overflowCount === 1 ? '' : 's'} in queue
+          </p>
         )}
       </div>
     </details>

@@ -1,5 +1,15 @@
 import { openDB as idbOpenDB, type IDBPDatabase, type DBSchema } from 'idb';
-import type { Connection, Idea, IdeaCritique, IdeaGroup, SupportingDoc, ScoutSuggestion } from '../types';
+import type {
+  Brief,
+  Connection,
+  Idea,
+  IdeaCritique,
+  IdeaGroup,
+  Persona,
+  Project,
+  SupportingDoc,
+  ScoutSuggestion,
+} from '../types';
 import type {
   BeatReviewItemRecord,
   BeatReviewSessionRecord,
@@ -12,6 +22,30 @@ import type {
 } from '../board/types';
 
 export interface Schema extends DBSchema {
+  projects: {
+    key: string;
+    value: Project;
+    indexes: {
+      byUpdatedAt: number;
+    };
+  };
+  personas: {
+    key: string;
+    value: Persona;
+    indexes: {
+      byUpdatedAt: number;
+      byScope: string;
+    };
+  };
+  briefs: {
+    key: string;
+    value: Brief;
+    indexes: {
+      byBoardId: string;
+      byIdeaId: string;
+      byUpdatedAt: number;
+    };
+  };
   boards: {
     key: string;
     value: BoardRecord;
@@ -139,14 +173,27 @@ export interface Schema extends DBSchema {
 }
 
 const DB_NAME = 'brainstorming-orchestrator';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
+
+// M0 / bo-102: project layer back-fill defaults. These constants are
+// duplicated (intentionally) from src/storage/projects.ts so the upgrade
+// callback can run without importing IDB-using code (avoids cycles during
+// upgrade transactions).
+const DEFAULT_PROJECT_ID = 'local-project';
+const DEFAULT_PROJECT_TITLE = 'My workspace';
+const DEFAULT_AUTONOMY_DIAL = 'active';
 
 let _dbPromise: Promise<IDBPDatabase<Schema>> | null = null;
+
+/** Test-only: drop the cached DB promise so a follow-up `getDb()` reopens. */
+export function __resetDbForTests(): void {
+  _dbPromise = null;
+}
 
 export function getDb(): Promise<IDBPDatabase<Schema>> {
   if (!_dbPromise) {
     _dbPromise = idbOpenDB<Schema>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, _newVersion, transaction) {
+      async upgrade(db, oldVersion, _newVersion, transaction) {
         if (oldVersion < 1) {
           const store = db.createObjectStore('ideas', { keyPath: 'id' });
           store.createIndex('byStatus', 'status');
@@ -269,6 +316,51 @@ export function getDb(): Promise<IDBPDatabase<Schema>> {
             store.createIndex('byBeatRunId', 'beatRunId');
             store.createIndex('byStatus', 'status');
             store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+        }
+        if (oldVersion < 11) {
+          // M0 / bo-102: introduce Project layer + Persona + Brief stores.
+          if (!db.objectStoreNames.contains('projects')) {
+            const store = db.createObjectStore('projects', { keyPath: 'id' });
+            store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+          if (!db.objectStoreNames.contains('personas')) {
+            const store = db.createObjectStore('personas', { keyPath: 'id' });
+            store.createIndex('byUpdatedAt', 'updatedAt');
+            store.createIndex('byScope', 'scope');
+          }
+          if (!db.objectStoreNames.contains('briefs')) {
+            const store = db.createObjectStore('briefs', { keyPath: 'id' });
+            store.createIndex('byBoardId', 'boardId');
+            store.createIndex('byIdeaId', 'ideaId');
+            store.createIndex('byUpdatedAt', 'updatedAt');
+          }
+
+          // Seed the default project + back-fill `projectId` on existing boards.
+          // Done inside the upgrade transaction so it's atomic with the schema
+          // change. No back-fill of briefs (per IMPLEMENTATION_PLAN §2). Persona
+          // seeding is deferred to bo-120's seedBuiltInPersonas at app boot.
+          const now = Date.now();
+          const projectsStore = transaction.objectStore('projects');
+          const existingDefault = await projectsStore.get(DEFAULT_PROJECT_ID);
+          if (!existingDefault) {
+            await projectsStore.put({
+              id: DEFAULT_PROJECT_ID,
+              title: DEFAULT_PROJECT_TITLE,
+              autonomyDial: DEFAULT_AUTONOMY_DIAL,
+              createdAt: now,
+              updatedAt: now,
+            } as Project);
+          }
+
+          if (db.objectStoreNames.contains('boards')) {
+            const boardsStore = transaction.objectStore('boards');
+            const allBoards = await boardsStore.getAll();
+            for (const board of allBoards) {
+              if (!board.projectId) {
+                await boardsStore.put({ ...board, projectId: DEFAULT_PROJECT_ID });
+              }
+            }
           }
         }
       },

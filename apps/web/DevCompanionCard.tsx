@@ -53,28 +53,81 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
   const shouldPulse = Boolean((props.actionInProgress || props.activeBeatRun) && !props.facilitatorPaused);
 
   return (
-    <section className="bo-persona-dock" aria-label="Dev companion">
-      <div className={`bo-persona-avatar${shouldPulse ? ' is-pulsing' : ''}`}>
+    <section
+      className="bo-persona-dock"
+      aria-label="Dev companion"
+      style={{ color: 'var(--ink)' }}
+    >
+      <div
+        className={`bo-persona-avatar${shouldPulse ? ' is-pulsing' : ''}`}
+        style={{
+          background: 'var(--sticky-peach)',
+          border: '2px solid var(--ink)',
+          boxShadow: '2px 2px 0 var(--ink)',
+        }}
+      >
         <RobotBadgeIcon className="h-[3.1rem] w-[3.1rem]" />
       </div>
 
-      <div className="bo-persona-bubble min-w-0" aria-live="polite" aria-atomic="true">
-        <p className="bo-persona-who">
+      <div
+        className="bo-persona-bubble min-w-0"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          background: 'var(--paper)',
+          border: '2px solid var(--ink)',
+          boxShadow: '3px 3px 0 var(--ink)',
+          borderRadius: 14,
+          fontFamily: 'var(--f-hand-body)',
+        }}
+      >
+        <p
+          className="bo-persona-who"
+          style={{
+            fontFamily: 'var(--f-mono)',
+            color: 'var(--ink-faint)',
+            letterSpacing: '0.16em',
+          }}
+        >
           Dev · {roleLabel}
-          {statusInline ? <span className="bo-persona-status-inline"> · {statusInline}</span> : null}
+          {statusInline ? (
+            <span
+              className="bo-persona-status-inline"
+              style={{ color: 'var(--accent-ghost)' }}
+            >
+              {' '}· {statusInline}
+            </span>
+          ) : null}
         </p>
 
-        <p className="bo-persona-what">
+        <p
+          className="bo-persona-what"
+          style={{
+            fontFamily: 'var(--f-hand-body)',
+            color: 'var(--ink)',
+            fontSize: '1rem',
+            fontWeight: 600,
+          }}
+        >
           {buildDockPrompt(props, mode.headline, roleLabel)}
         </p>
 
-        <p className="bo-persona-meta">{helperLine}</p>
+        <p
+          className="bo-persona-meta"
+          style={{
+            fontFamily: 'var(--f-mono)',
+            color: 'var(--ink-soft)',
+            letterSpacing: '0.12em',
+          }}
+        >
+          {helperLine}
+        </p>
 
         <div className="bo-persona-actions">
           <button
             type="button"
             onClick={props.onTogglePause}
-            className="bo-persona-btn bo-persona-btn--primary"
+            className="btn sm primary"
           >
             {props.facilitatorPaused ? 'resume' : 'pause'}
           </button>
@@ -84,7 +137,7 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
               type="button"
               onClick={props.onAction}
               disabled={!canNudge}
-              className="bo-persona-btn bo-persona-btn--ghost"
+              className="btn sm"
               title={props.hasApiKey === false ? 'Add a provider key in Options first.' : undefined}
             >
               {nudgeLabel}
@@ -95,7 +148,7 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
             type="button"
             onClick={props.onOpenTurnLog}
             disabled={!props.onOpenTurnLog}
-            className="bo-persona-btn bo-persona-btn--ghost"
+            className="btn sm ghost"
             title={turnLogTitle}
           >
             turn log
@@ -107,8 +160,16 @@ export function DevCompanionCard(props: DevCompanionCardProps): React.ReactEleme
             <button
               type="button"
               onClick={props.onUndoRobot}
-              className="bo-persona-btn bo-persona-btn--undo"
+              className="btn sm ghost"
               title={props.undoRobotLabel}
+              style={{
+                fontFamily: 'var(--f-mono)',
+                fontSize: 11,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                color: 'var(--accent-ghost)',
+                borderColor: 'var(--accent-ghost)',
+              }}
             >
               undo robot
             </button>

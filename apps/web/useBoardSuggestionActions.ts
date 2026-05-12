@@ -31,8 +31,24 @@ import {
 
 const COLLAPSED_SUGGESTION_COUNT = 3;
 const REVEAL_WINDOW_MS = 1_800;
+const SUGGESTION_ERROR_TTL_MS = 6_000;
 
 type SuggestionBusyState = 'admit' | 'elaborate' | 'dismiss' | null;
+
+function suggestionErrorMessage(action: 'admit' | 'elaborate' | 'dismiss', err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err ?? '');
+  if (/MAX_TOKENS/i.test(detail)) return 'Model ran out of room. Try again.';
+  if (/no usable content/i.test(detail)) return 'Model returned no usable text. Try again.';
+  if (/api key|credential/i.test(detail)) return 'API key missing or invalid.';
+  switch (action) {
+    case 'admit':
+      return 'Could not keep this suggestion. Try again.';
+    case 'elaborate':
+      return 'Elaboration failed. Try again.';
+    case 'dismiss':
+      return 'Could not dismiss this suggestion. Try again.';
+  }
+}
 type ScoutPolicyOptions = {
   origin?: RevealOrigin;
   limitNew?: number;
@@ -61,6 +77,7 @@ interface UseBoardSuggestionActionsArgs {
     suggestionId: string;
     outcome: 'accepted' | 'rejected';
   }) => void;
+  onBackgroundError?: (input: { source: 'scout'; error: unknown }) => void;
 }
 
 export function useBoardSuggestionActions({
@@ -73,17 +90,56 @@ export function useBoardSuggestionActions({
   runBoardBeat,
   markActivity,
   onSuggestionOutcome,
+  onBackgroundError,
 }: UseBoardSuggestionActionsArgs) {
   const [scouting, setScouting] = useState(false);
   const [lastScoutRunAt, setLastScoutRunAt] = useState<number | null>(null);
   const [suggestionBusy, setSuggestionBusy] = useState<Record<string, SuggestionBusyState>>({});
+  const [suggestionError, setSuggestionError] = useState<Record<string, string | null>>({});
   const [animatedSuggestionIds, setAnimatedSuggestionIds] = useState<string[]>([]);
   const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
   const suggestionRevealTimerRef = useRef<number | null>(null);
+  const errorClearTimersRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    return () => clearTimer(suggestionRevealTimerRef);
+    return () => {
+      clearTimer(suggestionRevealTimerRef);
+      for (const timerId of Object.values(errorClearTimersRef.current)) {
+        window.clearTimeout(timerId);
+      }
+      errorClearTimersRef.current = {};
+    };
   }, []);
+
+  function clearSuggestionError(id: string): void {
+    const existing = errorClearTimersRef.current[id];
+    if (existing !== undefined) {
+      window.clearTimeout(existing);
+      delete errorClearTimersRef.current[id];
+    }
+    setSuggestionError(prev => {
+      if (prev[id] === undefined && prev[id] !== null) return prev;
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function setSuggestionErrorMessage(id: string, message: string): void {
+    setSuggestionError(prev => ({ ...prev, [id]: message }));
+    const existing = errorClearTimersRef.current[id];
+    if (existing !== undefined) window.clearTimeout(existing);
+    errorClearTimersRef.current[id] = window.setTimeout(() => {
+      delete errorClearTimersRef.current[id];
+      setSuggestionError(prev => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }, SUGGESTION_ERROR_TTL_MS);
+  }
 
   useEffect(() => {
     if (suggestions.length <= COLLAPSED_SUGGESTION_COUNT && suggestionsExpanded) {
@@ -184,6 +240,7 @@ export function useBoardSuggestionActions({
       return created;
     } catch (err) {
       console.error('[App] scout failed:', err);
+      onBackgroundError?.({ source: 'scout', error: err });
       return [];
     } finally {
       setScouting(false);
@@ -205,6 +262,7 @@ export function useBoardSuggestionActions({
       });
     } catch (err) {
       console.error('[App] cross_pollinate failed:', err);
+      onBackgroundError?.({ source: 'scout', error: err });
       return null;
     }
   }
@@ -213,6 +271,7 @@ export function useBoardSuggestionActions({
     id: string,
     source: 'canvas' | 'webmcp' = 'canvas',
   ): Promise<void> {
+    clearSuggestionError(id);
     setSuggestionBusy(prev => ({ ...prev, [id]: 'admit' }));
     try {
       const result = await boardController.admitSuggestion({
@@ -226,6 +285,7 @@ export function useBoardSuggestionActions({
       onSuggestionOutcome?.({ suggestionId: id, outcome: 'accepted' });
     } catch (err) {
       console.error('[App] admit suggestion failed:', err);
+      setSuggestionErrorMessage(id, suggestionErrorMessage('admit', err));
     } finally {
       setSuggestionBusy(prev => ({ ...prev, [id]: null }));
     }
@@ -235,6 +295,7 @@ export function useBoardSuggestionActions({
     id: string,
     source: 'canvas' | 'webmcp' = 'canvas',
   ): Promise<void> {
+    clearSuggestionError(id);
     setSuggestionBusy(prev => ({ ...prev, [id]: 'elaborate' }));
     try {
       const suggestion = await getSuggestion(id);
@@ -248,6 +309,7 @@ export function useBoardSuggestionActions({
           model,
           message: `Could not elaborate "${suggestion.rawText.slice(0, 60)}…" — the model returned no usable result. You can edit the suggestion manually or try again.`,
         });
+        setSuggestionErrorMessage(id, 'Elaboration failed. Try again.');
         return;
       }
 
@@ -268,6 +330,7 @@ export function useBoardSuggestionActions({
       applyCommittedBoard(committed.document, committed.history);
     } catch (err) {
       console.error('[App] elaborate suggestion failed:', err);
+      setSuggestionErrorMessage(id, suggestionErrorMessage('elaborate', err));
     } finally {
       setSuggestionBusy(prev => ({ ...prev, [id]: null }));
     }
@@ -277,6 +340,7 @@ export function useBoardSuggestionActions({
     id: string,
     source: 'canvas' | 'webmcp' = 'canvas',
   ): Promise<void> {
+    clearSuggestionError(id);
     setSuggestionBusy(prev => ({ ...prev, [id]: 'dismiss' }));
     try {
       const result = await boardController.dismissSuggestion({
@@ -287,6 +351,7 @@ export function useBoardSuggestionActions({
       onSuggestionOutcome?.({ suggestionId: id, outcome: 'rejected' });
     } catch (err) {
       console.error('[App] dismiss suggestion failed:', err);
+      setSuggestionErrorMessage(id, suggestionErrorMessage('dismiss', err));
     } finally {
       setSuggestionBusy(prev => ({ ...prev, [id]: null }));
     }
@@ -324,6 +389,7 @@ export function useBoardSuggestionActions({
     scouting,
     lastScoutRunAt,
     suggestionBusy,
+    suggestionError,
     animatedSuggestionIds,
     suggestionsExpanded,
     visibleCanvasSuggestions,

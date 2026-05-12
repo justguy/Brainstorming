@@ -1,6 +1,7 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import type { CSSProperties, KeyboardEvent, ReactElement } from 'react';
 
+import { useCanvasZoomMode } from '../useCanvasZoomMode';
 import type { IdeaFlowNodeData, IdeaFlowNodeMap, IdeaFlowNodeProps } from './ideaFlowTypes';
 
 // Forks: change this to point at your own repository.
@@ -34,12 +35,38 @@ type NotePalette = {
   tagBackground: string;
 };
 
-const DESIGN_TORN_CLIP_PATH = `polygon(
-  0% 3%, 4% 0%, 12% 2%, 20% 0%, 30% 3%, 42% 0%, 55% 2%, 68% 0%, 80% 3%, 92% 0%, 100% 4%,
-  98% 14%, 100% 26%, 97% 40%, 100% 55%, 98% 70%, 100% 85%, 97% 100%,
-  86% 98%, 72% 100%, 58% 97%, 44% 100%, 30% 98%, 16% 100%, 4% 98%, 0% 94%,
-  2% 80%, 0% 66%, 3% 50%, 0% 34%, 2% 18%
-)`;
+/**
+ * Stable per-card tape placement for the sketch theme.
+ *
+ * Width / rotation / horizontal offset are derived from the idea id so a card
+ * keeps the same tape every render but every card gets a different one.
+ */
+interface TapePlacement {
+  width: number;
+  height: number;
+  rotation: number;
+  /** Pixels from the card's left edge to the tape's center. */
+  centerLeft: number;
+  topOffset: number;
+}
+
+function tapePlacement(seed: string, panelWidth: number): TapePlacement {
+  const a = hashSeed(`${seed}:tape:a`);
+  const b = hashSeed(`${seed}:tape:b`);
+  const c = hashSeed(`${seed}:tape:c`);
+  const width = 56 + (a % 28);
+  const rotation = ((b % 24) - 12) / 2;
+  // Cluster tape near the top half but allow off-center placement. The card
+  // is wide; insetting at least 18px on either side keeps tape on the card.
+  const minLeft = 18 + width / 2;
+  const maxLeft = Math.max(minLeft + 10, panelWidth - 18 - width / 2);
+  const span = Math.max(0, maxLeft - minLeft);
+  const centerLeft = minLeft + (c % Math.max(1, Math.round(span)));
+  // Tape sits with most of its body above the card edge (selling the
+  // "holding it to the board" look) and the remaining ~6px tucks onto the
+  // card. Sketch cards use overflow:visible so the upper part is rendered.
+  return { width, height: 22, rotation, centerLeft, topOffset: -16 };
+}
 
 const WHITEBOARD_NOTE_PALETTES: Record<string, NotePalette> = {
   blue: {
@@ -295,6 +322,7 @@ function FlowHandle({
   label,
   enabled,
   visible,
+  linkModeEnabled,
 }: {
   side: 'left' | 'right';
   active: boolean;
@@ -302,7 +330,15 @@ function FlowHandle({
   label: string;
   enabled: boolean;
   visible: boolean;
+  /** When true, the handle is the primary affordance — show pointer cursor. */
+  linkModeEnabled: boolean;
 }): ReactElement {
+  // Only override the parent's grab cursor when link mode is actively engaged
+  // (or this handle is already the active anchor). Otherwise inherit so the
+  // cursor stays consistent as the user drifts across card edges.
+  const cursorClass = enabled && (linkModeEnabled || active)
+    ? 'cursor-pointer'
+    : 'cursor-[inherit]';
   return (
     <button
       type="button"
@@ -392,6 +428,22 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
     onCompleteLink,
   } = data;
 
+  // Screen 02 cluster-zoom (Build Spec §s02). When react-flow's viewport drops
+  // to ≤ 50%, the canvas switches to "cluster zoom": stickies collapse to
+  // 22×16 chips so halos can dominate. Every event handler / data binding
+  // below is preserved — only the visual presentation changes.
+  const { zoom: canvasZoom, mode: zoomMode } = useCanvasZoomMode();
+  const isClusterZoom = zoomMode === 'cluster';
+  // The chip needs to read at ~22×16 *screen* pixels regardless of the
+  // viewport's scale. React Flow paints `transform: scale(zoom)` on the
+  // viewport, so node-space dimensions are multiplied by zoom on the way
+  // out. Counter-scale the chip in node-space so it lands at the design
+  // target on screen. Clamp at 1.0 so the chip never gets smaller than its
+  // baseline (defensive against zoom > 1 reads).
+  const chipScreenWidth = 22;
+  const chipScreenHeight = 16;
+  const chipInverseScale = canvasZoom > 0 ? Math.max(1, 1 / canvasZoom) : 1;
+
   const panel = idea.panel ?? { x: 0, y: 0, width: 260, height: 180 };
   const isSelected = selectedProp || selectedFromData;
   const noteHeight = displayHeight ?? panel.height;
@@ -440,6 +492,45 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
   const inkHairline = isSketch ? 'rgba(26, 24, 20, 0.32)' : 'rgba(26, 24, 20, 0.28)';
   const chipTagBackground = 'transparent';
   const chipTagInk = isSketch ? 'rgba(26, 24, 20, 0.78)' : notePalette.metaColor;
+  // Re-merged from WIP: required by tape overlay (line ~521) and subtle borders
+  // on the sketch-theme discard pill (line ~817). Keep upstream behaviour while
+  // the WIP retains its sketch-specific styling values.
+  const subtleStroke = isSketch ? 'rgba(93, 82, 69, 0.16)' : 'rgba(26, 24, 20, 0.18)';
+  const tapeStyle = useMemo<CSSProperties | null>(() => {
+    if (!isSketch) return null;
+    const tape = tapePlacement(idea.id, panel.width);
+    return {
+      position: 'absolute',
+      left: `${tape.centerLeft - tape.width / 2}px`,
+      top: `${tape.topOffset}px`,
+      width: `${tape.width}px`,
+      height: `${tape.height}px`,
+      // Mostly-transparent white tape — reads like real masking tape against
+      // both the card and the board.
+      background:
+        'linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(248, 246, 240, 0.38) 100%)',
+      borderTop: '1px solid rgba(255, 255, 255, 0.55)',
+      borderBottom: '1px solid rgba(120, 114, 104, 0.16)',
+      borderLeft: '1px solid rgba(120, 114, 104, 0.10)',
+      borderRight: '1px solid rgba(120, 114, 104, 0.10)',
+      boxShadow:
+        '0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 1px 2px rgba(60, 56, 50, 0.14)',
+      transform: `rotate(${tape.rotation}deg)`,
+      transformOrigin: 'center',
+      // CRITICAL: capture pointer events. The tape extends above the card top
+      // edge — without this, mouse-over above the card line falls through to
+      // the React Flow pane (which flips the cursor and would start a
+      // marquee). With `auto`, the tape catches the event; bubbling carries
+      // the click to the card, and the cursor inherits the card's grab.
+      pointerEvents: 'auto',
+      cursor: 'inherit',
+      zIndex: 6,
+    };
+  }, [isSketch, idea.id, panel.width]);
+  // In cluster zoom the sticky body fades and the chip below takes over.
+  // We hide the existing paper visuals via background / border / shadow,
+  // but keep the wrapper at panel size so react-flow keeps the same hit
+  // target and the chip can be positioned relative to the panel centre.
   const rootStyle: CSSProperties = {
     width: panel.width,
     height: noteHeight,
@@ -448,15 +539,77 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
     filter: noteTone.filter,
     transform: `rotate(${noteRotation}deg) scale(${scale})`,
     transformOrigin: 'center center',
-    borderWidth: noteBorderWidth,
+    borderWidth: isClusterZoom ? 0 : noteBorderWidth,
     borderColor: noteBorderColor,
-    backgroundColor: notePalette.backgroundColor,
-    boxShadow: noteShadow,
-    clipPath: isSketch ? DESIGN_TORN_CLIP_PATH : undefined,
-    borderRadius: isSketch ? 2 : 14,
-    outline: isSelected && !isSketch ? '3px dashed rgba(26, 24, 20, 0.88)' : undefined,
-    outlineOffset: isSelected && !isSketch ? 4 : undefined,
+    backgroundColor: isClusterZoom ? 'transparent' : notePalette.backgroundColor,
+    boxShadow: isClusterZoom ? 'none' : noteShadow,
+    borderRadius: isSketch ? 6 : 14,
+    outline:
+      isSelected && !isClusterZoom
+        ? (isSketch ? '2px dashed rgba(26, 24, 20, 0.55)' : '3px dashed rgba(26, 24, 20, 0.88)')
+        : undefined,
+    outlineOffset: isSelected ? (isSketch ? 3 : 4) : undefined,
+    transition:
+      'transform 200ms ease, box-shadow 200ms ease, filter 200ms ease, background-color 200ms ease, border-color 200ms ease, border-width 200ms ease',
   };
+  // Inner-content opacity transitions from 1 (sticky zoom) to 0 (cluster zoom)
+  // so the title / body / chips fade out smoothly. Keep at 0 pointer-events
+  // when faded so click flows to the chip overlay below.
+  const innerContentStyle: CSSProperties = {
+    opacity: isClusterZoom ? 0 : 1,
+    pointerEvents: isClusterZoom ? 'none' : undefined,
+    transition: 'opacity 240ms ease',
+  };
+
+  // Cluster-zoom chip: 22×16 paper rectangle, ink border, 1px shadow.
+  // Anchored at the panel's centre so the chip lines up with the cluster
+  // halo geometry computed in ClusterHaloLayer. Pointer events stay enabled
+  // so click / drag still flow to the parent's existing handlers via DOM
+  // bubbling — the chip is a transparent overlay child, not a separate
+  // interactive node.
+  const chipWidth = chipScreenWidth * chipInverseScale;
+  const chipHeight = chipScreenHeight * chipInverseScale;
+  // Anchor chip at the root's centre — react-flow positions the wrapper at
+  // panel.x/panel.y top-left, so centring on panel.width/2 matches the
+  // panel's geometric centre exactly.
+  const chipStyle: CSSProperties = {
+    position: 'absolute',
+    left: `${panel.width / 2 - chipWidth / 2}px`,
+    top: `${noteHeight / 2 - chipHeight / 2}px`,
+    width: `${chipWidth}px`,
+    height: `${chipHeight}px`,
+    background: notePalette.backgroundColor,
+    border: `${1.5 * chipInverseScale}px solid ${isSelected ? '#1a1814' : 'rgba(26, 24, 20, 0.78)'}`,
+    borderRadius: 2 * chipInverseScale,
+    boxShadow: isSelected
+      ? `${2 * chipInverseScale}px ${2 * chipInverseScale}px 0 rgba(26, 24, 20, 0.45)`
+      : `${1 * chipInverseScale}px ${1 * chipInverseScale}px 0 rgba(26, 24, 20, 0.32)`,
+    opacity: isClusterZoom ? 1 : 0,
+    pointerEvents: isClusterZoom ? 'auto' : 'none',
+    transform: `rotate(${noteRotation * 0.3}deg)`,
+    transformOrigin: 'center center',
+    transition: 'opacity 240ms ease, box-shadow 200ms ease, border-color 200ms ease',
+    zIndex: noteZIndex + 1,
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: '"Kalam", "Patrick Hand", cursive',
+    fontSize: 6 * chipInverseScale,
+    lineHeight: 1,
+    color: notePalette.inkColor,
+  };
+  // Tiny label: first 1–2 words of the title if they fit (cap ≈8 chars).
+  const chipLabel = useMemo(() => {
+    const firstWord = title.split(/\s+/)[0] ?? '';
+    if (firstWord.length === 0) return '';
+    if (firstWord.length <= 4) {
+      const secondWord = title.split(/\s+/)[1] ?? '';
+      const joined = secondWord ? `${firstWord} ${secondWord}` : firstWord;
+      return joined.slice(0, 8);
+    }
+    return firstWord.slice(0, 6);
+  }, [title]);
 
   return (
     <div
@@ -467,7 +620,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
       data-artifact-tone={tone}
       data-selected={isSelected ? 'true' : 'false'}
       data-node-id={id}
-      className={`bo-note-artifact group relative h-full ${isSelected ? 'overflow-visible' : 'overflow-hidden'} select-none border cursor-grab ${highlight ? 'bo-highlight-flash ring-2 ring-sky-300' : ''} ${beingMergedInto ? 'ring-4 ring-sky-400' : ''}`}
+      className={`bo-note-artifact group relative h-full select-none border transition-[transform,box-shadow,filter] duration-200 ${isSketch || isSelected ? 'overflow-visible' : 'overflow-hidden'} ${dragging ? 'cursor-grabbing' : 'cursor-grab'} ${highlight ? 'bo-highlight-flash ring-2 ring-sky-300' : ''} ${beingMergedInto ? 'ring-4 ring-sky-400' : ''}`}
       style={rootStyle}
       onClick={() => onOpenIdea?.(idea.id)}
       onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
@@ -478,6 +631,41 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
       }}
       tabIndex={onOpenIdea ? 0 : -1}
     >
+      {/* Cluster-zoom chip — fades in when zoom drops to ≤ 50%. Pointer
+          events route to the parent's existing onClick / onKeyDown so every
+          interaction (open, drag start via react-flow, etc.) keeps working
+          unchanged. */}
+      <div
+        className="bo-note-chip"
+        aria-hidden={isClusterZoom ? 'false' : 'true'}
+        style={chipStyle}
+      >
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+          {chipLabel}
+        </span>
+      </div>
+      {/* Sticky-zoom body — every existing affordance lives inside this
+          wrapper so we can fade it as a unit when cluster-zoom engages. */}
+      <div
+        className="bo-note-body-fader"
+        style={{ ...innerContentStyle, position: 'relative', width: '100%', height: '100%' }}
+      >
+      {tapeStyle && (
+        <div
+          className="bo-note-tape"
+          style={tapeStyle}
+          aria-hidden="true"
+          onClick={e => {
+            // The tape extends above the React Flow wrapper bounds; if the
+            // user clicks the tape outside the wrapper rect, React Flow may
+            // route it as a pane click instead of a node click. Catch the
+            // click here directly so the idea always opens.
+            e.stopPropagation();
+            onOpenIdea?.(idea.id);
+          }}
+        />
+      )}
+
       <div className="absolute inset-y-0 left-0 flex items-center">
         {showLinkAffordance && (
           <FlowHandle
@@ -487,6 +675,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             enabled={typeof onStartLink === 'function'}
             label="Start linking from this idea"
             onActivate={() => onStartLink?.(idea.id)}
+            linkModeEnabled={linkModeEnabled}
           />
         )}
       </div>
@@ -500,6 +689,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             enabled={typeof onCompleteLink === 'function'}
             label="Complete linking to this idea"
             onActivate={() => onCompleteLink?.(idea.id)}
+            linkModeEnabled={linkModeEnabled}
           />
         )}
       </div>
@@ -507,7 +697,6 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
       {showDocChip && (
         <button
           type="button"
-          onPointerDown={e => e.stopPropagation()}
           onClick={e => {
             e.stopPropagation();
             onOpenDocs?.(idea.id);
@@ -736,6 +925,7 @@ export const IdeaNoteNode = memo(function IdeaNoteNode({
             discard
           </button>
         )}
+      </div>
       </div>
     </div>
   );

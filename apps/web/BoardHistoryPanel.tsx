@@ -1,9 +1,20 @@
-import React, { useId } from 'react';
-import type { BoardHistoryEntry } from './historyTimeline';
+import React, { useId, useMemo } from 'react';
+import { projectLogEvents } from '../../src/board/projection/logEvents';
+import type { BeatRunRecord, ChangeSetRecord } from '../../src/board/types';
+import { LogEventList } from './LogEventList';
 import { useOverlaySurface } from './useOverlaySurface';
 
 interface BoardHistoryPanelProps {
-  entries: BoardHistoryEntry[];
+  /**
+   * Append-only change-set feed. Projected to LogEvents internally via
+   * `projectLogEvents`.
+   */
+  changeSets: readonly ChangeSetRecord[];
+  /**
+   * Append-only beat-run feed. Empty until beatRuns are wired through
+   * `useBoardSync` (Screen 06 v0 = feed only).
+   */
+  beatRuns?: readonly BeatRunRecord[];
   cursor: number;
   totalChanges: number;
   canUndo: boolean;
@@ -11,8 +22,115 @@ interface BoardHistoryPanelProps {
   onClose: () => void;
 }
 
+/*
+ * Board history overlay — paper/sketch restyle.
+ *
+ * - Root: cream paper with 2px ink border, hand-shadow.
+ * - Headers: Caveat title, Kalam body, JetBrains-Mono uppercase pills.
+ * - Status pills are inline mono-caps; Undo/Redo readiness uses sticky
+ *   accents (yellow for undo, blue for redo). Disabled tone uses paper-dark
+ *   on faint ink.
+ * - Close button uses `.icon-btn` so it owns its own border + chrome,
+ *   bypassing the global `button {}` reset.
+ */
+const PANEL_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  right: 24,
+  top: 24,
+  zIndex: 20,
+  width: 'min(420px, calc(100% - 3rem))',
+  maxWidth: '100%',
+  background: 'var(--paper)',
+  border: '2px solid var(--ink)',
+  borderRadius: 14,
+  boxShadow: '3px 3px 0 var(--ink)',
+  pointerEvents: 'auto',
+  color: 'var(--ink)',
+};
+
+const HEADER_STYLE: React.CSSProperties = {
+  borderBottom: '1.5px solid var(--ink)',
+  padding: '16px 18px 14px',
+};
+
+const TITLE_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-hand)',
+  fontSize: 26,
+  lineHeight: 1.05,
+  color: 'var(--ink)',
+};
+
+const SUMMARY_STYLE: React.CSSProperties = {
+  margin: '6px 0 0',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  lineHeight: 1.4,
+  color: 'var(--ink-soft)',
+};
+
+const PILL_ROW_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const PILL_BASE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '2px 8px',
+  borderRadius: 999,
+  border: '1.2px solid var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink)',
+};
+
+const PILL_INK: React.CSSProperties = {
+  ...PILL_BASE,
+  background: 'var(--ink)',
+  color: 'var(--paper)',
+};
+
+const PILL_READY_UNDO: React.CSSProperties = {
+  ...PILL_BASE,
+  background: 'var(--sticky-yellow)',
+  borderColor: 'var(--sticky-yellow-edge)',
+};
+
+const PILL_READY_REDO: React.CSSProperties = {
+  ...PILL_BASE,
+  background: 'var(--sticky-blue)',
+  borderColor: 'var(--sticky-blue-edge)',
+};
+
+const PILL_DISABLED: React.CSSProperties = {
+  ...PILL_BASE,
+  background: 'var(--paper-dark)',
+  borderColor: 'var(--hairline)',
+  color: 'var(--ink-faint)',
+};
+
+const BODY_STYLE: React.CSSProperties = {
+  maxHeight: '68vh',
+  overflowY: 'auto',
+  padding: '14px 16px 18px',
+};
+
+/**
+ * bo-132 — v0 of LogEventList host. The panel keeps its existing shell
+ * (open / close / scroll) and now derives its rows from the canonical
+ * `projectLogEvents()` projection rather than the bespoke
+ * `createBoardHistoryEntries()` adapter.
+ */
 export function BoardHistoryPanel({
-  entries,
+  changeSets,
+  beatRuns,
   cursor,
   totalChanges,
   canUndo,
@@ -23,37 +141,44 @@ export function BoardHistoryPanel({
   const summaryId = useId();
   const { closeButtonRef, surfaceRef } = useOverlaySurface<HTMLElement>(onClose);
 
+  const events = useMemo(
+    () => projectLogEvents(changeSets, beatRuns ?? []),
+    [changeSets, beatRuns],
+  );
+
+  // The log feed reads newest-first to match Screen 06 spec ("vertical
+  // timeline, newest first"). projectLogEvents emits ascending order, so we
+  // reverse on display.
+  const orderedEvents = useMemo(() => [...events].reverse(), [events]);
+
   return (
     <section
       ref={surfaceRef}
-      className="bo-elevated-panel pointer-events-auto absolute right-6 top-6 z-20 w-[min(420px,calc(100%-3rem))] max-w-full rounded-[26px] backdrop-blur"
+      className="bo-elevated-panel"
+      style={PANEL_STYLE}
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
       aria-describedby={summaryId}
       tabIndex={-1}
     >
-      <div className="border-b border-slate-200 px-5 py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                Change history
-              </span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-                {cursor} / {totalChanges}
-              </span>
-              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${canUndo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+      <div style={HEADER_STYLE}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+            <div style={PILL_ROW_STYLE}>
+              <span style={PILL_INK}>Change history</span>
+              <span style={PILL_BASE}>{cursor} / {totalChanges}</span>
+              <span style={canUndo ? PILL_READY_UNDO : PILL_DISABLED}>
                 {canUndo ? 'Undo ready' : 'Oldest state'}
               </span>
-              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${canRedo ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-400'}`}>
+              <span style={canRedo ? PILL_READY_REDO : PILL_DISABLED}>
                 {canRedo ? 'Redo ready' : 'Latest state'}
               </span>
             </div>
-            <h2 id={headingId} className="text-sm font-semibold text-slate-900">
+            <h2 id={headingId} style={TITLE_STYLE}>
               Change history
             </h2>
-            <p id={summaryId} className="text-sm leading-snug text-slate-600">
+            <p id={summaryId} style={SUMMARY_STYLE}>
               Every patch set stays readable here, including actor, role context, and affected board entities.
             </p>
           </div>
@@ -62,111 +187,18 @@ export function BoardHistoryPanel({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="rounded-full px-2.5 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className="icon-btn"
             aria-label="Close history"
+            style={{ flex: '0 0 auto', fontFamily: 'var(--f-mono)', fontSize: 16, lineHeight: 1 }}
           >
-            Close
+            ×
           </button>
         </div>
       </div>
 
-      <div className="max-h-[68vh] overflow-y-auto px-4 py-4">
-        <div className="space-y-3">
-          {entries.map(entry => (
-            <article
-              key={entry.id}
-              className={`rounded-2xl border p-4 shadow-sm ${
-                entry.isCurrent
-                  ? 'border-violet-300 bg-violet-50/70'
-                  : entry.status === 'undone'
-                    ? 'border-slate-200 bg-slate-50/90'
-                    : entry.status === 'superseded'
-                      ? 'border-amber-200 bg-amber-50/80'
-                      : 'border-slate-200 bg-white/95'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] ${actorToneClass(entry.actorTone)}`}>
-                      {entry.actorLabel}
-                    </span>
-                    {entry.beatLabel && (
-                      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
-                        {entry.beatLabel}
-                      </span>
-                    )}
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                      patch {entry.patchCount}
-                    </span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusClass(entry.status, entry.isCurrent)}`}>
-                      {entry.isCurrent ? 'current' : entry.status}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-semibold text-slate-900">{entry.summary}</h3>
-                </div>
-
-                <div className="text-right text-[11px] text-slate-500">
-                  <div>#{entry.seq}</div>
-                  <div>{formatTimestamp(entry.committedAt)}</div>
-                </div>
-              </div>
-
-              {entry.affected.length > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Affected entities</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {entry.affected.map(target => (
-                      <span
-                        key={`${target.store}-${target.id}`}
-                        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
-                        title={`${target.store}:${target.id}`}
-                      >
-                        {target.label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </article>
-          ))}
-
-          {entries.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-6 text-sm text-slate-500">
-              No durable change sets yet. The first edit or AI action will appear here as a readable patch set.
-            </div>
-          )}
-        </div>
+      <div style={BODY_STYLE}>
+        <LogEventList events={orderedEvents} currentSeq={cursor} />
       </div>
     </section>
   );
-}
-
-function actorToneClass(tone: BoardHistoryEntry['actorTone']): string {
-  switch (tone) {
-    case 'user':
-      return 'bg-emerald-50 text-emerald-700';
-    case 'ai':
-      return 'bg-sky-50 text-sky-700';
-    case 'tool':
-      return 'bg-amber-50 text-amber-700';
-    default:
-      return 'bg-slate-100 text-slate-600';
-  }
-}
-
-function statusClass(status: BoardHistoryEntry['status'], isCurrent: boolean): string {
-  if (isCurrent) return 'bg-violet-100 text-violet-700';
-  if (status === 'undone') return 'bg-slate-200 text-slate-600';
-  if (status === 'superseded') return 'bg-amber-100 text-amber-700';
-  return 'bg-emerald-100 text-emerald-700';
-}
-
-function formatTimestamp(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(timestamp));
 }

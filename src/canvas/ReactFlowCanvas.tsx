@@ -60,6 +60,7 @@ type LinkDraft = {
 };
 
 type SuggestionBusy = Record<string, 'admit' | 'elaborate' | 'dismiss' | null>;
+type SuggestionError = Record<string, string | null>;
 
 export interface CanvasProps {
   boardTheme: BoardThemeMode;
@@ -75,7 +76,18 @@ export interface CanvasProps {
   suppressAnimations?: boolean;
   suggestionOverflowCount?: number;
   suggestionsExpanded?: boolean;
-  onConnectionClick?: (ideaIds: string[]) => void;
+  /**
+   * Click handler for an edge in the canvas. Called with the connection id
+   * (when known), the idea endpoints, and a viewport-relative click point
+   * for popover positioning. The connection id and position are optional so
+   * legacy callers that only need the highlighted endpoints don't have to
+   * destructure the extras.
+   */
+  onConnectionClick?: (
+    ideaIds: string[],
+    connectionId?: string,
+    clientPosition?: { x: number; y: number },
+  ) => void;
   onFocusIdeaChange?: (ideaId: string | null) => void;
   onDragStateChange?: (dragging: boolean) => void;
   onMove: (ideaId: string, x: number, y: number) => Promise<void> | void;
@@ -96,6 +108,7 @@ export interface CanvasProps {
   }) => Promise<Connection>;
   suggestions?: ScoutSuggestion[];
   suggestionBusy?: SuggestionBusy;
+  suggestionError?: SuggestionError;
   onMoveSuggestion?: (suggestionId: string, x: number, y: number) => Promise<void> | void;
   onAdmitSuggestion?: (id: string) => void;
   onElaborateSuggestion?: (id: string) => void;
@@ -192,6 +205,7 @@ export default function ReactFlowCanvas({
   onCreateConnection,
   suggestions,
   suggestionBusy,
+  suggestionError,
   onMoveSuggestion,
   onAdmitSuggestion,
   onElaborateSuggestion,
@@ -239,7 +253,10 @@ export default function ReactFlowCanvas({
     [flowNodes, suggestions],
   );
   const connectionList = useMemo(() => connections ?? [], [connections]);
-  const activeIdeaId = liveDrag?.id ?? hoveredIdeaId ?? flashState.activeIdeaId;
+  // Drive the focus tone (active / related / muted) only from explicit signals:
+  // an in-flight drag, or a board-level highlight flash. Hovering a card no
+  // longer mutes the rest of the board — it caused too much visual churn.
+  const activeIdeaId = liveDrag?.id ?? flashState.activeIdeaId;
   const ideaIds = useMemo(() => ideas.map(idea => idea.id), [ideas]);
   const focus = useMemo(
     () => deriveCanvasFocus(ideaIds, connectionList, activeIdeaId, flashState.ideaIds),
@@ -389,9 +406,11 @@ export default function ReactFlowCanvas({
   const projectedSuggestionNodes = useMemo(
     () => projectSuggestionNodes({
       suggestions: effectiveSuggestions,
+      boardTheme,
       selectedFlowNodeIds,
       animatedSuggestionIds,
       suggestionBusy,
+      suggestionError,
       suggestionOverflowCount,
       suggestionsExpanded,
       onAdmitSuggestion: stableSuggestionCallbacks.onAdmitSuggestion,
@@ -402,20 +421,29 @@ export default function ReactFlowCanvas({
     }),
     [
       animatedSuggestionIds,
+      boardTheme,
       effectiveSuggestions,
       selectedFlowNodeIds,
       stableSuggestionCallbacks,
       suggestionBusy,
+      suggestionError,
       suggestionOverflowCount,
       suggestionsExpanded,
     ],
   );
   const onConnectionClickRef = useRef(onConnectionClick);
   useEffect(() => { onConnectionClickRef.current = onConnectionClick; }, [onConnectionClick]);
-  const stableOnEdgeSelect = useCallback((_: unknown, ideaIds: string[]) => {
-    triggerFlash(ideaIds);
-    onConnectionClickRef.current?.(ideaIds);
-  }, []);
+  const stableOnEdgeSelect = useCallback(
+    (
+      connectionId: string,
+      ideaIds: string[],
+      clientPosition?: { x: number; y: number },
+    ) => {
+      triggerFlash(ideaIds);
+      onConnectionClickRef.current?.(ideaIds, connectionId, clientPosition);
+    },
+    [],
+  );
   const projectedEdges = useMemo(
     () => projectConnectionEdges({
       ideas: effectiveIdeas,
@@ -797,7 +825,7 @@ export default function ReactFlowCanvas({
             deleteKeyCode={null}
             fitView={false}
             nodeClickDistance={4}
-            minZoom={0.55}
+            minZoom={0.2}
             maxZoom={1.9}
             proOptions={{ hideAttribution: true }}
             className="bo-reactflow-canvas"

@@ -6,14 +6,41 @@ interface AppApiKeyBannerProps {
 
 export function AppApiKeyBanner({ onOpenOptions }: AppApiKeyBannerProps): React.ReactElement {
   return (
-    <div className="shrink-0 mx-5 my-3 rounded-md bg-amber-50 border border-amber-300 px-3 py-2 text-xs text-amber-800 flex items-center justify-between">
+    <div
+      className="shrink-0 mx-5 my-3"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        padding: '10px 14px',
+        background: 'var(--sticky-yellow)',
+        border: '2px solid var(--ink)',
+        borderRadius: 10,
+        boxShadow: '3px 3px 0 var(--ink)',
+        color: 'var(--ink)',
+        fontFamily: 'var(--f-hand-body)',
+        fontSize: 14,
+        lineHeight: 1.35,
+      }}
+    >
       <span>
-        <strong>No provider configured.</strong>{' '}
+        <strong
+          style={{
+            fontFamily: 'var(--f-hand)',
+            fontWeight: 700,
+            fontSize: 18,
+            marginRight: 8,
+            letterSpacing: '0.2px',
+          }}
+        >
+          No provider configured.
+        </strong>
         Add an API key in Options to start brainstorming.
       </span>
       <button
         type="button"
-        className="underline hover:text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500 rounded"
+        className="btn sm"
         onClick={onOpenOptions}
       >
         Open Options

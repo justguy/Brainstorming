@@ -41,6 +41,319 @@ interface WorkflowState {
   totalEvents: number;
 }
 
+/*
+ * Idea turn-log overlay — paper/sketch restyle.
+ *
+ * - Root is a paper-backed aside fixed to the right rail, with 2px ink
+ *   border + hand-shadow.
+ * - Header pins a hand-written title with a JetBrains-Mono eyebrow + meta.
+ * - Filter chips are inline mono-caps that flip to ink-on-paper when
+ *   selected. They get explicit `style` chrome so they don't get nuked by
+ *   the global `button {}` reset.
+ * - Workflow + conversation entries are paper-dark sub-cards with 1px ink
+ *   border.
+ * - Action buttons all use `.btn.sm` / `.btn.sm.ghost`. The close affordance
+ *   uses `.icon-btn`.
+ * - Error toast uses `--accent-contradicts` border on paper instead of
+ *   rose-500.
+ * - Empty / loading states use dashed-ink-on-paper.
+ */
+const PANEL_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  right: 24,
+  top: 24,
+  bottom: 24,
+  zIndex: 22,
+  width: 'min(460px, calc(100% - 3rem))',
+  maxWidth: '100%',
+  background: 'var(--paper)',
+  border: '2px solid var(--ink)',
+  borderRadius: 14,
+  boxShadow: '3px 3px 0 var(--ink)',
+  pointerEvents: 'auto',
+  color: 'var(--ink)',
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+};
+
+const HEADER_STYLE: React.CSSProperties = {
+  borderBottom: '1.5px solid var(--ink)',
+  padding: '14px 16px',
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 12,
+};
+
+const EYEBROW_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.14em',
+  color: 'var(--ink-faint)',
+};
+
+const TITLE_STYLE: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontFamily: 'var(--f-hand)',
+  fontSize: 24,
+  lineHeight: 1.1,
+  color: 'var(--ink)',
+};
+
+const META_STYLE: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 11,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'var(--ink-faint)',
+};
+
+const FILTERS_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  padding: '10px 16px 4px',
+  borderBottom: '1px solid var(--hairline)',
+};
+
+const FILTER_CHIP_BASE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '3px 9px',
+  borderRadius: 999,
+  border: '1.2px solid var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink)',
+  cursor: 'pointer',
+};
+
+const FILTER_CHIP_ACTIVE: React.CSSProperties = {
+  ...FILTER_CHIP_BASE,
+  background: 'var(--ink)',
+  color: 'var(--paper)',
+};
+
+const BODY_STYLE: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  padding: '14px 16px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+};
+
+const FOOTER_STYLE: React.CSSProperties = {
+  borderTop: '1.5px solid var(--ink)',
+  padding: '10px 16px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  background: 'var(--paper)',
+};
+
+const SECTION_HEADER_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  marginBottom: 8,
+};
+
+const SECTION_META_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink-faint)',
+};
+
+const ENTRY_STYLE: React.CSSProperties = {
+  background: 'var(--paper-dark)',
+  border: '1px solid var(--ink)',
+  borderRadius: 10,
+  padding: '10px 12px',
+  marginBottom: 8,
+  color: 'var(--ink)',
+};
+
+const TAG_STYLE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '1px 7px',
+  borderRadius: 4,
+  border: '1px solid var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink)',
+};
+
+const TIME_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink-faint)',
+};
+
+const ENTRY_HEAD_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+};
+
+const ENTRY_HEADLINE_STYLE: React.CSSProperties = {
+  margin: '6px 0 0',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  fontWeight: 600,
+  lineHeight: 1.4,
+  color: 'var(--ink)',
+};
+
+const ENTRY_SUB_STYLE: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 12,
+  lineHeight: 1.4,
+  color: 'var(--ink-soft)',
+};
+
+const ENTRY_ORIGIN_STYLE: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'var(--ink-faint)',
+};
+
+const META_PILL_STYLE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '1px 6px',
+  borderRadius: 999,
+  border: '1px solid var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 9.5,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink)',
+};
+
+const ENTRY_BODY_STYLE: React.CSSProperties = {
+  margin: '8px 0 0',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  lineHeight: 1.55,
+  color: 'var(--ink)',
+};
+
+const ENTRY_TOOL_HINT_STYLE: React.CSSProperties = {
+  margin: '8px 0 0',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 11,
+  color: 'var(--ink-soft)',
+};
+
+const RATIONALE_STYLE: React.CSSProperties = {
+  marginTop: 8,
+  padding: '8px 10px',
+  background: 'var(--paper)',
+  border: '1px dashed var(--ink)',
+  borderRadius: 8,
+};
+
+const RATIONALE_LABEL_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-mono)',
+  fontSize: 9,
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.14em',
+  color: 'var(--accent-critique)',
+};
+
+const RATIONALE_BODY_STYLE: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 13,
+  lineHeight: 1.45,
+  color: 'var(--ink)',
+};
+
+const ENTRY_ACTIONS_STYLE: React.CSSProperties = {
+  marginTop: 10,
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const BOARD_HINT_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink-faint)',
+};
+
+const LOADING_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  color: 'var(--ink-soft)',
+};
+
+const ERROR_STYLE: React.CSSProperties = {
+  margin: 0,
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: '1.5px solid var(--accent-contradicts)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 13,
+  color: 'var(--accent-contradicts)',
+};
+
+const EMPTY_STATE_STYLE: React.CSSProperties = {
+  padding: '14px 16px',
+  borderRadius: 12,
+  border: '1.5px dashed var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 13,
+  color: 'var(--ink-soft)',
+};
+
+const FOOTER_META_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink-faint)',
+};
+
 export function IdeaTurnLogPanel({
   idea,
   open,
@@ -209,69 +522,80 @@ export function IdeaTurnLogPanel({
   const footerCursorLabel = turnLog.totalTurns > 0 ? `${Math.min(turnLog.entries.length, turnLog.totalTurns)}/${turnLog.totalTurns}` : '0/0';
 
   return (
-    <aside className="bo-turn-log-panel bo-elevated-panel" aria-label="Turn log">
-      <div className="bo-turn-log-panel__header">
-        <div className="min-w-0">
-          <p className="bo-shell-eyebrow">Turn log · idea</p>
-          <h2 className="bo-turn-log-panel__title">
+    <aside className="bo-turn-log-panel bo-elevated-panel" aria-label="Turn log" style={PANEL_STYLE}>
+      <div style={HEADER_STYLE}>
+        <div style={{ minWidth: 0 }}>
+          <p style={EYEBROW_STYLE}>Turn log · idea</p>
+          <h2 style={TITLE_STYLE}>
             {currentIdea.rawText.slice(0, 64)}{currentIdea.rawText.length > 64 ? '…' : ''}
           </h2>
-          <p className="bo-turn-log-panel__meta">
+          <p style={META_STYLE}>
             {aiTurnCount} AI · {userTurnCount} you · {pinnedCount} pinned
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={onClose} className="bo-turn-log-panel__close" aria-label="Close turn log">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="icon-btn"
+            aria-label="Close turn log"
+            style={{ fontFamily: 'var(--f-mono)', fontSize: 16, lineHeight: 1 }}
+          >
             ×
           </button>
         </div>
       </div>
 
-      <div className="bo-turn-log-panel__filters">
+      <div style={FILTERS_STYLE}>
         {filters.map(key => (
           <button
             key={key}
             type="button"
             onClick={() => setFilter(key)}
-            className={`bo-filter-chip ${filter === key ? 'is-active' : ''}`}
+            style={filter === key ? FILTER_CHIP_ACTIVE : FILTER_CHIP_BASE}
+            aria-pressed={filter === key}
           >
             {FILTER_LABEL[key]}
           </button>
         ))}
       </div>
 
-      <div className="bo-turn-log-panel__body">
+      <div style={BODY_STYLE}>
         {loading && (
-          <p className="text-sm text-slate-500">Loading workflow memory…</p>
+          <p style={LOADING_STYLE}>Loading workflow memory…</p>
         )}
         {error && (
-          <p className="rounded-2xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+          <p style={ERROR_STYLE} role="alert">
             {error}
           </p>
         )}
 
         {!loading && visibleWorkflow.length > 0 && (
-          <section className="space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className="bo-shell-eyebrow">Workflow memory</p>
-              <span className="bo-turn-log-panel__section-meta">
+          <section>
+            <div style={SECTION_HEADER_STYLE}>
+              <p style={EYEBROW_STYLE}>Workflow memory</p>
+              <span style={SECTION_META_STYLE}>
                 {visibleWorkflow.length} / {workflow.totalEvents}
               </span>
             </div>
             {visibleWorkflow.map(event => (
-              <article key={`${event.source}-${event.sourceId ?? event.sourceSeq ?? event.at}`} className="bo-turn-entry">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="bo-turn-entry__tag">{event.changeKinds.join(' + ')}</span>
-                  <span className="bo-turn-entry__time">{formatWhen(event.at)}</span>
+              <article key={`${event.source}-${event.sourceId ?? event.sourceSeq ?? event.at}`} style={ENTRY_STYLE}>
+                <div style={ENTRY_HEAD_STYLE}>
+                  <span style={TAG_STYLE}>{event.changeKinds.join(' + ')}</span>
+                  <span style={TIME_STYLE}>{formatWhen(event.at)}</span>
                 </div>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{event.summary}</p>
-                <p className="mt-1 text-xs text-slate-600">
+                <p style={ENTRY_HEADLINE_STYLE}>{event.summary}</p>
+                <p style={ENTRY_SUB_STYLE}>
                   {event.actor.label ?? actorLabel(event)}
                 </p>
               </article>
             ))}
             {workflow.nextCursor && (
-              <button type="button" onClick={() => { void loadMoreWorkflow(); }} className="bo-shell-action">
+              <button
+                type="button"
+                onClick={() => { void loadMoreWorkflow(); }}
+                className="btn sm ghost"
+              >
                 {loadingMore === 'workflow' ? 'Loading…' : 'Load earlier'}
               </button>
             )}
@@ -279,69 +603,81 @@ export function IdeaTurnLogPanel({
         )}
 
         {!loading && activeTurnRows.length > 0 && (
-          <section className="space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className="bo-shell-eyebrow">Conversation trail</p>
-              <span className="bo-turn-log-panel__section-meta">
+          <section>
+            <div style={SECTION_HEADER_STYLE}>
+              <p style={EYEBROW_STYLE}>Conversation trail</p>
+              <span style={SECTION_META_STYLE}>
                 {activeTurnRows.length} / {visibleTurnsWithMeta.length}
               </span>
             </div>
             {activeTurnRows.map(({ entry, index, origin, rationale, key }) => (
-              <article key={key} className="bo-turn-entry">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="bo-turn-entry__tag">{turnOriginLabel(origin)}</span>
-                  <span className="bo-turn-entry__time">{formatRelativeTurn(index, turnLog.totalTurns)}</span>
+              <article key={key} style={ENTRY_STYLE}>
+                <div style={ENTRY_HEAD_STYLE}>
+                  <span style={TAG_STYLE}>{turnOriginLabel(origin)}</span>
+                  <span style={TIME_STYLE}>{formatRelativeTurn(index, turnLog.totalTurns)}</span>
                 </div>
-                <p className="bo-turn-entry__origin">
+                <p style={ENTRY_ORIGIN_STYLE}>
                   {origin === 'user' ? 'You' : origin === 'critique' ? 'Dev · critique' : origin === 'ai' ? 'Dev · facilitator' : 'System'} · {turnOriginLabel(origin)}
                 </p>
                 {(entry.meta?.phaseLabel || entry.meta?.roleId || entry.meta?.provider || entry.meta?.model) && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {entry.meta?.phaseLabel && (
-                      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                      <span style={META_PILL_STYLE}>
                         {entry.meta.phaseLabel}
                       </span>
                     )}
                     {entry.meta?.roleId && (
-                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700">
+                      <span style={META_PILL_STYLE}>
                         {entry.meta.roleId}
                       </span>
                     )}
                     {(entry.meta?.provider || entry.meta?.model) && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                      <span style={META_PILL_STYLE}>
                         {[entry.meta?.provider, entry.meta?.model].filter(Boolean).join('/')}
                       </span>
                     )}
                   </div>
                 )}
                 {entry.meta?.source === 'phase_run' && (
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p style={ENTRY_TOOL_HINT_STYLE}>
                     {summarizeToolUsage(entry)}
                   </p>
                 )}
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+                <p style={ENTRY_BODY_STYLE}>
                   {formatTurnEntryContent(entry)}
                 </p>
                 {rationale && (
-                  <div className="bo-turn-entry__rationale">
-                    <p className="bo-turn-entry__rationale-label">Why</p>
-                    <p>{rationale}</p>
+                  <div style={RATIONALE_STYLE}>
+                    <p style={RATIONALE_LABEL_STYLE}>Why</p>
+                    <p style={RATIONALE_BODY_STYLE}>{rationale}</p>
                   </div>
                 )}
-                <div className="bo-turn-entry__actions">
-                  <button type="button" onClick={() => { handlePin(entry, index); }} className="bo-shell-action">
+                <div style={ENTRY_ACTIONS_STYLE}>
+                  <button
+                    type="button"
+                    onClick={() => { handlePin(entry, index); }}
+                    className="btn sm ghost"
+                  >
                     {pinnedTurnKeys.has(key) ? '★ pinned' : '☆ pin'}
                   </button>
                   {onTransfer && (
-                    <button type="button" onClick={() => { handleTransfer(entry); }} className="bo-shell-action">
+                    <button
+                      type="button"
+                      onClick={() => { handleTransfer(entry); }}
+                      className="btn sm ghost"
+                    >
                       Transfer →
                     </button>
                   )}
-                  <button type="button" onClick={() => { handleDismiss(entry, key, index); }} className="bo-shell-action">
+                  <button
+                    type="button"
+                    onClick={() => { handleDismiss(entry, key, index); }}
+                    className="btn sm ghost"
+                  >
                     Dismiss
                   </button>
                   {onOpenInspector && (
-                    <span className="bo-turn-entry__board-hint">Open note workspace</span>
+                    <span style={BOARD_HINT_STYLE}>Open note workspace</span>
                   )}
                 </div>
               </article>
@@ -350,19 +686,19 @@ export function IdeaTurnLogPanel({
         )}
 
         {!loading && visibleWorkflow.length === 0 && visibleTurnsWithMeta.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-sm text-slate-500">
+          <div style={EMPTY_STATE_STYLE}>
             No entries match the current filter yet.
           </div>
         )}
       </div>
 
-      <div className="bo-turn-log-panel__footer">
-        <p className="bo-turn-log-panel__footer-meta">
+      <div style={FOOTER_STYLE}>
+        <p style={FOOTER_META_STYLE}>
           Paginated · cursor {footerCursorLabel}
         </p>
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {onOpenInspector && (
-            <button type="button" onClick={onOpenInspector} className="bo-shell-action">
+            <button type="button" onClick={onOpenInspector} className="btn sm ghost">
               Open note
             </button>
           )}
@@ -378,7 +714,7 @@ export function IdeaTurnLogPanel({
                   void loadMoreWorkflow();
                 }
               }}
-              className="bo-shell-action"
+              className="btn sm"
             >
               {loadingMore ? 'Loading…' : 'Load more'}
             </button>

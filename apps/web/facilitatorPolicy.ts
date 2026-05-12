@@ -9,7 +9,12 @@ import {
   type FacilitatorAutonomyLabel,
   type FacilitatorAutonomyView,
 } from './facilitatorAutonomy';
-import type { Idea, IdeaCritique } from '../../src/types';
+import {
+  autonomyGateVerdict,
+  DEFAULT_AUTONOMY_LEVEL,
+  type AutonomyGateVerdict,
+} from '../../src/orchestrator/readinessGate';
+import type { AutonomyLevel, Idea, IdeaCritique } from '../../src/types';
 import type {
   FacilitatorActionExecutionMode,
   FacilitatorAiActionOutcomeRecord,
@@ -97,6 +102,14 @@ export interface FacilitatorControlPlaneContext {
     recentAiOutcomeCount: number;
     autonomyState: FacilitatorAutonomyState;
     recentAiActionOutcomes: FacilitatorAiActionOutcomeRecord[];
+    /**
+     * 4-stop UI dial from `Project.autonomyDial` (bo-141). When undefined the
+     * gate falls back to today's behaviour (`'active'`) so callers that have
+     * not yet been migrated do not regress. The gate is applied on top of the
+     * legacy `autonomyState` — the dial can only narrow what the legacy mode
+     * already permits, never widen it.
+     */
+    autonomyDial: AutonomyLevel;
   };
   triggers: {
     pendingConnectionIdeaIds: string[];
@@ -148,6 +161,12 @@ export interface BuildFacilitatorContextArgs {
   activeCritiques: IdeaCritique[];
   lastMeaningfulActivity: MeaningfulActivity;
   recentSessionEvents?: FacilitatorSessionEvent[];
+  /**
+   * Optional 4-stop autonomy dial from `Project.autonomyDial`. When omitted,
+   * defaults to `'active'` (today's behaviour) so callers can migrate
+   * incrementally without changing the gate.
+   */
+  autonomyDial?: AutonomyLevel;
 }
 
 export function buildFacilitatorControlPlaneContext(
@@ -185,6 +204,7 @@ export function buildFacilitatorControlPlaneContext(
       recentAiOutcomeCount: recentAiEvents.length,
       autonomyState: args.autonomyState,
       recentAiActionOutcomes: args.recentAiActionOutcomes ?? [],
+      autonomyDial: args.autonomyDial ?? DEFAULT_AUTONOMY_LEVEL,
     },
     triggers: {
       pendingConnectionIdeaIds: args.pendingConnectionIdeaIds,
@@ -210,6 +230,13 @@ export function decideCompanionAutomationAction(
     recentAiActionOutcomes: context.automation.recentAiActionOutcomes,
     now: context.now,
   });
+  // bo-141: read the user-facing autonomy dial. The dial can only *narrow*
+  // what the legacy mode allows — `silent` short-circuits the entire gate so
+  // even a `challenger` ceiling stays quiet.
+  const dialVerdict = autonomyGateVerdict(context.automation.autonomyDial);
+  if (!dialVerdict.allowProactive) {
+    return blockDecision('facilitator', 'Persona dial is set to silent.', autonomy);
+  }
   if (context.automation.effectiveFacilitatorPaused) {
     return blockDecision('facilitator', 'Automatic actions are paused.', autonomy);
   }
@@ -232,23 +259,23 @@ export function decideCompanionAutomationAction(
   if (sequenceGapRemainingMs > 0) {
     return blockDecision('facilitator', `Waiting ${Math.ceil(sequenceGapRemainingMs / 1000)}s before the next facilitator action.`, autonomy);
   }
-  if (context.triggers.pendingConnectionIdeaIds.length >= CONNECT_BATCH_SIZE) {
-    return decideConnectionAction(context, autonomy);
+  if (context.triggers.pendingConnectionIdeaIds.length >= CONNECT_BATCH_SIZE && dialVerdict.allowConnectBeat) {
+    return decideConnectionAction(context, autonomy, dialVerdict);
   }
   const critiqueTarget = selectCritiqueTarget({
     visibleIdeas: context.triggers.visibleIdeas,
     selectedBoardIdea: context.triggers.selectedBoardIdea,
     activeCritiques: context.triggers.activeCritiques,
   });
-  if (critiqueTarget) {
-    return decideCritiqueAction(context, critiqueTarget.id, autonomy);
+  if (critiqueTarget && dialVerdict.allowCritiqueBeat) {
+    return decideCritiqueAction(context, critiqueTarget.id, autonomy, dialVerdict);
   }
   const doclessIdeaId = selectPendingScoutIdeaId(
     context.triggers.pendingScoutIdeaIds,
     context.triggers.docCounts,
   );
-  if (doclessIdeaId) {
-    return decideScoutAction(context, doclessIdeaId, autonomy);
+  if (doclessIdeaId && dialVerdict.allowScoutBeat) {
+    return decideScoutAction(context, doclessIdeaId, autonomy, dialVerdict);
   }
   if (context.workspace.discardedIdeaCount > 0 && context.activity.idleMs >= 5_000) {
     return stageDecision('historian', 'soft_signal', 'A discarded thread may be worth revisiting before the board drifts further.', {
@@ -285,6 +312,7 @@ export function decideCompanionAutomationAction(
 function decideConnectionAction(
   context: FacilitatorControlPlaneContext,
   autonomy: FacilitatorAutonomyView,
+  dialVerdict: AutonomyGateVerdict,
 ): CompanionAutomationPolicyDecision {
   const cooldownRemainingMs = Math.max(
     0,
@@ -304,7 +332,7 @@ function decideConnectionAction(
       autonomyStatusLine: autonomy.statusLine ?? undefined,
     });
   }
-  return modeFilteredActionDecision(context, autonomy, 'synthesizer', 'connect', 'durable_mutation', 'Connection candidates accumulated; prioritizing structural linking.', confidenceScore, {
+  return modeFilteredActionDecision(context, autonomy, dialVerdict, 'synthesizer', 'connect', 'durable_mutation', 'Connection candidates accumulated; prioritizing structural linking.', confidenceScore, {
     interventionStrength,
   });
 }
@@ -313,6 +341,7 @@ function decideCritiqueAction(
   context: FacilitatorControlPlaneContext,
   ideaId: string,
   autonomy: FacilitatorAutonomyView,
+  dialVerdict: AutonomyGateVerdict,
 ): CompanionAutomationPolicyDecision {
   const lastCritiqueAt = context.automation.cooldowns.critiqueByIdea[ideaId] ?? 0;
   const cooldownRemainingMs = Math.max(0, AUTO_COOLDOWN_CRITIQUE_MS - (context.now - lastCritiqueAt));
@@ -328,7 +357,7 @@ function decideCritiqueAction(
       autonomyStatusLine: autonomy.statusLine ?? undefined,
     });
   }
-  return modeFilteredActionDecision(context, autonomy, 'challenger', 'critique', 'durable_mutation', 'A later-phase idea lacks fresh challenge coverage; run bounded critique.', confidenceScore, {
+  return modeFilteredActionDecision(context, autonomy, dialVerdict, 'challenger', 'critique', 'durable_mutation', 'A later-phase idea lacks fresh challenge coverage; run bounded critique.', confidenceScore, {
     targetIdeaId: ideaId,
     interventionStrength: 'balanced',
   });
@@ -338,6 +367,7 @@ function decideScoutAction(
   context: FacilitatorControlPlaneContext,
   ideaId: string,
   autonomy: FacilitatorAutonomyView,
+  dialVerdict: AutonomyGateVerdict,
 ): CompanionAutomationPolicyDecision {
   const cooldownRemainingMs = Math.max(
     0,
@@ -354,7 +384,7 @@ function decideScoutAction(
       autonomyStatusLine: autonomy.statusLine ?? undefined,
     });
   }
-  return modeFilteredActionDecision(context, autonomy, 'scout', 'scout', 'durable_mutation', 'A doc-less idea is available for adjacent expansion.', confidenceScore, {
+  return modeFilteredActionDecision(context, autonomy, dialVerdict, 'scout', 'scout', 'durable_mutation', 'A doc-less idea is available for adjacent expansion.', confidenceScore, {
     targetIdeaId: ideaId,
   });
 }
@@ -440,6 +470,7 @@ function executeDecision(
 function modeFilteredActionDecision(
   context: FacilitatorControlPlaneContext,
   autonomy: FacilitatorAutonomyView,
+  dialVerdict: AutonomyGateVerdict,
   role: FacilitatorRoleId,
   action: CompanionAutomationAction,
   verbClass: FacilitatorVerbClass,
@@ -447,7 +478,18 @@ function modeFilteredActionDecision(
   confidenceScore: number,
   overrides: PolicyDecisionOverrides = {},
 ): CompanionAutomationPolicyDecision {
-  if (shouldExecuteForAutonomyMode(autonomy.effectiveMode, confidenceScore, context.activity.autoRunReady)) {
+  // bo-141 — Trust 2 acceptance: only `takes-pen` may auto-execute durable
+  // mutations. Below that the decision degrades to `stage`, even if the legacy
+  // autonomy state and confidence threshold would have allowed execute.
+  // `confidenceScale` lets `takes-pen` clear the bar on slightly-lower-confidence
+  // signals; `confidenceScale` is 1 elsewhere so today's threshold survives.
+  const scaledConfidence = Math.min(1, confidenceScore / Math.max(0.01, dialVerdict.confidenceScale));
+  const wouldExecute = shouldExecuteForAutonomyMode(
+    autonomy.effectiveMode,
+    scaledConfidence,
+    context.activity.autoRunReady,
+  );
+  if (wouldExecute && dialVerdict.allowAutoRun) {
     return executeDecision(role, action, verbClass, reason, {
       ...overrides,
       configuredCeiling: autonomy.configuredCeiling,

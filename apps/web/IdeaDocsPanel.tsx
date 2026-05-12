@@ -24,6 +24,221 @@ interface IdeaDocsPanelProps {
   refineDoc: (doc: SupportingDoc, actor: ChangeActor) => Promise<SupportingDoc>;
 }
 
+/*
+ * Supporting-docs overlay — paper/sketch restyle.
+ *
+ * - Root is a paper-backed aside on the right rail with 2px ink border +
+ *   hand-shadow.
+ * - Header gives a JetBrains-Mono eyebrow + a Caveat-styled idea title.
+ * - Each attached doc is a paper-dark sub-card with 1px ink border.
+ * - Inputs use cream paper + 1.5px ink border + hand shadow so they read as
+ *   pinned slips on the board.
+ * - Status note uses uppercase mono caps; failed docs show a contradicts
+ *   accent badge.
+ * - Buttons all use `.btn.sm.ghost` (per-doc actions) or `.btn.sm.primary`
+ *   (save). Close uses `.icon-btn`.
+ * - Error toast uses `--accent-contradicts` border on paper.
+ */
+const PANEL_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  right: 24,
+  top: 24,
+  bottom: 24,
+  zIndex: 22,
+  width: 'min(420px, calc(100% - 3rem))',
+  maxWidth: '100%',
+  background: 'var(--paper)',
+  border: '2px solid var(--ink)',
+  borderRadius: 14,
+  boxShadow: '3px 3px 0 var(--ink)',
+  pointerEvents: 'auto',
+  color: 'var(--ink)',
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+};
+
+const HEADER_STYLE: React.CSSProperties = {
+  borderBottom: '1.5px solid var(--ink)',
+  padding: '14px 16px',
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 12,
+};
+
+const EYEBROW_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.14em',
+  color: 'var(--ink-faint)',
+};
+
+const TITLE_STYLE: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontFamily: 'var(--f-hand)',
+  fontSize: 22,
+  lineHeight: 1.1,
+  color: 'var(--ink)',
+};
+
+const BODY_STYLE: React.CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  padding: '14px 16px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 18,
+};
+
+const SECTION_HEAD_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  marginBottom: 8,
+};
+
+const COUNT_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink-faint)',
+};
+
+const DOC_CARD_STYLE: React.CSSProperties = {
+  background: 'var(--paper-dark)',
+  border: '1px solid var(--ink)',
+  borderRadius: 10,
+  padding: '10px 12px',
+  marginBottom: 8,
+  color: 'var(--ink)',
+};
+
+const DOC_TITLE_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  fontWeight: 700,
+  lineHeight: 1.3,
+  color: 'var(--ink)',
+};
+
+const DOC_STATUS_BASE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  marginTop: 4,
+  padding: '1px 7px',
+  borderRadius: 4,
+  border: '1px solid var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink)',
+};
+
+const DOC_STATUS_FAILED: React.CSSProperties = {
+  ...DOC_STATUS_BASE,
+  borderColor: 'var(--accent-contradicts)',
+  color: 'var(--accent-contradicts)',
+};
+
+const DOC_SUMMARY_STYLE: React.CSSProperties = {
+  margin: '8px 0 0',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 13.5,
+  lineHeight: 1.5,
+  color: 'var(--ink)',
+};
+
+const EMPTY_STYLE: React.CSSProperties = {
+  padding: '14px 16px',
+  borderRadius: 12,
+  border: '1.5px dashed var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 13,
+  color: 'var(--ink-soft)',
+};
+
+const LOADING_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  color: 'var(--ink-soft)',
+};
+
+const ERROR_STYLE: React.CSSProperties = {
+  margin: 0,
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: '1.5px solid var(--accent-contradicts)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 13,
+  color: 'var(--accent-contradicts)',
+};
+
+const INPUT_STYLE: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 12px',
+  border: '1.5px solid var(--ink)',
+  borderRadius: 8,
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  color: 'var(--ink)',
+  boxShadow: '1.5px 1.5px 0 var(--ink)',
+};
+
+const TEXTAREA_STYLE: React.CSSProperties = {
+  ...INPUT_STYLE,
+  minHeight: 140,
+  resize: 'vertical',
+  lineHeight: 1.5,
+};
+
+const FORM_ROW_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  marginTop: 8,
+};
+
+const CHAR_COUNT_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink-faint)',
+};
+
+const DOC_ACTIONS_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const DOC_HEAD_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 10,
+};
+
+function describeStatus(doc: SupportingDoc): { label: string; failed: boolean } {
+  if (doc.status === 'processing') return { label: 'Refining', failed: false };
+  if (doc.status === 'failed') return { label: 'Needs retry', failed: true };
+  return { label: `${doc.facts.length} facts ready`, failed: false };
+}
+
 export function IdeaDocsPanel({
   boardId,
   idea,
@@ -142,84 +357,109 @@ export function IdeaDocsPanel({
   }
 
   return (
-    <aside className="bo-idea-docs-panel bo-elevated-panel" aria-label="Supporting docs">
-      <div className="bo-turn-log-panel__header">
-        <div className="min-w-0">
-          <p className="bo-shell-eyebrow">Supporting docs</p>
-          <h2 className="mt-1 text-sm font-semibold text-slate-900">
+    <aside className="bo-idea-docs-panel bo-elevated-panel" aria-label="Supporting docs" style={PANEL_STYLE}>
+      <div style={HEADER_STYLE}>
+        <div style={{ minWidth: 0 }}>
+          <p style={EYEBROW_STYLE}>Supporting docs</p>
+          <h2 style={TITLE_STYLE}>
             {currentIdea.rawText.slice(0, 64)}{currentIdea.rawText.length > 64 ? '…' : ''}
           </h2>
         </div>
-        <button type="button" onClick={onClose} className="bo-shell-action">
-          Dismiss
+        <button
+          type="button"
+          onClick={onClose}
+          className="icon-btn"
+          aria-label="Dismiss supporting docs"
+          style={{ flex: '0 0 auto', fontFamily: 'var(--f-mono)', fontSize: 16, lineHeight: 1 }}
+        >
+          ×
         </button>
       </div>
 
-      <div className="bo-turn-log-panel__body">
-        <section className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <p className="bo-shell-eyebrow">Attached</p>
-            <span className="text-[11px] text-slate-500">{docs.length}</span>
+      <div style={BODY_STYLE}>
+        <section>
+          <div style={SECTION_HEAD_STYLE}>
+            <p style={EYEBROW_STYLE}>Attached</p>
+            <span style={COUNT_STYLE}>{docs.length}</span>
           </div>
-          {loading && <p className="text-sm text-slate-500">Loading docs…</p>}
+          {loading && <p style={LOADING_STYLE}>Loading docs…</p>}
           {!loading && docs.length === 0 && (
-            <p className="rounded-2xl border border-dashed border-slate-200 bg-white/75 px-4 py-4 text-sm text-slate-500">
+            <p style={EMPTY_STYLE}>
               No supporting docs yet. Paste a spec slice, notes, or source text here to ground this idea.
             </p>
           )}
-          {docs.map(doc => (
-            <article key={doc.id} className="bo-turn-entry">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900">{doc.title}</p>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    {doc.status === 'processing' ? 'Refining' : doc.status === 'failed' ? 'Needs retry' : `${doc.facts.length} facts ready`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {doc.status === 'failed' && (
-                    <button type="button" onClick={() => { void handleRetry(doc); }} className="bo-shell-action">
-                      Retry
+          {docs.map(doc => {
+            const status = describeStatus(doc);
+            return (
+              <article key={doc.id} style={DOC_CARD_STYLE}>
+                <div style={DOC_HEAD_STYLE}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={DOC_TITLE_STYLE}>{doc.title}</p>
+                    <span style={status.failed ? DOC_STATUS_FAILED : DOC_STATUS_BASE}>
+                      {status.label}
+                    </span>
+                  </div>
+                  <div style={DOC_ACTIONS_STYLE}>
+                    {doc.status === 'failed' && (
+                      <button
+                        type="button"
+                        onClick={() => { void handleRetry(doc); }}
+                        className="btn sm"
+                      >
+                        Retry
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { void handleDelete(doc.id); }}
+                      className="btn sm ghost"
+                    >
+                      Delete
                     </button>
-                  )}
-                  <button type="button" onClick={() => { void handleDelete(doc.id); }} className="bo-shell-action">
-                    Delete
-                  </button>
+                  </div>
                 </div>
-              </div>
-              {doc.summary && (
-                <p className="mt-2 text-sm leading-6 text-slate-700">{doc.summary}</p>
-              )}
-            </article>
-          ))}
+                {doc.summary && (
+                  <p style={DOC_SUMMARY_STYLE}>{doc.summary}</p>
+                )}
+              </article>
+            );
+          })}
         </section>
 
-        <section className="space-y-2">
-          <p className="bo-shell-eyebrow">Add doc</p>
+        <section>
+          <div style={SECTION_HEAD_STYLE}>
+            <p style={EYEBROW_STYLE}>Add doc</p>
+          </div>
           <input
             type="text"
             value={title}
             onChange={event => setTitle(event.target.value)}
             placeholder="Optional title"
-            className="bo-doc-input"
+            style={INPUT_STYLE}
           />
           <textarea
             value={body}
             onChange={event => setBody(event.target.value)}
             placeholder="Paste research notes, PRD text, meeting notes, or source excerpts."
             rows={8}
-            className="bo-doc-textarea"
+            style={{ ...TEXTAREA_STYLE, marginTop: 8 }}
           />
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[11px] text-slate-500">{body.length.toLocaleString()} chars</span>
-            <button type="button" onClick={() => { void handleSave(); }} disabled={saving || !body.trim()} className="bo-shell-action">
+          <div style={FORM_ROW_STYLE}>
+            <span style={CHAR_COUNT_STYLE}>{body.length.toLocaleString()} chars</span>
+            <button
+              type="button"
+              onClick={() => { void handleSave(); }}
+              disabled={saving || !body.trim()}
+              className="btn sm primary"
+              style={{ opacity: saving || !body.trim() ? 0.55 : 1 }}
+            >
               {saving ? 'Saving…' : 'Save & refine'}
             </button>
           </div>
         </section>
 
         {error && (
-          <p className="rounded-2xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+          <p style={ERROR_STYLE} role="alert">
             {error}
           </p>
         )}

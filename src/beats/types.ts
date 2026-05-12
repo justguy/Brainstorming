@@ -187,3 +187,10 @@ export interface BeatRunState {
   startedAt: number;
   focusIdeaId?: string;
 }
+
+// Short divergent-thinking technique each beat embodies. Appended to the system
+// prompt of the proactive suggester so suggestions speak in that beat's voice.
+export interface BeatCoachingPrompt {
+  technique: string;
+  voice: string;
+}

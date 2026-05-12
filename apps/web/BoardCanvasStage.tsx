@@ -1,12 +1,19 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Canvas, { type CanvasProps } from '../../src/canvas/ReactFlowCanvas';
+import { ClusterHaloLayer } from '../../src/canvas/ClusterHaloLayer';
+import {
+  setManualClusterOverride,
+  useCanvasZoomModeOnly,
+} from '../../src/canvas/useCanvasZoomMode';
+import { estimateBoardBounds } from '../../src/canvas/reactflow/flowProjection';
 import {
   CritiqueCardsLayer,
   type CritiqueCardsLayerProps,
 } from '../../src/canvas/CritiqueCardsLayer';
 import { ClarificationBoardOverlay } from '../../src/canvas/ClarificationBoardOverlay';
 import { IdeaAttentionLayer } from '../../src/canvas/IdeaAttentionLayer';
-import type { Idea, IdeaCritique } from '../../src/types';
+import type { Idea, IdeaCritique, IdeaGroup } from '../../src/types';
+import { Sticky } from './primitives/Sticky';
 
 type CritiqueBusyByIdea = Record<string, boolean | null | undefined>;
 
@@ -24,6 +31,15 @@ export interface BoardCanvasStageProps extends Omit<CanvasProps, 'overlayContent
   onIdeaUpdate?: (updated: Idea) => void;
   onActivateAttentionItem?: (input: { ideaId: string; attentionId: string }) => void;
   showClarificationOverlay?: boolean;
+  /** Extra layers rendered inside the canvas-coordinate overlay (pans/zooms with the board). */
+  extraCanvasOverlay?: React.ReactNode;
+  /**
+   * bo-143 — when set, the canvas paints a preview halo around these ideas
+   * (Synthesizer cluster proposal). Cleared by passing `null`/`undefined`.
+   */
+  clusterPreviewIdeaIds?: string[] | null;
+  /** Stable id for the preview (used to derive the preview halo colour). */
+  clusterPreviewKey?: string | null;
 }
 
 function getBusyIdeaIds(critiqueBusyByIdea: CritiqueBusyByIdea | undefined): string[] {
@@ -50,24 +66,88 @@ export function BoardCanvasStage({
   onIdeaUpdate,
   onActivateAttentionItem,
   showClarificationOverlay = true,
+  extraCanvasOverlay,
+  clusterPreviewIdeaIds = null,
+  clusterPreviewKey = null,
   ideas,
+  groups,
+  onOpen,
   ...canvasProps
 }: BoardCanvasStageProps): React.ReactElement {
   const busyIdeaIds = getBusyIdeaIds(critiqueBusyByIdea);
+  // M3 / Screen 02 / Build Spec §s02: cluster-zoom is a *visual mode*, not a
+  // separate viewport. The canvas is one DOM; we tween between two modes:
+  //   - sticky mode (zoom > 0.52): full sticky cards, halos quiet, lines & edit.
+  //   - cluster mode (zoom < 0.48): 22×16 chips, halos bold, cluster labels.
+  // The hook below derives the live mode from react-flow's actual zoom (with
+  // 0.48 ↔ 0.52 hysteresis). We keep the manual `clusterZoomOverride` state so
+  // the `C` keyboard shortcut and the on-canvas toggle still let users force
+  // cluster mode independently of zoom level — they OR with the zoom-driven
+  // signal. This means the layout matches the design spec even when react-flow's
+  // `minZoom` clamps the viewport above 0.5 (preserving existing UX).
+  const zoomDrivenMode = useCanvasZoomModeOnly();
+  const [clusterZoomOverride, setClusterZoomOverride] = useState(false);
+  const clusterZoom = clusterZoomOverride || zoomDrivenMode === 'cluster';
+
+  // Mirror the manual override into the shared zoom-mode store so every
+  // consumer of `useCanvasZoomMode` (IdeaNoteNode, ClusterHaloLayer, etc.)
+  // sees cluster mode regardless of the actual zoom.
+  useEffect(() => {
+    setManualClusterOverride(clusterZoomOverride);
+  }, [clusterZoomOverride]);
+  // Defensive cleanup — if the stage unmounts mid-override, release the
+  // override so a remount doesn't observe a stuck cluster mode.
+  useEffect(() => {
+    return () => {
+      setManualClusterOverride(false);
+    };
+  }, []);
+
+  // Keyboard shortcut "C" to flip between idea/cluster zoom — matches the
+  // affordance of "F"/"+/-" already supplied by the ReactFlow viewport panel.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent): void {
+      if (event.key !== 'c' && event.key !== 'C') return;
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        if (
+          target.isContentEditable ||
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT'
+        ) {
+          return;
+        }
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      setClusterZoomOverride(value => !value);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const surfaceBounds = estimateBoardBounds(ideas);
+  const groupList = groups ?? [];
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div
+      className="relative h-full w-full overflow-hidden"
+      data-cluster-zoom={clusterZoom ? 'true' : 'false'}
+    >
       <main className="h-full w-full overflow-hidden" aria-label="Canvas">
         <Canvas
           {...canvasProps}
           boardTheme={boardTheme}
           ideas={ideas}
+          groups={groupList}
+          onOpen={onOpen}
           selectedIdeaId={selectedIdeaId}
           suppressAnimations={suppressAnimations}
           overlayContent={
             <BoardCanvasOverlayStack
               boardTheme={boardTheme}
               ideas={ideas}
+              groups={groupList}
               critiques={critiques}
               busyIdeaIds={busyIdeaIds}
               activeIdeaId={critiqueFocusIdeaId}
@@ -80,11 +160,23 @@ export function BoardCanvasStage({
               onDismissCritique={onDismissCritique}
               onIdeaUpdate={onIdeaUpdate}
               onActivateAttentionItem={onActivateAttentionItem}
+              onOpen={onOpen}
               showClarificationOverlay={showClarificationOverlay}
+              clusterZoom={clusterZoom}
+              surfaceWidth={surfaceBounds.width}
+              surfaceHeight={surfaceBounds.height}
+              extraCanvasOverlay={extraCanvasOverlay}
+              clusterPreviewIdeaIds={clusterPreviewIdeaIds ?? undefined}
+              clusterPreviewKey={clusterPreviewKey ?? undefined}
             />
           }
         />
       </main>
+      <ZoomViewToggle
+        clusterZoom={clusterZoom}
+        clusterCount={groupList.length}
+        onToggle={() => setClusterZoomOverride(value => !value)}
+      />
       {children}
     </div>
   );
@@ -93,6 +185,7 @@ export function BoardCanvasStage({
 interface BoardCanvasOverlayStackProps {
   boardTheme: BoardCanvasStageProps['boardTheme'];
   ideas?: Idea[];
+  groups: IdeaGroup[];
   critiques: IdeaCritique[];
   busyIdeaIds: string[];
   activeIdeaId: string | null;
@@ -105,12 +198,20 @@ interface BoardCanvasOverlayStackProps {
   onDismissCritique?: CritiqueCardsLayerProps['onDismiss'];
   onIdeaUpdate?: (updated: Idea) => void;
   onActivateAttentionItem?: (input: { ideaId: string; attentionId: string }) => void;
+  onOpen?: (ideaId: string) => void;
   showClarificationOverlay: boolean;
+  clusterZoom: boolean;
+  surfaceWidth: number;
+  surfaceHeight: number;
+  extraCanvasOverlay?: React.ReactNode;
+  clusterPreviewIdeaIds?: string[];
+  clusterPreviewKey?: string;
 }
 
 function BoardCanvasOverlayStack({
   boardTheme,
   ideas = [],
+  groups,
   critiques,
   busyIdeaIds,
   activeIdeaId,
@@ -123,10 +224,43 @@ function BoardCanvasOverlayStack({
   onDismissCritique,
   onIdeaUpdate,
   onActivateAttentionItem,
+  onOpen,
   showClarificationOverlay,
+  clusterZoom,
+  surfaceWidth,
+  surfaceHeight,
+  extraCanvasOverlay,
+  clusterPreviewIdeaIds,
+  clusterPreviewKey,
 }: BoardCanvasOverlayStackProps): React.ReactElement {
   return (
     <>
+      <ClusterHaloLayer
+        groups={groups}
+        ideas={ideas}
+        width={surfaceWidth}
+        height={surfaceHeight}
+        clusterZoom={clusterZoom}
+        previewIdeaIds={clusterPreviewIdeaIds}
+        previewKey={clusterPreviewKey}
+      />
+      {/*
+        Chip rendering at cluster zoom now lives inside `IdeaNoteNode`
+        itself (Build Spec §s02 — one DOM, two modes). `IdeaNoteNode` reads
+        the shared zoom-mode store and counter-scales the 22×16 chip so it
+        lands at the design target regardless of the viewport's CSS scale,
+        whether the cluster mode came from actual zoom-out or from the
+        manual override. The original 48×48 thumbnail overlay therefore is
+        no longer needed; the function is kept as a no-op so future tests
+        that referenced the helper still type-check.
+      */}
+      {false && clusterZoom && (
+        <ClusterZoomThumbnailLayer
+          ideas={ideas}
+          selectedIdeaId={selectedIdeaId}
+          onOpen={onOpen}
+        />
+      )}
       <IdeaAttentionLayer
         ideas={ideas}
         critiques={critiques}
@@ -152,6 +286,106 @@ function BoardCanvasOverlayStack({
         onAccept={onAcceptCritique}
         onDismiss={onDismissCritique}
       />
+      {extraCanvasOverlay}
     </>
+  );
+}
+
+interface ClusterZoomThumbnailLayerProps {
+  ideas: Idea[];
+  selectedIdeaId: string | null;
+  onOpen?: (ideaId: string) => void;
+}
+
+/**
+ * Renders each idea as a `Sticky` thumbnail anchored at its panel's centre.
+ * Used in cluster zoom so the cluster halos (rendered alongside) remain the
+ * dominant visual unit while individual stickies recede into a grid-style
+ * preview. Idea-zoom continues to render the full IdeaNoteNode through React
+ * Flow; this layer is purely additive in cluster zoom.
+ */
+function ClusterZoomThumbnailLayer({
+  ideas,
+  selectedIdeaId,
+  onOpen,
+}: ClusterZoomThumbnailLayerProps): React.ReactElement {
+  return (
+    <div
+      className="bo-cluster-thumbnail-layer pointer-events-none absolute inset-0"
+      style={{ zIndex: 9 }}
+      aria-hidden="false"
+    >
+      {ideas.map(idea => {
+        const panel = idea.panel;
+        if (!panel) return null;
+        const left = panel.x + panel.width / 2 - 24;
+        const top = panel.y + panel.height / 2 - 24;
+        return (
+          <div
+            key={idea.id}
+            className="pointer-events-auto absolute"
+            style={{ left, top }}
+          >
+            <Sticky
+              idea={idea}
+              mode="thumbnail"
+              selected={selectedIdeaId === idea.id}
+              onClick={onOpen}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface ZoomViewToggleProps {
+  clusterZoom: boolean;
+  clusterCount: number;
+  onToggle: () => void;
+}
+
+/**
+ * Small button anchored to the canvas viewport that flips between the two
+ * zoom modes. Lives next to the React Flow zoom controls (lower-right) but
+ * stays visually distinct so the affordance reads as "view mode" rather
+ * than "zoom factor".
+ */
+function ZoomViewToggle({
+  clusterZoom,
+  clusterCount,
+  onToggle,
+}: ZoomViewToggleProps): React.ReactElement {
+  const label = clusterZoom ? 'Idea zoom' : 'Cluster zoom';
+  const aria = clusterZoom
+    ? 'Switch to idea zoom (full sticky cards)'
+    : `Switch to cluster zoom${clusterCount > 0 ? ` (${clusterCount} group${clusterCount === 1 ? '' : 's'})` : ''}`;
+  return (
+    <div
+      className="bo-zoom-view-toggle absolute bottom-16 left-4 z-[33]"
+      style={{
+        background: '#fffdf5',
+        border: '1.5px solid rgba(26, 24, 20, 0.55)',
+        borderRadius: 4,
+        boxShadow: '3px 3px 0 rgba(26, 24, 20, 0.18)',
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={clusterZoom}
+        aria-label={aria}
+        title={`${aria} · shortcut: C`}
+        className="px-3 py-1.5 text-[11px] uppercase"
+        style={{
+          letterSpacing: '0.12em',
+          color: clusterZoom ? '#0f5132' : 'rgba(26, 24, 20, 0.78)',
+          fontWeight: clusterZoom ? 700 : 500,
+        }}
+      >
+        {label}
+      </button>
+    </div>
   );
 }

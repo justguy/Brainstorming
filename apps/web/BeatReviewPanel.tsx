@@ -15,6 +15,109 @@ interface BeatReviewPanelProps {
   onClose: () => void;
 }
 
+/*
+ * Beat review overlay — paper/sketch restyle.
+ *
+ * - Root: cream paper with 2px ink border + hand-shadow.
+ * - Header pills are inline mono-caps; the pending-count pill rides on
+ *   sticky-peach to match the "needs your eyes" beat in the design system.
+ * - Action buttons use `.btn.sm.primary` for "Keep pending" and `.btn.sm`
+ *   for "Scratch pending"; both have ink chrome from the .btn class.
+ * - Close uses `.icon-btn` to keep its own border/background despite the
+ *   global `button {}` reset.
+ * - Empty state is a dashed-ink card on paper.
+ */
+const PANEL_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  left: 24,
+  top: 24,
+  zIndex: 20,
+  width: 'min(720px, calc(100% - 7rem))',
+  maxWidth: '100%',
+  background: 'var(--paper)',
+  border: '2px solid var(--ink)',
+  borderRadius: 14,
+  boxShadow: '3px 3px 0 var(--ink)',
+  pointerEvents: 'auto',
+  color: 'var(--ink)',
+};
+
+const HEADER_STYLE: React.CSSProperties = {
+  borderBottom: '1.5px solid var(--ink)',
+  padding: '16px 20px 14px',
+};
+
+const TITLE_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontFamily: 'var(--f-hand)',
+  fontSize: 28,
+  lineHeight: 1.05,
+  color: 'var(--ink)',
+};
+
+const SUMMARY_STYLE: React.CSSProperties = {
+  margin: '6px 0 0',
+  maxWidth: '40rem',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  lineHeight: 1.45,
+  color: 'var(--ink-soft)',
+};
+
+const PILL_ROW_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const PILL_BASE: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '2px 8px',
+  borderRadius: 999,
+  border: '1.2px solid var(--ink)',
+  background: 'var(--paper)',
+  fontFamily: 'var(--f-mono)',
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.12em',
+  color: 'var(--ink)',
+};
+
+const PILL_INK: React.CSSProperties = {
+  ...PILL_BASE,
+  background: 'var(--ink)',
+  color: 'var(--paper)',
+};
+
+const PILL_PENDING: React.CSSProperties = {
+  ...PILL_BASE,
+  background: 'var(--sticky-peach)',
+  borderColor: 'var(--sticky-peach-edge)',
+};
+
+const BODY_STYLE: React.CSSProperties = {
+  maxHeight: '60vh',
+  overflowY: 'auto',
+  padding: '14px 18px 18px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+};
+
+const EMPTY_STYLE: React.CSSProperties = {
+  borderRadius: 12,
+  border: '1.5px dashed var(--ink)',
+  background: 'var(--paper)',
+  padding: '14px 16px',
+  fontFamily: 'var(--f-hand-body)',
+  fontSize: 14,
+  lineHeight: 1.5,
+  color: 'var(--ink-soft)',
+};
+
 export function BeatReviewPanel({
   session,
   items,
@@ -34,48 +137,45 @@ export function BeatReviewPanel({
   return (
     <section
       ref={surfaceRef}
-      className="bo-elevated-panel pointer-events-auto absolute left-6 top-6 z-20 w-[min(720px,calc(100%-7rem))] max-w-full rounded-[28px] backdrop-blur"
+      className="bo-elevated-panel"
+      style={PANEL_STYLE}
       role="dialog"
       aria-modal="false"
       aria-labelledby={headingId}
       aria-describedby={summaryId}
       tabIndex={-1}
     >
-      <div className="border-b border-slate-200 px-5 py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
-                {session.beat} role review
-              </span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-                {formatRunAt(session.finishedAt)}
-              </span>
-              <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
-                {pendingCount} pending
-              </span>
+      <div style={HEADER_STYLE}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+            <div style={PILL_ROW_STYLE}>
+              <span style={PILL_INK}>{session.beat} role review</span>
+              <span style={PILL_BASE}>{formatRunAt(session.finishedAt)}</span>
+              <span style={PILL_PENDING}>{pendingCount} pending</span>
             </div>
-            <h2 id={headingId} className="text-lg font-semibold text-slate-900">{session.title}</h2>
-            <p id={summaryId} className="max-w-2xl text-sm leading-snug text-slate-600">{session.summary}</p>
+            <h2 id={headingId} style={TITLE_STYLE}>{session.title}</h2>
+            <p id={summaryId} style={SUMMARY_STYLE}>{session.summary}</p>
           </div>
 
           <button
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="rounded-full px-2.5 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className="icon-btn"
             aria-label="Close role review"
+            style={{ flex: '0 0 auto', fontFamily: 'var(--f-mono)', fontSize: 16, lineHeight: 1 }}
           >
-            Close
+            ×
           </button>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           <button
             type="button"
             onClick={onKeepAll}
             disabled={pendingCount === 0 || batchBusy !== null}
-            className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+            className="btn sm primary"
+            style={{ opacity: pendingCount === 0 || batchBusy !== null ? 0.55 : 1 }}
           >
             {batchBusy === 'keep' ? 'Keeping…' : 'Keep pending'}
           </button>
@@ -83,14 +183,15 @@ export function BeatReviewPanel({
             type="button"
             onClick={onScratchAll}
             disabled={pendingCount === 0 || batchBusy !== null}
-            className="rounded-full px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-300 transition hover:bg-slate-100 disabled:opacity-60"
+            className="btn sm"
+            style={{ opacity: pendingCount === 0 || batchBusy !== null ? 0.55 : 1 }}
           >
             {batchBusy === 'scratch' ? 'Scratching…' : 'Scratch pending'}
           </button>
         </div>
       </div>
 
-      <div className="max-h-[60vh] space-y-3 overflow-y-auto px-5 py-4">
+      <div style={BODY_STYLE}>
         {items.map(item => (
           <BeatReviewPanelCard
             key={item.id}
@@ -102,7 +203,7 @@ export function BeatReviewPanel({
         ))}
 
         {pendingCount === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-4 text-sm text-slate-600">
+          <div style={EMPTY_STYLE}>
             This review is settled. Kept changes stay on the board; scratched candidates remain reversible through history.
           </div>
         )}

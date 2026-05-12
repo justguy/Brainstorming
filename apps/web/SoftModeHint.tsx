@@ -9,11 +9,33 @@ export interface SoftModeHintProps {
   onDismiss: () => void;
 }
 
-const MODE_TONE: Record<SoftModeAssessment['inferredMode'], string> = {
-  explore: 'border-teal-200 bg-teal-50/95 text-teal-900',
-  structure: 'border-sky-200 bg-sky-50/95 text-sky-900',
-  stress: 'border-rose-200 bg-rose-50/95 text-rose-900',
-  converge: 'border-amber-200 bg-amber-50/95 text-amber-900',
+interface ModeTone {
+  background: string;
+  border: string;
+  accent: string;
+}
+
+const MODE_TONE: Record<SoftModeAssessment['inferredMode'], ModeTone> = {
+  explore: {
+    background: 'var(--sticky-green)',
+    border: 'var(--accent-revives)',
+    accent: 'var(--accent-revives)',
+  },
+  structure: {
+    background: 'var(--sticky-blue)',
+    border: 'var(--ink)',
+    accent: 'var(--ink)',
+  },
+  stress: {
+    background: 'var(--sticky-pink)',
+    border: 'var(--accent-contradicts)',
+    accent: 'var(--accent-contradicts)',
+  },
+  converge: {
+    background: 'var(--sticky-yellow)',
+    border: 'var(--ink)',
+    accent: 'var(--ink)',
+  },
 };
 
 export function SoftModeHint({
@@ -23,40 +45,89 @@ export function SoftModeHint({
   onAction,
   onDismiss,
 }: SoftModeHintProps): React.ReactElement {
+  const tone = MODE_TONE[assessment.inferredMode];
+
   return (
     <section
-      className={`pointer-events-auto w-full max-w-[360px] rounded-2xl border shadow-lg backdrop-blur transition-all duration-300 ${MODE_TONE[assessment.inferredMode]}`}
+      className="pointer-events-auto w-full max-w-[360px]"
       aria-label="Soft mode suggestion"
+      style={{
+        borderRadius: 14,
+        border: `2px solid ${tone.border}`,
+        background: tone.background,
+        boxShadow: '3px 3px 0 var(--ink)',
+        fontFamily: 'var(--f-hand-body)',
+        color: 'var(--ink)',
+        transition: 'transform 80ms ease, box-shadow 80ms ease',
+      }}
     >
-      <div className="flex items-start justify-between gap-3 px-4 py-3">
+      <div className="flex items-start justify-between gap-3" style={{ padding: '12px 14px' }}>
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em]">
+          <p
+            style={{
+              margin: 0,
+              fontFamily: 'var(--f-mono)',
+              fontSize: 10,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+              color: tone.accent,
+            }}
+          >
             {assessment.inferredMode}
           </p>
-          <p className="mt-1 text-sm font-medium leading-snug">
+          <p
+            style={{
+              marginTop: 6,
+              marginBottom: 0,
+              fontFamily: 'var(--f-hand-body)',
+              fontSize: 14,
+              fontWeight: 600,
+              lineHeight: 1.35,
+              color: 'var(--ink)',
+            }}
+          >
             {assessment.reason}
           </p>
-          <p className="mt-1 text-[11px] opacity-70">
+          <p
+            style={{
+              marginTop: 6,
+              marginBottom: 0,
+              fontFamily: 'var(--f-mono)',
+              fontSize: 10.5,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-soft)',
+            }}
+          >
             confidence {Math.round(assessment.confidence * 100)}%
           </p>
         </div>
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded px-1.5 py-0.5 text-xs hover:bg-white/60 focus:outline-none focus:ring-2 focus:ring-current"
+          className="icon-btn"
           aria-label="Dismiss suggestion"
+          style={{
+            width: 26,
+            height: 26,
+            fontSize: 14,
+            lineHeight: 1,
+            color: 'var(--ink)',
+          }}
         >
-          x
+          ×
         </button>
       </div>
 
       {(actionLabel && onAction) && (
-        <div className="px-4 pb-4">
+        <div style={{ padding: '0 14px 14px' }}>
           <button
             type="button"
             onClick={onAction}
             disabled={busy}
-            className="w-full rounded-full border border-current/20 bg-white/80 px-3 py-2 text-sm font-semibold hover:bg-white disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-current"
+            className="btn sm primary"
+            style={{ width: '100%', justifyContent: 'center' }}
           >
             {busy ? 'Working...' : actionLabel}
           </button>

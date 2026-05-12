@@ -225,10 +225,12 @@ export function projectIdeaNodes(input: {
 
 export function projectSuggestionNodes(input: {
   suggestions?: ScoutSuggestion[];
+  boardTheme: BoardThemeMode;
   selectedSuggestionId?: string | null;
   selectedFlowNodeIds?: string[];
   animatedSuggestionIds?: string[];
   suggestionBusy?: Record<string, 'admit' | 'elaborate' | 'dismiss' | null>;
+  suggestionError?: Record<string, string | null>;
   suggestionOverflowCount?: number;
   suggestionsExpanded?: boolean;
   onAdmitSuggestion?: (id: string) => void;
@@ -255,8 +257,10 @@ export function projectSuggestionNodes(input: {
       selected: selectedSet.has(suggestionNodeId(suggestion.id)) || input.selectedSuggestionId === suggestion.id,
       data: {
         suggestion,
+        boardTheme: input.boardTheme,
         animated: animatedSet.has(suggestion.id),
         busy: input.suggestionBusy?.[suggestion.id] ?? null,
+        error: input.suggestionError?.[suggestion.id] ?? null,
         overflowCount: isLastVisible ? input.suggestionOverflowCount ?? 0 : 0,
         expandedList: isLastVisible && !!input.suggestionsExpanded,
         onAdmit: input.onAdmitSuggestion,
@@ -281,19 +285,29 @@ export function projectConnectionEdges(input: {
   activePathIdeaIds?: string[];
   animatedConnectionIds?: string[];
   suppressAnimations?: boolean;
-  onSelect?: (connectionId: string, ideaIds: string[]) => void;
+  // The third argument carries the click's viewport coordinates so callers
+  // can anchor a popover near the user's pointer (Screen 05 — connection
+  // inspector). It's optional for back-compat with synthetic / non-pointer
+  // selections.
+  onSelect?: (
+    connectionId: string,
+    ideaIds: string[],
+    clientPosition?: { x: number; y: number },
+  ) => void;
 }): FlowBoardEdge[] {
   const segments = buildConnectionSegments(input.ideas, input.connections, input.liveDrag);
   const connectionById = new Map(input.connections.map(connection => [connection.id, connection] as const));
   const animatedSet = new Set(input.animatedConnectionIds ?? []);
 
-  return segments.map(segment => {
+  return segments.flatMap(segment => {
     const connection = connectionById.get(segment.connectionId);
     if (!connection) {
-      throw new Error(`Missing connection for segment ${segment.connectionId}`);
+      // Degrade gracefully — skip orphans rather than crash the canvas.
+      console.warn(`[flowProjection] skipping segment ${segment.id}: missing connection ${segment.connectionId}`);
+      return [];
     }
 
-    return {
+    return [{
       id: segment.id,
       type: CONNECTION_FLOW_EDGE_TYPE,
       source: ideaNodeId(segment.ideaIds[0]),
@@ -310,7 +324,7 @@ export function projectConnectionEdges(input: {
         labelY: (segment.y1 + segment.y2) / 2,
         onSelect: input.onSelect,
       },
-    };
+    }];
   });
 }
 

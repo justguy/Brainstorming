@@ -11,7 +11,6 @@ export interface BoardWorkspaceOverlaysProps {
   docCounts: Record<string, number>;
   capturePopover: CaptureIdeaPopoverProps;
   docsPanel?: React.ReactNode;
-  selectedIdeaDockContent?: React.ReactNode;
   inspectorContent?: React.ReactNode;
   isInspectorOpen: boolean;
   isTurnLogOpen?: boolean;
@@ -27,7 +26,6 @@ export function BoardWorkspaceOverlays({
   docCounts,
   capturePopover,
   docsPanel,
-  selectedIdeaDockContent,
   inspectorContent,
   isInspectorOpen,
   isTurnLogOpen = false,

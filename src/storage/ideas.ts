@@ -224,6 +224,38 @@ export async function setReadiness(
   return updated;
 }
 
+/**
+ * Set the list of boards this idea is pinned to (cross-board membership). The
+ * idea's own `boardId` is always included so the planet-map edge calculator
+ * (which derives shared-board edges from `pinnedToBoardIds.length > 1`) does
+ * not need to special-case the home board. Pass an empty array to clear all
+ * extra pins. Does not write a changeSet row — the rest of this file (e.g.
+ * `updateIdea`, `setReadiness`) follows the same lightweight write pattern;
+ * board-level mutations live in `boardController.ts` / `board*Mutations.ts`.
+ */
+export async function pinIdeaToBoards(
+  ideaId: string,
+  boardIds: ReadonlyArray<string>,
+): Promise<void> {
+  const idea = await fetchIdea(ideaId);
+  const homeBoardId = idea.boardId ?? DEFAULT_BOARD_ID;
+  const seen = new Set<string>();
+  const next: BoardId[] = [];
+  for (const candidate of [homeBoardId, ...boardIds]) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    next.push(candidate);
+  }
+  const updated: Idea = {
+    ...idea,
+    pinnedToBoardIds: next,
+    updatedAt: Date.now(),
+  };
+  const db = await getDb();
+  await db.put('ideas', updated);
+  await publishIdeaRow(updated);
+}
+
 // ---------------------------------------------------------------------------
 // Smoke test
 // ---------------------------------------------------------------------------

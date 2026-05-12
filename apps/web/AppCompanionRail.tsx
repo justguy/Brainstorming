@@ -63,6 +63,8 @@ export interface AppCompanionRailProps {
     recentAiActionOutcomes?: FacilitatorAiActionOutcomeRecord[];
     stagedInsightCount?: number;
   };
+  backgroundAiError?: { source: 'scout' | 'connect' | 'critique'; message: string; at: number } | null;
+  dismissBackgroundAiError?: () => void;
   robotNotes?: {
     title?: string;
     items?: FacilitatorStagedInsight[];
@@ -70,6 +72,12 @@ export interface AppCompanionRailProps {
     onApply?: (insightId: string) => void;
     onDismiss?: (insightId: string) => void;
   };
+  /**
+   * bo-143 — slot for the Synthesizer cluster-proposal NudgeCard list.
+   * Owned by `BoardScreen` so the apply / preview / dismiss handlers stay
+   * close to the cluster-review state (`useBeatReviewActions`).
+   */
+  synthesizerProposals?: React.ReactNode;
   session: Omit<CompanionSessionInput, 'pendingBoardChange' | 'autoRunReady' | 'suggestionCount'>;
 }
 
@@ -110,7 +118,10 @@ export function AppCompanionRail({
   onRunClusterBeat,
   onRunSummariseBeat,
   autonomy,
+  backgroundAiError,
+  dismissBackgroundAiError,
   robotNotes,
+  synthesizerProposals,
   session,
 }: AppCompanionRailProps): React.ReactElement {
   const companionAction = companionActionLabel
@@ -156,8 +167,63 @@ export function AppCompanionRail({
     <div
       className="bo-companion-rail h-full max-h-[48vh] overflow-y-auto overscroll-y-contain px-3 py-3 lg:max-h-none lg:px-4"
       aria-label="AI role dock"
+      style={{
+        fontFamily: 'var(--f-hand-body)',
+        color: 'var(--ink)',
+      }}
     >
       <div className="mx-auto flex w-full max-w-[340px] flex-col gap-2 bo-compact-stack">
+        {backgroundAiError && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-start justify-between gap-2"
+            style={{
+              borderRadius: 12,
+              border: '2px solid var(--accent-contradicts)',
+              background: 'var(--sticky-pink)',
+              padding: '8px 10px',
+              fontFamily: 'var(--f-hand-body)',
+              fontSize: 13,
+              color: 'var(--ink)',
+              boxShadow: '3px 3px 0 var(--ink)',
+            }}
+          >
+            <span style={{ lineHeight: 1.35 }}>
+              <span
+                style={{
+                  fontFamily: 'var(--f-mono)',
+                  fontSize: 10,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--accent-contradicts)',
+                  fontWeight: 700,
+                  marginRight: 6,
+                }}
+              >
+                {backgroundAiError.source}
+              </span>
+              {backgroundAiError.message}
+            </span>
+            {dismissBackgroundAiError && (
+              <button
+                type="button"
+                onClick={dismissBackgroundAiError}
+                className="icon-btn"
+                aria-label="Dismiss background AI error"
+                style={{
+                  width: 26,
+                  height: 26,
+                  fontSize: 14,
+                  lineHeight: 1,
+                  color: 'var(--accent-contradicts)',
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
         <div className="bo-companion-primary-stack flex flex-col gap-2">
           <DevCompanionCard
             hasApiKey={hasApiKey}
@@ -199,40 +265,133 @@ export function AppCompanionRail({
             />
           )}
 
+          {synthesizerProposals}
+
           {showReviewPanel && (
-            <section className="bo-card-surface space-y-2.5 rounded-[18px] border border-slate-200/80 p-2.5">
+            <section
+              className="bo-card-surface"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                borderRadius: 14,
+                border: '2px solid var(--ink)',
+                background: 'var(--paper)',
+                padding: 12,
+                boxShadow: '3px 3px 0 var(--ink)',
+                fontFamily: 'var(--f-hand-body)',
+                color: 'var(--ink)',
+              }}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <p
+                    style={{
+                      margin: 0,
+                      fontFamily: 'var(--f-mono)',
+                      fontSize: 10,
+                      letterSpacing: '0.18em',
+                      textTransform: 'uppercase',
+                      color: 'var(--ink-faint)',
+                      fontWeight: 700,
+                    }}
+                  >
                     Review and actions
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                  <p
+                    style={{
+                      marginTop: 4,
+                      marginBottom: 0,
+                      fontFamily: 'var(--f-hand)',
+                      fontSize: 20,
+                      fontWeight: 700,
+                      lineHeight: 1.15,
+                      color: 'var(--ink)',
+                    }}
+                  >
                     {boardBeatReviewSession?.title ?? 'Facilitator review items'}
                   </p>
-                  <p className="mt-1 text-xs text-slate-600">
+                  <p
+                    style={{
+                      marginTop: 4,
+                      marginBottom: 0,
+                      fontFamily: 'var(--f-mono)',
+                      fontSize: 10.5,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: 'var(--ink-soft)',
+                    }}
+                  >
                     {turnLogPendingCount > 0 ? `${turnLogPendingCount} pending` : 'No pending'} · {turnLogKeptCount} kept · {turnLogScratchedCount} scratched
                   </p>
                 </div>
               </div>
 
               {reviewItemPreview.length > 0 ? (
-                <div className="space-y-1.5">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {reviewItemPreview.map(item => (
-                    <article key={item.id} className="rounded-xl border border-slate-200 bg-white/90 p-2 text-xs text-slate-600">
+                    <article
+                      key={item.id}
+                      style={{
+                        borderRadius: 10,
+                        border: '1.5px solid var(--hairline)',
+                        background: 'var(--paper)',
+                        padding: 8,
+                        fontSize: 13,
+                        color: 'var(--ink-soft)',
+                        fontFamily: 'var(--f-hand-body)',
+                      }}
+                    >
                       <div className="mb-0.5 flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        <span
+                          style={{
+                            fontFamily: 'var(--f-mono)',
+                            fontSize: 10,
+                            letterSpacing: '0.16em',
+                            textTransform: 'uppercase',
+                            color: 'var(--ink-faint)',
+                            fontWeight: 700,
+                          }}
+                        >
                           {item.beat}
                         </span>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] ${reviewStatusTone(item.status)}`}>
+                        <span
+                          style={{
+                            ...reviewStatusToneStyle(item.status),
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '1px 8px',
+                            borderRadius: 999,
+                            fontFamily: 'var(--f-mono)',
+                            fontSize: 10,
+                            letterSpacing: '0.12em',
+                            textTransform: 'uppercase',
+                            fontWeight: 700,
+                          }}
+                        >
                           {item.status}
                         </span>
                       </div>
-                      <p className="leading-5">{compactText(reviewItemLine(item), 72)}</p>
+                      <p style={{ margin: '4px 0 0', lineHeight: 1.4 }}>
+                        {compactText(reviewItemLine(item), 72)}
+                      </p>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+                <p
+                  style={{
+                    margin: 0,
+                    borderRadius: 10,
+                    border: '1.4px dashed var(--hairline)',
+                    background: 'var(--paper-dark)',
+                    padding: '8px 12px',
+                    fontSize: 13,
+                    lineHeight: 1.4,
+                    color: 'var(--ink-soft)',
+                    fontFamily: 'var(--f-hand-body)',
+                  }}
+                >
                   No review items staged.
                 </p>
               )}
@@ -244,7 +403,7 @@ export function AppCompanionRail({
                     void onRunClusterBeat();
                   }}
                   disabled={activeBeatRun !== null}
-                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-400 disabled:opacity-60"
+                  className="btn sm"
                 >
                   Run cluster role
                 </button>
@@ -254,7 +413,7 @@ export function AppCompanionRail({
                     void onRunSummariseBeat();
                   }}
                   disabled={activeBeatRun !== null}
-                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-400 disabled:opacity-60"
+                  className="btn sm"
                 >
                   Run synthesis
                 </button>
@@ -339,15 +498,33 @@ function reviewItemLine(item: BeatReviewItemRecord): string {
   return 'Review candidate item';
 }
 
-function reviewStatusTone(status: BeatReviewItemRecord['status']): string {
+function reviewStatusToneStyle(
+  status: BeatReviewItemRecord['status'],
+): React.CSSProperties {
   switch (status) {
     case 'pending':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+      return {
+        border: '1.5px solid var(--ink)',
+        background: 'var(--sticky-yellow)',
+        color: 'var(--ink)',
+      };
     case 'kept':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      return {
+        border: '1.5px solid var(--accent-revives)',
+        background: 'var(--sticky-green)',
+        color: 'var(--ink)',
+      };
     case 'scratched':
-      return 'border-slate-200 bg-slate-100 text-slate-600';
+      return {
+        border: '1.5px dashed var(--ink-faint)',
+        background: 'var(--paper-dark)',
+        color: 'var(--ink-soft)',
+      };
     default:
-      return 'border-slate-200 bg-slate-100 text-slate-600';
+      return {
+        border: '1.5px solid var(--hairline)',
+        background: 'var(--paper-dark)',
+        color: 'var(--ink-soft)',
+      };
   }
 }
